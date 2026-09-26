@@ -183,6 +183,66 @@ html, body {
 .time-label { font-size: 10.5px; letter-spacing: 1.4px; color: var(--muted); text-transform: uppercase; }
 .time-speed { font-size: 12.5px; font-weight: 700; color: var(--accent); }
 .time-date { font-size: 11px; color: var(--muted); margin-top: 4px; text-align: center; letter-spacing: .5px; }
+
+/* --- slider geser waktu (scrub) --- */
+.time-scrub-row {
+  align-items: center;
+  gap: 9px;
+  margin: 7px 0 3px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(140, 170, 220, 0.12);
+}
+.time-scrub-row .time-label { flex: none; white-space: nowrap; }
+.time-scrub-row #timeScrub {
+  flex: 1;
+  min-width: 0;
+  /* trek dua arah: merah redup (mundur) - netral - biru (maju) */
+  background: linear-gradient(90deg,
+    rgba(240, 138, 122, 0.55) 0%,
+    rgba(140, 170, 220, 0.22) 42%,
+    rgba(140, 170, 220, 0.22) 58%,
+    rgba(122, 196, 255, 0.55) 100%);
+}
+.time-scrub-val {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--muted);
+  min-width: 62px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  transition: color .15s;
+}
+.time-scrub-val.aktif { color: var(--accent); font-weight: 700; }
+
+/* Di layar sentuh (HP/tablet) slider geser harus nyaman disentuh:
+   label di baris atas, slider selebar mungkin, nilai di kanan. */
+@media (max-width: 640px), (pointer: coarse) {
+  .time-scrub-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 4px 8px;
+    margin: 6px 0 2px;
+  }
+  .time-scrub-row .time-label { grid-column: 1; grid-row: 1; }
+  .time-scrub-val { grid-column: 2; grid-row: 1; min-width: 58px; }
+  .time-scrub-row #timeScrub {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    width: 100%;
+    /* target sentuh: area ketuk 24 px walau trek tetap tipis */
+    height: 24px;
+    background-size: 100% 5px;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  .time-scrub-row #timeScrub::-webkit-slider-thumb {
+    width: 26px; height: 26px;
+  }
+  .time-scrub-row #timeScrub::-moz-range-thumb {
+    width: 24px; height: 24px;
+  }
+}
 input[type=range] {
   -webkit-appearance: none; appearance: none;
   width: 100%; height: 5px; border-radius: 3px; outline: none;
