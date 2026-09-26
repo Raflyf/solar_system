@@ -2,7 +2,7 @@
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#05070d">
 <title>Tata Surya 3D — Skala 1:1 dengan Tekstur Asli NASA</title>
 <meta name="description" content="Tata surya 3D skala 1:1 dengan tekstur permukaan asli NASA/USGS. Zoom sampai permukaan planet, simulasi waktu dari detik hingga abad.">
@@ -35,10 +35,34 @@ html, body {
 }
 
 #app { position: fixed; inset: 0; }
-#scene { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#scene {
+  position: absolute; inset: 0; width: 100%; height: 100%; display: block;
+  /* PENTING untuk HP: matikan gestur bawaan peramban pada kanvas (pinch
+     zoom halaman, pan, double-tap zoom). Tanpa ini, cubitan pengguna
+     "bertarung" dengan gestur peramban -> tampilan terasa bolak-balik /
+     ter-inversi, dan halaman ikut ter-zoom. */
+  touch-action: none;
+  -webkit-user-select: none; user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
 
 .ui { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
 .ui > * { pointer-events: auto; }
+
+/* =======================================================================
+   PITA VERTIKAL (band) — dipakai di HP
+   ----------------------------------------------------------------------
+   Nilai ini adalah CADANGAN; saat aplikasi berjalan, measureBands() di
+   60-main.js mengukurnya dari tinggi bilah waktu yang sebenarnya dan
+   menimpanya. Dengan begitu tidak ada elemen yang bertumpuk di perangkat
+   mana pun (tinggi bilah waktu berbeda-beda karena teks membungkus,
+   safe-area, dan ukuran font sistem).
+   ======================================================================= */
+:root {
+  --band-safe: env(safe-area-inset-bottom, 0px);
+  --band-time: 168px;
+  --band-tools: 64px;
+}
 
 /* ---------------- panel kaca ---------------- */
 .panel {
@@ -293,6 +317,46 @@ kbd {
 }
 .mini:hover { color: var(--text); background: rgba(140,170,220,.14); }
 
+/* ---------------- latar gelap saat panel terbuka (HP) ----------------
+   Menutup laci/bantuan/modal dengan satu ketukan, dan mencegah pengguna
+   berinteraksi dengan kanvas di belakangnya. */
+.ui-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(3, 6, 12, 0.62);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  /* z-index 29: di atas bilah waktu (26), tombol lepas fokus (27), dan
+     panel info (28) — tetapi DI BAWAH laci (30) dan modal bantuan/POV (70).
+     Jadi saat laci terbuka, laci tetap terang di atas backdrop; saat
+     bantuan/POV terbuka, keduanya juga di atas backdrop. */
+  z-index: 29;
+  display: none;
+  /* backdrop harus menerima ketukan walau induknya (#uiRoot) punya
+     pointer-events:none — tanpa ini ia tidak bisa diklik sama sekali. */
+  pointer-events: auto;
+}
+.ui-backdrop.show { display: block; animation: fadeIn .18s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ---------------- tombol lepas fokus ----------------
+   Muncul saat kamera sedang mengikuti sebuah benda (mode ikuti), supaya
+   pengguna bisa keluar tanpa menebak. Di desktop ada tombol Esc/Spasi,
+   tapi tombol ini tetap berguna (dan wajib di HP).
+   Posisi desktop: tengah-bawah, di atas bilah waktu. */
+.focus-exit {
+  display: none;
+  position: absolute;
+  bottom: 132px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 27;
+  border-radius: 20px;
+  padding: 8px 16px;
+  min-height: 40px;
+  font-size: 12px;
+  background: rgba(20, 28, 44, 0.92);
+}
+.focus-exit.show { display: inline-flex; align-items: center; }
+
 /* ---------------- label melayang ---------------- */
 #labelLayer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
 .flabel {
@@ -407,18 +471,31 @@ kbd {
   }
   .title-main { font-size: 14px; letter-spacing: 2px; }
 
-  /* toolbar: satu baris ikon yang bisa digeser horizontal bila sempit */
+  /* ======================================================================
+     TATA LETAK HP — sistem "band" vertikal
+     ----------------------------------------------------------------------
+     BUG YANG DIPERBAIKI: dulu toolbar DAN panel info sama-sama
+     bottom:112px, dan bilah waktu di HP tingginya ~148px — jadi ketiganya
+     saling menimpa (keluhan "UI bertumpuk dan tidak lengkap").
+
+     Sekarang setiap elemen punya pita (band) sendiri; nilainya diukur
+     otomatis oleh measureBands() (60-main.js) supaya akurat di semua HP:
+       bilah waktu : paling bawah
+       toolbar     : tepat di atas bilah waktu
+       panel info  : di atas toolbar (bottom-sheet)
+     ====================================================================== */
+
+  /* toolbar: tepat di atas bilah waktu */
   .top-buttons {
     top: auto;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 112px);
+    bottom: calc(var(--band-safe) + var(--band-time));
     left: calc(env(safe-area-inset-left, 0px) + 10px);
     right: calc(env(safe-area-inset-right, 0px) + 10px);
     display: flex;
     flex-wrap: nowrap;
     /* Trik centering + scroll: flex-start + auto-margin di ujung.
        Kalau muat, tombol terlihat terpusat; kalau tidak muat (HP 360 px),
-       tombol pertama tetap terlihat utuh dan baris bisa digeser —
-       beda dengan justify-content:center yang memotong sisi kiri. */
+       tombol pertama tetap terlihat utuh dan baris bisa digeser. */
     justify-content: flex-start;
     gap: 4px;
     padding: 4px;
@@ -431,7 +508,7 @@ kbd {
   .top-buttons .btn:first-child { margin-left: auto; }
   .top-buttons .btn:last-child { margin-right: auto; }
   /* 7 tombol × 44 px + 6 × 4 px gap + 8 px padding = 340 px: muat utuh
-     di viewport 390 px (terverifikasi), dan tetap bisa digeser di 360 px.
+     di viewport 390 px, dan tetap bisa digeser di 360 px.
      44 px = minimum target sentuh WCAG. */
   .top-buttons .btn {
     flex: 0 0 auto;
@@ -445,18 +522,19 @@ kbd {
   .top-buttons .btn .bt { display: none; }      /* hanya ikon */
   .top-buttons .btn .bi { font-size: 17px; line-height: 1; margin-right: 0; }
 
-  /* panel info: lembar bawah penuh lebar */
+  /* panel info: bottom-sheet DI ATAS toolbar — tidak menutupi bilah waktu,
+     dan tombol-tombolnya tetap bisa dijangkau jempol */
   .info-panel {
     top: auto;
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 112px);
+    bottom: calc(var(--band-safe) + var(--band-time) + var(--band-tools));
     left: 10px; right: 10px;
     width: auto;
-    max-height: 46vh;
+    max-height: 42vh;
     overflow-y: auto;
     padding: 12px 14px 11px;
-    z-index: 25;
+    z-index: 28;
   }
-  .info-panel.show { animation: popIn .24s cubic-bezier(.2,.9,.3,1); }
+  .info-panel.show { animation: fadeIn .2s ease; }
   .info-name { font-size: 17px; }
   .info-table { font-size: 12px; }
   .info-panel .info-actions { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -465,15 +543,14 @@ kbd {
     padding: 8px 10px; font-size: 12px;
   }
 
-  /* bilah waktu: bawah, aman dari notch DAN home indicator (safe area) */
+  /* bilah waktu: paling bawah, aman dari notch DAN home indicator */
   .timebar {
-    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    bottom: calc(var(--band-safe) + 10px);
     left: calc(env(safe-area-inset-left, 0px) + 10px);
     right: calc(env(safe-area-inset-right, 0px) + 10px);
     width: auto;
     /* jangan pakai transform translateX(-50%) dari aturan dasar — kalau
-       left/right sudah 10px, transform itu menggeser bilah keluar layar
-       (terbukti di uji viewport 390px: meluber 175 px ke kiri). */
+       left/right sudah 10px, transform itu menggeser bilah keluar layar */
     transform: none;
     margin: 0;
     padding: 9px 11px;
@@ -481,8 +558,6 @@ kbd {
     border-radius: 12px;
     z-index: 26;
   }
-  /* beri ruang home indicator: panel waktu naik sedikit bila perlu */
-  #tzSelect { margin-bottom: env(safe-area-inset-bottom, 0px); }
   .time-label { font-size: 9.5px; letter-spacing: 1px; }
   .time-speed { font-size: 11px; }
   .time-date { flex-wrap: wrap; gap: 6px; justify-content: center; }
@@ -498,9 +573,6 @@ kbd {
     font-size: 16px;
   }
 
-  /* toolbar: tombol ikon sedikit lebih lega supaya tidak rapat tepi */
-  .top-buttons { padding: 6px 10px; }
-
   /* badge peristiwa: sudah di dalam panel judul — tinggal dirapikan */
   .event-badge {
     font-size: 10.5px; padding: 4px 9px;
@@ -509,18 +581,23 @@ kbd {
 
   /* panel bantuan & modal POV */
   .help-panel {
-    top: 56px; left: 10px; right: 10px;
-    max-height: 70vh; overflow-y: auto;
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    left: 10px; right: 10px;
+    width: auto;
+    max-height: 62vh; overflow-y: auto;
     transform: none;
-    z-index: 60;
+    z-index: 70;
   }
-  .help-panel.show { animation: popIn .2s ease; }
+  /* animasi TANPA translate: aturan desktop memakai translate(-50%,-50%),
+     dan kalau keyframe itu dipakai di HP (yang transform:none) panelnya
+     tergeser keluar layar -> terpotong tepi kiri (terbukti di uji). */
+  .help-panel.show { animation: fadeIn .18s ease; }
   .help-table { font-size: 12px; }
   .help-table td { padding: 6px 8px; }
   .earthview-modal {
     width: calc(100vw - 20px);
     max-width: 340px;
-    max-height: 82vh;
+    max-height: 78vh;
     overflow-y: auto;
     padding: 13px;
     z-index: 70;
@@ -529,16 +606,34 @@ kbd {
   .evm-btns { flex-direction: column; }
   .evm-btns button { min-height: 44px; }
 
-  /* panel pengamat (POV Bumi) — diatur di 56-stars.css (setelah aturan
-     dasarnya) supaya tidak kalah urutan CSS. Lihat komentar di sana. */
+  /* tombol lepas fokus: di HP taruh di atas (dekat judul) supaya tidak
+     berebut ruang dengan toolbar & bilah waktu di bawah */
+  .focus-exit {
+    bottom: auto;
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 16px;
+    min-height: 40px;
+    font-size: 12px;
+    border-radius: 20px;
+    z-index: 27;
+    background: rgba(20, 28, 44, 0.92);
+  }
 }
 
 /* --- layar sangat pendek (HP landscape): rapatkan --- */
 @media (max-height: 560px) {
   .title-panel { display: none; }
-  .top-buttons { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
-  .info-panel { max-height: 40vh; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+  .top-buttons { bottom: calc(env(safe-area-inset-bottom, 0px) + var(--band-time)); }
+  .info-panel {
+    max-height: 34vh;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + var(--band-time) + var(--band-tools));
+  }
   .event-badge { top: 8px; }
+  /* di landscape bilah waktu dipadatkan: sembunyikan baris tanggal,
+     tanggal sudah tampil di HUD */
+  .time-date { display: none; }
 }
 
 /* --- desktop pendek: panel atas/bawah disesuaikan --- */
@@ -1076,6 +1171,12 @@ kbd {
         <tr><td><kbd>0</kbd></td><td>Lompat ke Matahari</td></tr>
         <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd> <kbd>P</kbd></td><td>Label / orbit / bantuan / jeda</td></tr>
         <tr><td>Slider <b>Geser waktu</b></td><td>Maju / mundurkan waktu bebas — geser kiri = mundur, kanan = maju</td></tr>
+        <tr><td colspan="2" style="color:var(--accent2);padding-top:9px"><b>Sentuh (HP / tablet)</b></td></tr>
+        <tr><td>1 jari seret</td><td>Putar pandangan</td></tr>
+        <tr><td>Cubit 2 jari</td><td><b>Zoom</b> (mode ikuti) · ubah kecepatan terbang (mode bebas) · lensa (POV Bumi)</td></tr>
+        <tr><td>Ketuk benda</td><td>Fokus &amp; ikuti benda itu</td></tr>
+        <tr><td>Ketuk 2× <span style="opacity:.7">atau</span> 2 jari ketuk</td><td>Lepas fokus (kembali bebas)</td></tr>
+        <tr><td>Roda di slider waktu</td><td>Maju / mundur cepat</td></tr>
       </table>
       <div class="help-note">
         Semua jarak & ukuran memakai <b>skala 1 : 1</b> — jarak antar planet nyata,
@@ -1087,6 +1188,12 @@ kbd {
 
     <!-- Label benda (diposisikan oleh JS) -->
     <div id="labelLayer"></div>
+
+    <!-- Tombol lepas fokus (mobile: pengganti tombol Esc) -->
+    <button class="btn focus-exit" id="btnExitFocus" title="Lepas fokus — kembali terbang bebas">✕ Bebas</button>
+
+    <!-- Latar gelap saat laci/bantuan/modal terbuka (tap untuk menutup) -->
+    <div class="ui-backdrop" id="uiBackdrop"></div>
 
     <!-- Indikator sudut layar -->
     <div class="hud-corner" id="hudInfo">—</div>
@@ -3839,10 +3946,12 @@ const EARTHVIEW_UI = {
   toggleModal() {
     this.modal.classList.toggle('hidden');
     this.syncButtons();
+    if (window.__syncBackdrop) window.__syncBackdrop();
   },
 
   hide() {
     this.modal.classList.add('hidden');
+    if (window.__syncBackdrop) window.__syncBackdrop();
   },
 
   applyAndEnter() {
@@ -6309,20 +6418,65 @@ function initControls(canvas) {
     }
   });
 
-  /* sentuh */
+  /* sentuh
+     ------------------------------------------------------------------
+     BUG YANG DIPERBAIKI DI SINI (keluhan "pinch malah jadi inverse /
+     bolak-balik"):
+       1. Pinch TIDAK mematikan followAutoFit. Padahal updateCamera()
+          otomatis menarik kamera menjauh begitu ada satelit di luar layar
+          — jadi cubitan pengguna langsung "dilawan" dan jarak melompat
+          bolak-balik. Sekarang pinch mematikan auto-fit (seperti roda
+          mouse di desktop).
+       2. Setelah cubit, `moved` masih 0 -> touchend menganggapnya KETUKAN
+          lalu memfokuskan benda acak. Sekarang gestur multi-jari menandai
+          `multiGesture` dan menekan tap.
+       3. Saat jari berkurang 2 -> 1, lastX/lastY lama (dari jari pertama)
+          membuat lompatan. Sekarang disinkronkan ulang.
+     Tambahan: ketuk-2x dan ketuk-2-jari = lepas fokus (pengganti Esc di HP).
+     ------------------------------------------------------------------ */
   let touchDist = 0;
+  let touchMode = null;        /* null | 'drag' | 'pinch' */
+  let multiGesture = false;    /* gestur 2 jari terjadi -> jangan dianggap tap */
+  let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+
+  const touchFocusAt = (cx, cy) => {
+    const rect = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((cx - rect.left) / rect.width) * 2 - 1,
+      -((cy - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, camera);
+    const hits = ray.intersectObjects(pickables, false);
+    if (hits.length > 0) {
+      const b = findBody(hits[0].object.userData.bodyId);
+      if (b) { focusBody(b); return true; }
+    }
+    return false;
+  };
+
   canvas.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) {
       dragging = true; moved = 0;
+      touchMode = 'drag';
+      multiGesture = false;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
     } else if (e.touches.length === 2) {
+      /* jari kedua turun: beralih ke mode cubit, hentikan drag 1 jari */
+      touchMode = 'pinch';
+      multiGesture = true;
+      dragging = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
-      touchDist = Math.sqrt(dx * dx + dy * dy);
+      touchDist = Math.sqrt(dx * dx + dy * dy) || 1;
+      /* pengguna mengambil alih zoom: matikan auto-fit supaya kamera tidak
+         menarik balik (penyebab utama gerakan bolak-balik) */
+      if (cameraState.target) cameraState.followAutoFit = false;
     }
   }, { passive: true });
+
   canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 1 && dragging) {
+    if (e.touches.length === 1 && touchMode === 'drag' && dragging) {
       const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += Math.abs(dx) + Math.abs(dy);
@@ -6342,40 +6496,96 @@ function initControls(canvas) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (touchMode !== 'pinch') {
+        /* dua jari turun tanpa touchstart 2-jari (mis. jari kedua cepat) */
+        touchMode = 'pinch';
+        multiGesture = true;
+        dragging = false;
+        touchDist = d;
+        if (cameraState.target) cameraState.followAutoFit = false;
+      }
       if (touchDist > 0) {
         const k = touchDist / d;
         if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-          /* POV Bumi: cubit melebar (k < 1) = fov mengecil = zoom masuk */
+          /* POV Bumi: cubit melebar = zoom lensa masuk */
           EARTH_VIEW.fov = clampf(EARTH_VIEW.fov * k, 4, 100);
         } else if (cameraState.target) {
-          cameraState.followDist = clampf(cameraState.followDist * k, 0.5, 1e7);
+          /* mode ikuti: cubit = zoom jarak ke benda */
+          const body = cameraState.target;
+          const minD = body.radiusKm * 1.008;
+          let maxD = Math.max(body.radiusKm * 4000, body.orbitRadiusUnits * 1.5);
+          let farthest = 0;
+          for (let i = 0; i < bodies.length; i++) {
+            const m = bodies[i];
+            if (m.isMoon && m.host === body) {
+              const dd = (m.aKm / RAD) * MOON_ORBIT_FACTOR;
+              if (dd > farthest) farthest = dd;
+            }
+          }
+          if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
+          cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
         } else {
-          cameraState.baseSpeed = clampf(cameraState.baseSpeed / k, 2.0, 3000000);
+          /* mode bebas: cubit = gerak maju/mundur (dolly) — inilah yang
+             diharapkan pengguna HP. (Sebelumnya mengubah baseSpeed yang
+             tidak terlihat efeknya di layar, jadi terasa "tidak berfungsi".) */
+          const deltaPx = (d - touchDist);
+          const step = deltaPx * Math.max(autoSpeedFor(cameraState.pos), 0.05) * 0.05;
+          const fwd = dirFromAngles(cameraState.yaw, cameraState.pitch);
+          cameraState.pos.addScaledVector(fwd, step);
+          cameraState.vel.set(0, 0, 0);
         }
       }
       touchDist = d;
       e.preventDefault();
     }
   }, { passive: false });
+
   canvas.addEventListener('touchend', (e) => {
+    /* jari berkurang 2 -> 1: sinkronkan ulang titik acuan supaya tidak
+       melompat; lanjutkan sebagai drag 1 jari */
+    if (e.touches.length === 1) {
+      touchMode = 'drag';
+      dragging = true;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      moved += 100;              /* pasti bukan tap */
+      touchDist = 0;
+      return;
+    }
     if (e.touches.length === 0) {
-      if (moved < 8 && e.changedTouches.length === 1) {
+      const wasMulti = multiGesture;
+      const wasTap = (moved < 8) && !wasMulti && e.changedTouches.length === 1;
+      if (wasTap) {
         const t = e.changedTouches[0];
-        const rect = canvas.getBoundingClientRect();
-        const ndc = new THREE.Vector2(
-          ((t.clientX - rect.left) / rect.width) * 2 - 1,
-          -((t.clientY - rect.top) / rect.height) * 2 + 1
-        );
-        const ray = new THREE.Raycaster();
-        ray.setFromCamera(ndc, camera);
-        const hits = ray.intersectObjects(pickables, false);
-        if (hits.length > 0) {
-          const b = findBody(hits[0].object.userData.bodyId);
-          if (b) focusBody(b);
+        const now = performance.now();
+        const isDouble = (now - lastTapT < 320) &&
+                         Math.abs(t.clientX - lastTapX) < 40 &&
+                         Math.abs(t.clientY - lastTapY) < 40;
+        if (isDouble) {
+          /* ketuk 2x = lepas fokus (pengganti Esc) */
+          if (cameraState.target) focusBody(null);
+          lastTapT = 0;
+        } else {
+          lastTapT = now; lastTapX = t.clientX; lastTapY = t.clientY;
+          /* ketuk 1x: fokuskan benda yang tersentuh (jika ada) */
+          if (!touchFocusAt(t.clientX, t.clientY)) {
+            /* ketukan di langit kosong: jangan apa-apa (biar tidak salah) */
+          }
         }
+      } else if (wasMulti && touchDist === 0) {
+        /* ketuk 2 jari tanpa gerak = lepas fokus */
+        if (cameraState.target) focusBody(null);
       }
       dragging = false;
+      touchMode = null;
+      multiGesture = false;
+      touchDist = 0;
     }
+  }, { passive: true });
+
+  canvas.addEventListener('touchcancel', () => {
+    dragging = false;
+    touchMode = null;
+    multiGesture = false;
     touchDist = 0;
   }, { passive: true });
 }
@@ -7021,12 +7231,35 @@ function buildUI() {
   if ($('starCount')) {
     $('starCount').textContent = '(' + (STARS_LABELED.length + STARS_OTHER.length) + ')';
   }
-  $('btnHelp').addEventListener('click', () => $('helpPanel').classList.toggle('show'));
-  $('btnHelpClose').addEventListener('click', () => $('helpPanel').classList.remove('show'));
+  /* ---- backdrop & laci (HP) ---- */
+  const backdrop = $('uiBackdrop');
+  const syncBackdrop = () => {
+    const sb = $('sidebar');
+    const dp = $('datePanel');
+    const anyOpen = (sb && sb.classList.contains('open')) ||
+                    $('helpPanel').classList.contains('show') ||
+                    (dp && !dp.classList.contains('hidden')) ||
+                    ($('earthviewModal') && !$('earthviewModal').classList.contains('hidden'));
+    if (backdrop) backdrop.classList.toggle('show', !!anyOpen);
+  };
+  window.__syncBackdrop = syncBackdrop;   /* dipakai handler lain */
+  if (backdrop) backdrop.addEventListener('click', () => {
+    $('sidebar').classList.remove('open');
+    $('helpPanel').classList.remove('show');
+    if ($('datePanel')) $('datePanel').classList.add('hidden');
+    if (typeof datePanelState !== 'undefined') datePanelState.open = false;
+    if ($('earthviewModal')) $('earthviewModal').classList.add('hidden');
+    if (typeof EARTHVIEW_UI !== 'undefined' && EARTHVIEW_UI.modal) EARTHVIEW_UI.hide();
+    syncBackdrop();
+  });
+
+  $('btnHelp').addEventListener('click', () => { $('helpPanel').classList.toggle('show'); syncBackdrop(); });
+  $('btnHelpClose').addEventListener('click', () => { $('helpPanel').classList.remove('show'); syncBackdrop(); });
   $('btnSidebar').addEventListener('click', () => {
     const sb = $('sidebar');
     if (window.matchMedia('(max-width: 980px)').matches) sb.classList.remove('open');
     else sb.classList.toggle('hidden');
+    syncBackdrop();
   });
   /* Tombol "Daftar" di toolbar: di HP membuka laci, di desktop
      menyembunyikan/menampilkan bilah samping. */
@@ -7035,7 +7268,12 @@ function buildUI() {
     const sb = $('sidebar');
     if (window.matchMedia('(max-width: 980px)').matches) sb.classList.toggle('open');
     else sb.classList.toggle('hidden');
+    syncBackdrop();
   });
+
+  /* tombol lepas fokus (HP: pengganti Esc) */
+  const exitFocusBtn = $('btnExitFocus');
+  if (exitFocusBtn) exitFocusBtn.addEventListener('click', () => focusBody(null));
   $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
 
   $('btnFocus').addEventListener('click', () => {
@@ -7216,6 +7454,53 @@ function buildUI() {
     }, { passive: false });
   }
 
+  /* ======================================================================
+     PENGUKURAN PITA OTOMATIS (bukan angka tebakan)
+     ----------------------------------------------------------------------
+     Tinggi bilah waktu berbeda di tiap perangkat (teks tanggal bisa
+     membungkus, safe-area berbeda, ukuran font sistem). Daripada menebak
+     nilai tetap — yang berkali-kali menyebabkan tumpang tindih — kita
+     UKUR elemennya dan set variabel CSS --band-time.
+
+     PENTING: pengukuran harus terjadi SETELAH layout stabil. Saat
+     dipanggil terlalu awal, tinggi yang terbaca masih salah (terbukti:
+     gap toolbar vs bilah waktu = -15 px). Karena itu:
+       1. ukur ulang setelah frame berikutnya (requestAnimationFrame)
+       2. ResizeObserver memantau bilah waktu & toolbar — kalau tingginya
+          berubah (teks membungkus, orientasi berubah, font dimuat),
+          nilai pita langsung diperbarui.
+     ====================================================================== */
+  const measureBands = () => {
+    const tb = $('timeBar');
+    const tools = $('topButtons');
+    if (!tb) return;
+    const h = Math.ceil(tb.getBoundingClientRect().height);
+    if (h > 0) {
+      /* +24 px: jarak visual yang lega antara toolbar ikon dan bilah waktu
+         (uji 390px: dengan +14 px gap hanya 4 px — terasa menempel) */
+      document.documentElement.style.setProperty('--band-time', (h + 24) + 'px');
+    }
+    if (tools) {
+      const th = Math.ceil(tools.getBoundingClientRect().height);
+      if (th > 0) document.documentElement.style.setProperty('--band-tools', (th + 10) + 'px');
+    }
+  };
+  window.__measureBands = measureBands;
+  /* ukur sekarang, lagi setelah frame berikutnya, dan lagi setelah
+     font/aset selesai dimuat */
+  measureBands();
+  requestAnimationFrame(() => { measureBands(); requestAnimationFrame(measureBands); });
+  setTimeout(measureBands, 400);
+  window.addEventListener('load', () => setTimeout(measureBands, 60));
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => measureBands());
+    const tbEl = $('timeBar'), toolsEl = $('topButtons');
+    if (tbEl) ro.observe(tbEl);
+    if (toolsEl) ro.observe(toolsEl);
+  }
+  window.addEventListener('resize', () => setTimeout(measureBands, 60));
+  window.addEventListener('orientationchange', () => setTimeout(measureBands, 220));
+
   /* tombol kualitas tekstur */
   $('btnQuality').addEventListener('click', () => {
     const next = app.qualityTier === 'hi' ? 'lo' : 'hi';
@@ -7360,6 +7645,8 @@ function showInfo(body) {
   currentInfoBody = body;
   $('infoName').textContent = body.name;
   $('infoType').textContent = body.isMoon ? (TYPE_LABEL.moon + ' — ' + body.host.name) : TYPE_LABEL[body.type];
+  const exitBtn = $('btnExitFocus');
+  if (exitBtn) exitBtn.classList.toggle('show', !!cameraState.target);
   const t = $('infoTable');
   t.innerHTML = '';
 
@@ -7398,6 +7685,8 @@ function showInfo(body) {
 
 function hideInfo() {
   $('infoPanel').classList.remove('show');
+  const exitBtn = $('btnExitFocus');
+  if (exitBtn) exitBtn.classList.remove('show');
   currentInfoBody = null;
   updateBodyListActive();
 }
@@ -8166,6 +8455,9 @@ function toggleDatePanel(open) {
   if (!p) return;
   datePanelState.open = open === undefined ? p.classList.contains('hidden') : open;
   p.classList.toggle('hidden', !datePanelState.open);
+  /* backdrop ikut muncul supaya di HP panel tidak "tenggelam" di antara
+     kanvas, dan bisa ditutup dengan satu ketukan di luar panel */
+  if (window.__syncBackdrop) window.__syncBackdrop();
   if (datePanelState.open) {
     /* selaraskan dengan waktu simulasi sekarang */
     const cur = jdToDate(J2000_JD + app.days);

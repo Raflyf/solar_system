@@ -123,20 +123,65 @@ function initControls(canvas) {
     }
   });
 
-  /* sentuh */
+  /* sentuh
+     ------------------------------------------------------------------
+     BUG YANG DIPERBAIKI DI SINI (keluhan "pinch malah jadi inverse /
+     bolak-balik"):
+       1. Pinch TIDAK mematikan followAutoFit. Padahal updateCamera()
+          otomatis menarik kamera menjauh begitu ada satelit di luar layar
+          — jadi cubitan pengguna langsung "dilawan" dan jarak melompat
+          bolak-balik. Sekarang pinch mematikan auto-fit (seperti roda
+          mouse di desktop).
+       2. Setelah cubit, `moved` masih 0 -> touchend menganggapnya KETUKAN
+          lalu memfokuskan benda acak. Sekarang gestur multi-jari menandai
+          `multiGesture` dan menekan tap.
+       3. Saat jari berkurang 2 -> 1, lastX/lastY lama (dari jari pertama)
+          membuat lompatan. Sekarang disinkronkan ulang.
+     Tambahan: ketuk-2x dan ketuk-2-jari = lepas fokus (pengganti Esc di HP).
+     ------------------------------------------------------------------ */
   let touchDist = 0;
+  let touchMode = null;        /* null | 'drag' | 'pinch' */
+  let multiGesture = false;    /* gestur 2 jari terjadi -> jangan dianggap tap */
+  let lastTapT = 0, lastTapX = 0, lastTapY = 0;
+
+  const touchFocusAt = (cx, cy) => {
+    const rect = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+      ((cx - rect.left) / rect.width) * 2 - 1,
+      -((cy - rect.top) / rect.height) * 2 + 1
+    );
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(ndc, camera);
+    const hits = ray.intersectObjects(pickables, false);
+    if (hits.length > 0) {
+      const b = findBody(hits[0].object.userData.bodyId);
+      if (b) { focusBody(b); return true; }
+    }
+    return false;
+  };
+
   canvas.addEventListener('touchstart', (e) => {
     if (e.touches.length === 1) {
       dragging = true; moved = 0;
+      touchMode = 'drag';
+      multiGesture = false;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
     } else if (e.touches.length === 2) {
+      /* jari kedua turun: beralih ke mode cubit, hentikan drag 1 jari */
+      touchMode = 'pinch';
+      multiGesture = true;
+      dragging = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
-      touchDist = Math.sqrt(dx * dx + dy * dy);
+      touchDist = Math.sqrt(dx * dx + dy * dy) || 1;
+      /* pengguna mengambil alih zoom: matikan auto-fit supaya kamera tidak
+         menarik balik (penyebab utama gerakan bolak-balik) */
+      if (cameraState.target) cameraState.followAutoFit = false;
     }
   }, { passive: true });
+
   canvas.addEventListener('touchmove', (e) => {
-    if (e.touches.length === 1 && dragging) {
+    if (e.touches.length === 1 && touchMode === 'drag' && dragging) {
       const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += Math.abs(dx) + Math.abs(dy);
@@ -156,40 +201,96 @@ function initControls(canvas) {
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      if (touchMode !== 'pinch') {
+        /* dua jari turun tanpa touchstart 2-jari (mis. jari kedua cepat) */
+        touchMode = 'pinch';
+        multiGesture = true;
+        dragging = false;
+        touchDist = d;
+        if (cameraState.target) cameraState.followAutoFit = false;
+      }
       if (touchDist > 0) {
         const k = touchDist / d;
         if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-          /* POV Bumi: cubit melebar (k < 1) = fov mengecil = zoom masuk */
+          /* POV Bumi: cubit melebar = zoom lensa masuk */
           EARTH_VIEW.fov = clampf(EARTH_VIEW.fov * k, 4, 100);
         } else if (cameraState.target) {
-          cameraState.followDist = clampf(cameraState.followDist * k, 0.5, 1e7);
+          /* mode ikuti: cubit = zoom jarak ke benda */
+          const body = cameraState.target;
+          const minD = body.radiusKm * 1.008;
+          let maxD = Math.max(body.radiusKm * 4000, body.orbitRadiusUnits * 1.5);
+          let farthest = 0;
+          for (let i = 0; i < bodies.length; i++) {
+            const m = bodies[i];
+            if (m.isMoon && m.host === body) {
+              const dd = (m.aKm / RAD) * MOON_ORBIT_FACTOR;
+              if (dd > farthest) farthest = dd;
+            }
+          }
+          if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
+          cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
         } else {
-          cameraState.baseSpeed = clampf(cameraState.baseSpeed / k, 2.0, 3000000);
+          /* mode bebas: cubit = gerak maju/mundur (dolly) — inilah yang
+             diharapkan pengguna HP. (Sebelumnya mengubah baseSpeed yang
+             tidak terlihat efeknya di layar, jadi terasa "tidak berfungsi".) */
+          const deltaPx = (d - touchDist);
+          const step = deltaPx * Math.max(autoSpeedFor(cameraState.pos), 0.05) * 0.05;
+          const fwd = dirFromAngles(cameraState.yaw, cameraState.pitch);
+          cameraState.pos.addScaledVector(fwd, step);
+          cameraState.vel.set(0, 0, 0);
         }
       }
       touchDist = d;
       e.preventDefault();
     }
   }, { passive: false });
+
   canvas.addEventListener('touchend', (e) => {
+    /* jari berkurang 2 -> 1: sinkronkan ulang titik acuan supaya tidak
+       melompat; lanjutkan sebagai drag 1 jari */
+    if (e.touches.length === 1) {
+      touchMode = 'drag';
+      dragging = true;
+      lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+      moved += 100;              /* pasti bukan tap */
+      touchDist = 0;
+      return;
+    }
     if (e.touches.length === 0) {
-      if (moved < 8 && e.changedTouches.length === 1) {
+      const wasMulti = multiGesture;
+      const wasTap = (moved < 8) && !wasMulti && e.changedTouches.length === 1;
+      if (wasTap) {
         const t = e.changedTouches[0];
-        const rect = canvas.getBoundingClientRect();
-        const ndc = new THREE.Vector2(
-          ((t.clientX - rect.left) / rect.width) * 2 - 1,
-          -((t.clientY - rect.top) / rect.height) * 2 + 1
-        );
-        const ray = new THREE.Raycaster();
-        ray.setFromCamera(ndc, camera);
-        const hits = ray.intersectObjects(pickables, false);
-        if (hits.length > 0) {
-          const b = findBody(hits[0].object.userData.bodyId);
-          if (b) focusBody(b);
+        const now = performance.now();
+        const isDouble = (now - lastTapT < 320) &&
+                         Math.abs(t.clientX - lastTapX) < 40 &&
+                         Math.abs(t.clientY - lastTapY) < 40;
+        if (isDouble) {
+          /* ketuk 2x = lepas fokus (pengganti Esc) */
+          if (cameraState.target) focusBody(null);
+          lastTapT = 0;
+        } else {
+          lastTapT = now; lastTapX = t.clientX; lastTapY = t.clientY;
+          /* ketuk 1x: fokuskan benda yang tersentuh (jika ada) */
+          if (!touchFocusAt(t.clientX, t.clientY)) {
+            /* ketukan di langit kosong: jangan apa-apa (biar tidak salah) */
+          }
         }
+      } else if (wasMulti && touchDist === 0) {
+        /* ketuk 2 jari tanpa gerak = lepas fokus */
+        if (cameraState.target) focusBody(null);
       }
       dragging = false;
+      touchMode = null;
+      multiGesture = false;
+      touchDist = 0;
     }
+  }, { passive: true });
+
+  canvas.addEventListener('touchcancel', () => {
+    dragging = false;
+    touchMode = null;
+    multiGesture = false;
     touchDist = 0;
   }, { passive: true });
 }

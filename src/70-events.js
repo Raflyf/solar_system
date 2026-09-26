@@ -365,6 +365,9 @@ function toggleDatePanel(open) {
   if (!p) return;
   datePanelState.open = open === undefined ? p.classList.contains('hidden') : open;
   p.classList.toggle('hidden', !datePanelState.open);
+  /* backdrop ikut muncul supaya di HP panel tidak "tenggelam" di antara
+     kanvas, dan bisa ditutup dengan satu ketukan di luar panel */
+  if (window.__syncBackdrop) window.__syncBackdrop();
   if (datePanelState.open) {
     /* selaraskan dengan waktu simulasi sekarang */
     const cur = jdToDate(J2000_JD + app.days);
