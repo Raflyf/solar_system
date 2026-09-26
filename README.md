@@ -98,9 +98,21 @@ const SIZE_FACTOR = 4.0;        // planet diperbesar 4× (jarak tetap nyata)
 - **Cincin Saturnus** dengan Divisi Cassini (shader khusus: ketebalan,
   pencahayaan, dan bayangan planet pada cincin)
 - **Sabuk asteroid** 2.400 batuan
-- **Bima Sakti** nyata sebagai latar (peta 8K)
+- **Bima Sakti** nyata sebagai latar (peta 8K, dikalibrasi galaktik —
+  lihat catatan di bawah)
 - **Tur terpandu** otomatis keliling tata surya
 - Panel data nyata per benda (radius, jarak, periode, suhu, jumlah satelit)
+
+> **Catatan kalibrasi Bima Sakti.** Tekstur `assets/hi/milkyway.jpg`
+> (Solar System Scope) adalah peta **galaktik** dengan konvensi
+> `u = 0,5 − l/360` dan `v = 0,5 + b/180` (kutub selatan galaksi di tepi
+> atas citra). Kuaternion skybox dihitung dari tiga vektor basis nyata:
+> pusat galaksi (l=0°, b=0°) → sumbu +X bola, kutub galaksi selatan
+> (b=−90°) → sumbu +Y bola. Arah `u` diverifikasi empiris: LMC (l=280,5°),
+> Carina, M8, M42, dan Antares hanya jatuh di gumpalan terang citra pada
+> konvensi ini, sementara titik kontrol langit kosong tetap gelap.
+> Konvensi `+l` akan mencerminkan langit timur-barat — jangan diubah tanpa
+> menjalankan ulang uji yang sama.
 
 ### Fitur realisme
 
