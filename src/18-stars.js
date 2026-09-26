@@ -273,18 +273,41 @@ function buildStarField() {
   const alphas = new Float32Array(N);
 
   for (let i = 0; i < N; i++) {
-    /* s = [nama, bayer, con, mag, x, y, z, r, g, b, spect]
-       x,y,z dari HYG adalah kartesian ekuatorial (parsec). Ubah ke RA/Dec
-       lalu ke bola langit supaya sudutnya persis. */
+    /* s = [nama, bayer, con, mag, x, y, z, r, g, b, spect, pmra, pmdec]
+       x,y,z dari HYG adalah kartesian ekuatorial (parsec, epoch J2000).
+       Terapkan proper motion ke epoch sekarang (app.jd).
+       J2000 JD = 2451545.0; delta tahun = (JD - 2451545.0) / 365.25. */
     const s = all[i];
     const hx = s[4], hy = s[5], hz = s[6];
     const d = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
     /* arah satuan ekuatorial */
     const ux = hx / d, uy = hy / d, uz = hz / d;
-    /* petakan ke orientasi scene: ekuatorial z -> scene y (atas) */
-    pos[i * 3] = ux * SKY_RADIUS;
-    pos[i * 3 + 1] = uz * SKY_RADIUS;
-    pos[i * 3 + 2] = -uy * SKY_RADIUS;
+
+    /* --- proper motion correction --- */
+    const pmra = s[11] || 0.0;   // rad/yr
+    const pmdec = s[12] || 0.0;  // rad/yr
+    const jd = app.jd || J2000_JD + app.days;
+    const deltaYr = (jd - J2000_JD) / 365.25;
+    if (pmra !== 0 || pmdec !== 0) {
+      const dra = pmra * deltaYr;     // rad
+      const ddec = pmdec * deltaYr;   // rad
+      /* rotasi kecil vektor (ux,uy,uz) di bidang RA/Dec */
+      /* ux,uy,uz -> RA/Dec -> tambah dra,ddec -> balik ke kartesian */
+      const dec = Math.asin(Math.max(-1, Math.min(1, uz)));
+      const ra = Math.atan2(uy, ux);
+      const ra2 = ra + dra / Math.max(1e-6, Math.cos(dec));
+      const dec2 = dec + ddec;
+      const ux2 = Math.cos(dec2) * Math.cos(ra2);
+      const uy2 = Math.cos(dec2) * Math.sin(ra2);
+      const uz2 = Math.sin(dec2);
+      pos[i * 3] = ux2 * SKY_RADIUS;
+      pos[i * 3 + 1] = uz2 * SKY_RADIUS;
+      pos[i * 3 + 2] = -uy2 * SKY_RADIUS;
+    } else {
+      pos[i * 3] = ux * SKY_RADIUS;
+      pos[i * 3 + 1] = uz * SKY_RADIUS;
+      pos[i * 3 + 2] = -uy * SKY_RADIUS;
+    }
 
     const inv = 1 / 255;
     col[i * 3] = s[7] * inv;
@@ -354,13 +377,33 @@ function buildStarField() {
     if (!nama) continue;
     const hx = s[4], hy = s[5], hz = s[6];
     const d = Math.sqrt(hx * hx + hy * hy + hz * hz) || 1;
+    const ux = hx / d, uy = hy / d, uz = hz / d;
+
+    /* proper motion untuk label */
+    const pmra = s[11] || 0.0;
+    const pmdec = s[12] || 0.0;
+    const jd = app.jd || J2000_JD + app.days;
+    const deltaYr = (jd - J2000_JD) / 365.25;
+    let lx = ux, ly = uy, lz = uz;
+    if (pmra !== 0 || pmdec !== 0) {
+      const dra = pmra * deltaYr;
+      const ddec = pmdec * deltaYr;
+      const dec = Math.asin(Math.max(-1, Math.min(1, uz)));
+      const ra = Math.atan2(uy, ux);
+      const ra2 = ra + dra / Math.max(1e-6, Math.cos(dec));
+      const dec2 = dec + ddec;
+      lx = Math.cos(dec2) * Math.cos(ra2);
+      ly = Math.cos(dec2) * Math.sin(ra2);
+      lz = Math.sin(dec2);
+    }
+
     starField.labeled.push({
       nama: nama, bayer: s[1], con: s[2], mag: s[3],
-      distLy: s[4] * 0 + Math.sqrt(s[4] * s[4] + s[5] * s[5] + s[6] * s[6]) * 3.261563777,
+      distLy: Math.sqrt(s[4] ** 2 + s[5] ** 2 + s[6] ** 2) * 3.261563777,
       spect: s[10],
-      x: (hx / d) * SKY_RADIUS,
-      y: (hz / d) * SKY_RADIUS,
-      z: (-hy / d) * SKY_RADIUS,
+      x: lx * SKY_RADIUS,
+      y: lz * SKY_RADIUS,
+      z: -ly * SKY_RADIUS,
       rgb: [s[7], s[8], s[9]],
     });
   }
