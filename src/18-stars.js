@@ -415,10 +415,36 @@ function buildStarField() {
       for (let k = 0; k < seg.length - 1; k++) {
         const a = all[seg[k]], b = all[seg[k + 1]];
         if (!a || !b) continue;
+        
+        /* apply proper motion to constellation endpoints */
+        const jd = app.jd || J2000_JD + app.days;
+        const deltaYr = (jd - J2000_JD) / 365.25;
+        
         const da = Math.sqrt(a[4] ** 2 + a[5] ** 2 + a[6] ** 2) || 1;
         const db = Math.sqrt(b[4] ** 2 + b[5] ** 2 + b[6] ** 2) || 1;
-        lpos.push(a[4] / da * SKY_RADIUS, a[6] / da * SKY_RADIUS, -a[5] / da * SKY_RADIUS);
-        lpos.push(b[4] / db * SKY_RADIUS, b[6] / db * SKY_RADIUS, -b[5] / db * SKY_RADIUS);
+        const ux = a[4] / da, uy = a[5] / da, uz = a[6] / da;
+        const ux2 = b[4] / db, uy2 = b[5] / db, uz2 = b[6] / db;
+        
+        const applyPM = (ux, uy, uz, pmra, pmdec) => {
+          const pmraR = pmra || 0.0, pmdecR = pmdec || 0.0;
+          if (pmraR === 0 && pmdecR === 0) return [ux, uy, uz];
+          const dra = pmraR * deltaYr, ddec = pmdecR * deltaYr;
+          const dec = Math.asin(Math.max(-1, Math.min(1, uz)));
+          const ra = Math.atan2(uy, ux);
+          const ra2 = ra + dra / Math.max(1e-6, Math.cos(dec));
+          const dec2 = dec + ddec;
+          return [
+            Math.cos(dec2) * Math.cos(ra2),
+            Math.cos(dec2) * Math.sin(ra2),
+            Math.sin(dec2)
+          ];
+        };
+        
+        const a1 = applyPM(ux, uy, uz, a[11] || 0, a[12] || 0);
+        const b1 = applyPM(ux2, uy2, uz2, b[11] || 0, b[12] || 0);
+        
+        lpos.push(a1[0] * SKY_RADIUS, a1[2] * SKY_RADIUS, -a1[1] * SKY_RADIUS);
+        lpos.push(b1[0] * SKY_RADIUS, b1[2] * SKY_RADIUS, -b1[1] * SKY_RADIUS);
       }
     }
   }
