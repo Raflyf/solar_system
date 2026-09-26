@@ -178,6 +178,8 @@ async function boot() {
     computePositions(app.days, now * 0.001);
     updateCamera(dt);
     applyPositions();
+    /* glow Matahari dijaga tetap terlihat dari jarak berapa pun */
+    if (typeof updateSunGlowScale === 'function') updateSunGlowScale();
     updateOrbitLines(J2000_JD + app.days);
     updateTour(dt);
     updateLabels();
@@ -770,8 +772,12 @@ function updateLabels() {
       if (distHost > batas) visible = false;
     }
     /* label planet disembunyikan bila planet belum cukup besar di layar,
-       kecuali benda yang sedang diikuti kamera atau punya penanda aktif */
-    if (visible && !b.isMoon) {
+       kecuali benda yang sedang diikuti kamera atau punya penanda aktif.
+       MATAHARI DIKECUALIKAN: ia tidak punya beacon (memang sudah terang
+       sendiri), jadi tanpa pengecualian ini labelnya hilang saat menjauh —
+       padahal glow Matahari sengaja dijaga terlihat (updateSunGlowScale),
+       dan labelnya justru paling penting untuk orientasi. */
+    if (visible && !b.isMoon && b.type !== 'star') {
       const px = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf;
       const hasBeacon = !!(b.beacon && b.beacon.group.visible);
       if (px < 2.2 && cameraState.target !== b && !hasBeacon) visible = false;
@@ -820,7 +826,11 @@ function updateLabels() {
     } else if (b.beacon && b.beacon.group.visible) {
       offPx = b.isMoon ? 10 : 13;      /* satelit: lebih rapat */
     } else if (b.type === 'star') {
-      offPx = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf + 14;
+      /* offset label Matahari mengikuti ukuran glow yang sedang tampil,
+         supaya label tidak menempel/menutupi cakramnya */
+      const glowScale = (sunGlow && sunGlow.children[0]) ? sunGlow.children[0].scale.x : 0;
+      const glowPx = (glowScale / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf;
+      offPx = Math.max(14, glowPx * 0.55 + 8);
     }
     el.style.left = x.toFixed(1) + 'px';
     el.style.top = (y + offPx).toFixed(1) + 'px';
