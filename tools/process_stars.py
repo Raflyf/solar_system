@@ -180,47 +180,18 @@ with open(OUT_JS, "w", encoding="utf-8") as f:
     f.write(";\n")
 print(f"tersimpan: {OUT_JS}  {os.path.getsize(OUT_JS)/1048576:.2f} MB")
 
-# --- olah garis rasi bintang ---
-print("\nmengolah garis rasi bintang…")
-lines_src = "assets_raw/constellation_lines_hip.txt"
-# bentuk: Nama = [hip1, hip2, ...];[hip1, hip2, ...]
-# nomor HIP -> indeks bintang
-hip_index = {}
-for i, s in enumerate(stars):
-    if s["hip"]:
-        hip_index[str(s["hip"])] = i
+# --- garis rasi bintang ---
+# DIOLAH OLEH SKRIP TERPISAH: tools/process_constellations.py
+#
+# Dulu kode rasi bintang ada di sini juga, tapi selalu gagal dengan
+# KeyError: 'hip' — karena variabel `stars` di skrip ini berisi dict
+# dengan key "n"/"b"/"c" (sudah dipadatkan untuk keluaran JS), bukan
+# baris CSV mentah yang punya kolom "hip". Akibatnya skrip ini selalu
+# berakhir dengan traceback walau data bintangnya sendiri sudah tersimpan.
+#
+# Perbaikan: kode rasi bintang dipindah sepenuhnya ke
+# tools/process_constellations.py, yang membaca CSV langsung sehingga
+# nomor HIP masih tersedia.
+print("\nLANGKAH BERIKUTNYA: jalankan  python tools/process_constellations.py")
+print("  (mengolah 86 garis rasi bintang — perlu nomor HIP dari CSV mentah)")
 
-constellations = []
-with open(lines_src, encoding="utf-8") as f:
-    for line in f:
-        line = line.strip()
-        if not line or "=" not in line:
-            continue
-        nama, rest = line.split("=", 1)
-        nama = nama.strip()
-        segs = []
-        for seg in rest.split(";"):
-            seg = seg.strip().strip("[]")
-            if not seg:
-                continue
-            try:
-                hips = [int(x.strip()) for x in seg.split(",") if x.strip()]
-            except ValueError:
-                continue
-            # cari indeks bintang untuk tiap HIP
-            idxs = [hip_index.get(str(h)) for h in hips]
-            idxs = [i for i in idxs if i is not None]
-            if len(idxs) >= 2:
-                segs.append(idxs)
-        if segs:
-            constellations.append({"nama": nama, "segments": segs})
-
-print(f"rasi bintang dengan garis: {len(constellations)}")
-with open("src/13-constellations-data.js", "w", encoding="utf-8") as f:
-    f.write("/* Garis rasi bintang (86 rasi resmi IAU).\n")
-    f.write("   Sumber: https://github.com/johanley/constellation-lines (MIT)\n")
-    f.write("   Indeks mengacu ke larik STARS_LABELED (gabungan labeled + other). */\n")
-    f.write("const CONSTELLATIONS = ")
-    json.dump(constellations, f, separators=(",", ":"))
-    f.write(";\n")
-print(f"tersimpan: src/13-constellations-data.js  {os.path.getsize('src/13-constellations-data.js')/1024:.1f} KB")

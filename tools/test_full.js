@@ -85,14 +85,18 @@ function makeStubs() {
 /* ---------- muat modul ---------- */
 const stubs = makeStubs();
 
-/* modul ephemeris */
+/* modul ephemeris.
+   Harness ini hanya butuh 15-ephemeris.js; AU_KM (yang di aplikasi
+   dideklarasikan di 10-data.js) kita sediakan sendiri di sini supaya
+   tidak perlu memuat seluruh rantai 00-textures -> 10-data. */
+const AU_KM_TEST = 149597870.7;
 const ephemSrc = read('src/15-ephemeris.js');
-const ephem = new Function('THREE', 'window', 'document', ephemSrc + `
+const ephem = new Function('AU_KM', 'THREE', 'window', 'document', ephemSrc + `
   return { dateToJD, jdToDate, planetPositionAU, moonGeocentric, moonPositionKm,
            earthPositionKm, bodyPositionKm, eclipseState, findEclipses,
            moonPhase, planetElongation, DEG, AU_KM, J2000_JD,
            RADIUS_SUN_KM, RADIUS_EARTH_KM, RADIUS_MOON_KM };
-`)(stubs.THREE, stubs.window, stubs.document);
+`)(AU_KM_TEST, stubs.THREE, stubs.window, stubs.document);
 
 /* modul data bintang */
 const starsDataSrc = read('src/12-stars-data.js');
