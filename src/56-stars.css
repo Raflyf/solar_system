@@ -80,27 +80,43 @@
    ======================================================================= */
 .temporal-badge {
   position: fixed;
-  top: 10px;
-  right: 10px;
-  z-index: 100;
+  top: 78px;
+  right: 18px;
+  z-index: 9;
+  max-width: min(350px, calc(100vw - 36px));
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
   background: rgba(0, 0, 0, 0.8);
   color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-family: monospace;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  line-height: 1.4;
+  font: 10px/1.4 monospace;
+  pointer-events: none;
+  overflow-wrap: anywhere;
 }
 
-.temporal-badge:hover {
-  background: rgba(0, 0, 0, 0.95);
-  border-color: rgba(255, 255, 255, 0.4);
-}
+.tb-line { white-space: normal; }
 
-.tb-line {
-  white-space: nowrap;
-}
+@media (max-width: 900px) {
+  .temporal-badge {
+    top: 68px;
+    right: 10px;
+    max-width: min(280px, calc(100vw - 20px));
+    font-size: 9px;
+  }
+} 
+
+@media (max-width: 520px) {
+  .temporal-badge {
+    top: auto;
+    right: 8px;
+    bottom: 100px;
+    max-width: 48vw;
+    max-height: 56px;
+    overflow: hidden;
+    opacity: 0.78;
+  }
+  .tb-line:nth-child(n+2) { display: none; }
+} 
 
 /* keterangan langit */
 .sky-info {

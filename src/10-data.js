@@ -351,7 +351,7 @@ const PLANETS = [
     periodDays: 60189.0,
     axialTilt: 28.32,
     color: 0x4a7ad8,
-    texture: { w: 1024, h: 512, seed: 73, period: 12, shade: shadeNeptune, decorate: null },
+    texture: null, /* procedural HD */
     cloudTexture: null,
     atmosphere: { color: 0x7fa8ff, opacity: 0.34, radius: 1.055, fresnel: 3.2, power: 1.3 },
     ring: {

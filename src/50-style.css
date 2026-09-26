@@ -258,6 +258,116 @@ kbd {
   .hud-corner { display: none; }
 }
 
+@media (max-width: 520px) {
+  .top-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    top: auto;
+    bottom: 170px;
+    left: 50%;
+    transform: translateX(-50%);
+    right: auto;
+    background: rgba(12, 17, 28, 0.85);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    width: auto;
+    max-width: calc(100vw - 16px);
+  }
+  .top-buttons .btn {
+    padding: 10px 12px;
+    font-size: 13px;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .top-buttons .btn span {
+    display: none;
+  }
+  .top-buttons .btn:only-child::after,
+  .top-buttons .btn:first-child::after,
+  .top-buttons .btn:last-child::after {
+    content: attr(title);
+    font-size: 10px;
+    display: block;
+    margin-top: -2px;
+  }
+  .title-panel {
+    top: 12px; left: 12px; right: 12px;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .title-main { font-size: 14px; letter-spacing: 2px; }
+  .sidebar { display: none; }
+  .info-panel {
+    top: auto; bottom: 12px; left: 12px; right: 12px;
+    max-height: 220px; overflow-y: auto;
+  }
+  .timebar {
+    bottom: 12px; left: 12px; right: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+  .time-row { gap: 8px; }
+  .time-speed { font-size: 11px; }
+  #speedSlider { max-width: 180px; }
+  .time-date {
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+  #tzSelect { min-width: 140px; font-size: 12px; padding: 4px 8px; }
+  .dateLabel { font-size: 12px; }
+  .btnNow { min-height: 44px; min-width: 44px; padding: 10px; }
+  .info-panel .info-actions {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .info-panel .btn.small {
+    flex: 1 1 auto; min-width: 90px;
+    min-height: 40px; padding: 8px 10px;
+    font-size: 12px;
+  }
+  .event-badge {
+    top: 12px; right: 12px; left: 12px;
+    font-size: 11px; padding: 6px 10px;
+  }
+  .event-badge::before {
+    content: '📍 ';
+  }
+  .temporal-badge {
+    top: auto; right: 8px; bottom: 100px;
+    max-width: 48vw;
+    max-height: 56px;
+    overflow: hidden;
+    opacity: 0.78;
+  }
+  .tb-line:nth-child(n+2) { display: none; }
+  .help-panel {
+    top: 60px; left: 12px; right: 12px;
+    max-height: 60vh; overflow-y: auto;
+  }
+  .help-table { font-size: 12px; }
+  .help-table td { padding: 6px 10px; }
+  .earthview-modal {
+    width: calc(100vw - 24px);
+    max-width: 320px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 12px;
+    border-radius: 10px;
+  }
+  .evm-input { width: 100%; font-size: 14px; padding: 8px 10px; }
+  .evm-btns button { min-height: 44px; }
+  .evm-hint { font-size: 10px; }
+  .hud-corner { display: none; }
+}
+
 @media (max-height: 760px) {
   .title-sub { display: none; }
   .title-panel { padding: 9px 14px 8px; }

@@ -630,9 +630,14 @@ function updateHud() {
   const lbl = $('dateLabel');
   if (lbl) lbl.textContent = dstr + ' · ' + tstr + ' ' + tzLabel();
 
-  const distAU = camera.position.length() / (AU_KM / RAD);
+  /* Dengan floating origin, camera.position selalu dekat 0.
+     Gunakan cameraState.pos yang menyimpan koordinat absolut kamera. */
+  const distAU = cameraState.pos.length() / (AU_KM / RAD);
   const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
-  hud.textContent = follow + ' · ' + (distAU < 0.01 ? (distAU * 1000).toFixed(1) + ' rb SA' : distAU.toFixed(2) + ' SA') + ' dari Matahari · ' + Math.round(app.fps) + ' fps';
+  const distStr = distAU < 0.01 
+    ? (distAU * 149597870.7).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' km'
+    : distAU.toFixed(2) + ' SA';
+  hud.textContent = follow + ' · ' + distStr + ' dari Matahari · ' + Math.round(app.fps) + ' fps';
 }
 
 /* ---------- jalan ---------- */

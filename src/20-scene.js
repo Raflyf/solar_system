@@ -349,26 +349,37 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
      Euler lagi — itu sudah tidak dipakai sejak hierarki tiga tingkat. */
   if (cfg.axialTilt) spin.rotation.z = 0;
 
-  /* ----- cincin Saturnus (shader: ketebalan + bayangan planet) ----- */
+  /* ----- cincin planet (Saturnus, Uranus, Neptunus) ----- */
   let ringMesh = null;
-  if (cfg.ring && TEX.saturn && TEX.saturn.ring) {
-    const innerU = (cfg.ring.inner / RAD) * SIZE_FACTOR;
-    const outerU = (cfg.ring.outer / RAD) * SIZE_FACTOR;
-    const rGeo = new THREE.RingGeometry(innerU, outerU, 512, 1);
-    const pos = rGeo.attributes.position;
-    const uv = rGeo.attributes.uv;
-    const v3 = new THREE.Vector3();
-    for (let i = 0; i < pos.count; i++) {
-      v3.fromBufferAttribute(pos, i);
-      const t = (v3.length() - innerU) / (outerU - innerU);
-      uv.setXY(i, t, 0.5);
+  if (cfg.ring) {
+    let ringTex = null;
+    if (cfg.key === 'saturn' && TEX.saturn && TEX.saturn.ring) {
+      ringTex = TEX.saturn.ring;
+    } else if (cfg.ring.texture) {
+      // Cincin Uranus/Neptunus: buat dari procedural texture profil radial
+      const c = makeRingTexture(cfg.ring.texture.w, cfg.ring.texture.h, cfg.ring.texture.seed, cfg.ring.texture);
+      ringTex = canvasTexture(c, true);
     }
-    const rMat = makeRingMaterial();
-    rMat.uniforms.uRingInner.value = innerU;
-    rMat.uniforms.uRingOuter.value = outerU;
-    ringMesh = new THREE.Mesh(rGeo, rMat);
-    ringMesh.rotation.x = Math.PI / 2;
-    spin.add(ringMesh);
+
+    if (ringTex) {
+      const innerU = (cfg.ring.inner / RAD) * SIZE_FACTOR;
+      const outerU = (cfg.ring.outer / RAD) * SIZE_FACTOR;
+      const rGeo = new THREE.RingGeometry(innerU, outerU, 512, 1);
+      const pos = rGeo.attributes.position;
+      const uv = rGeo.attributes.uv;
+      const v3 = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v3.fromBufferAttribute(pos, i);
+        const t = (v3.length() - innerU) / (outerU - innerU);
+        uv.setXY(i, t, 0.5);
+      }
+      const rMat = makeRingMaterial(ringTex);
+      rMat.uniforms.uRingInner.value = innerU;
+      rMat.uniforms.uRingOuter.value = outerU;
+      ringMesh = new THREE.Mesh(rGeo, rMat);
+      ringMesh.rotation.x = Math.PI / 2;
+      spin.add(ringMesh);
+    }
   }
 
   const body = {

@@ -267,6 +267,116 @@ kbd {
   .hud-corner { display: none; }
 }
 
+@media (max-width: 520px) {
+  .top-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px;
+    padding: 6px 8px;
+    top: auto;
+    bottom: 170px;
+    left: 50%;
+    transform: translateX(-50%);
+    right: auto;
+    background: rgba(12, 17, 28, 0.85);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    width: auto;
+    max-width: calc(100vw - 16px);
+  }
+  .top-buttons .btn {
+    padding: 10px 12px;
+    font-size: 13px;
+    min-height: 44px;
+    min-width: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .top-buttons .btn span {
+    display: none;
+  }
+  .top-buttons .btn:only-child::after,
+  .top-buttons .btn:first-child::after,
+  .top-buttons .btn:last-child::after {
+    content: attr(title);
+    font-size: 10px;
+    display: block;
+    margin-top: -2px;
+  }
+  .title-panel {
+    top: 12px; left: 12px; right: 12px;
+    padding: 8px 12px;
+    text-align: center;
+  }
+  .title-main { font-size: 14px; letter-spacing: 2px; }
+  .sidebar { display: none; }
+  .info-panel {
+    top: auto; bottom: 12px; left: 12px; right: 12px;
+    max-height: 220px; overflow-y: auto;
+  }
+  .timebar {
+    bottom: 12px; left: 12px; right: 12px;
+    padding: 10px 12px;
+    border-radius: 12px;
+  }
+  .time-row { gap: 8px; }
+  .time-speed { font-size: 11px; }
+  #speedSlider { max-width: 180px; }
+  .time-date {
+    flex-wrap: wrap;
+    gap: 6px;
+    justify-content: center;
+  }
+  #tzSelect { min-width: 140px; font-size: 12px; padding: 4px 8px; }
+  .dateLabel { font-size: 12px; }
+  .btnNow { min-height: 44px; min-width: 44px; padding: 10px; }
+  .info-panel .info-actions {
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .info-panel .btn.small {
+    flex: 1 1 auto; min-width: 90px;
+    min-height: 40px; padding: 8px 10px;
+    font-size: 12px;
+  }
+  .event-badge {
+    top: 12px; right: 12px; left: 12px;
+    font-size: 11px; padding: 6px 10px;
+  }
+  .event-badge::before {
+    content: '📍 ';
+  }
+  .temporal-badge {
+    top: auto; right: 8px; bottom: 100px;
+    max-width: 48vw;
+    max-height: 56px;
+    overflow: hidden;
+    opacity: 0.78;
+  }
+  .tb-line:nth-child(n+2) { display: none; }
+  .help-panel {
+    top: 60px; left: 12px; right: 12px;
+    max-height: 60vh; overflow-y: auto;
+  }
+  .help-table { font-size: 12px; }
+  .help-table td { padding: 6px 10px; }
+  .earthview-modal {
+    width: calc(100vw - 24px);
+    max-width: 320px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    padding: 12px;
+    border-radius: 10px;
+  }
+  .evm-input { width: 100%; font-size: 14px; padding: 8px 10px; }
+  .evm-btns button { min-height: 44px; }
+  .evm-hint { font-size: 10px; }
+  .hud-corner { display: none; }
+}
+
 @media (max-height: 760px) {
   .title-sub { display: none; }
   .title-panel { padding: 9px 14px 8px; }
@@ -464,27 +574,43 @@ kbd {
    ======================================================================= */
 .temporal-badge {
   position: fixed;
-  top: 10px;
-  right: 10px;
-  z-index: 100;
+  top: 78px;
+  right: 18px;
+  z-index: 9;
+  max-width: min(350px, calc(100vw - 36px));
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
   background: rgba(0, 0, 0, 0.8);
   color: #fff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 11px;
-  font-family: monospace;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  line-height: 1.4;
+  font: 10px/1.4 monospace;
+  pointer-events: none;
+  overflow-wrap: anywhere;
 }
 
-.temporal-badge:hover {
-  background: rgba(0, 0, 0, 0.95);
-  border-color: rgba(255, 255, 255, 0.4);
-}
+.tb-line { white-space: normal; }
 
-.tb-line {
-  white-space: nowrap;
-}
+@media (max-width: 900px) {
+  .temporal-badge {
+    top: 68px;
+    right: 10px;
+    max-width: min(280px, calc(100vw - 20px));
+    font-size: 9px;
+  }
+} 
+
+@media (max-width: 520px) {
+  .temporal-badge {
+    top: auto;
+    right: 8px;
+    bottom: 100px;
+    max-width: 48vw;
+    max-height: 56px;
+    overflow: hidden;
+    opacity: 0.78;
+  }
+  .tb-line:nth-child(n+2) { display: none; }
+} 
 
 /* keterangan langit */
 .sky-info {
@@ -770,8 +896,9 @@ kbd {
 <script>
 "use strict";
 /* =======================================================================
-   Tata Surya 3D — Mesin tekstur prosedural (tanpa file eksternal)
+   Tata Surya 3D — Mesin tekstur prosedural HD (tanpa file eksternal)
    Semua tekstur planet dibuat langsung di canvas saat runtime.
+   Resolusi: 2048x1024 untuk planet/satelit besar, 4096x2048 untuk Bumi/Matahari
    ======================================================================= */
 
 /* ---------- util matematika ---------- */
@@ -853,8 +980,17 @@ function makeCanvas(w, h) {
 
 const OUT = [0, 0, 0, 255];
 
-function buildSurfaceTexture(cfg) {
-  const w = cfg.w, h = cfg.h, seed = cfg.seed;
+function buildSurfaceTexture(cfg, bodyName) {
+  /* Tingkatkan resolusi procedural HD untuk planet besar/luar */
+  let w = cfg.w || 2048;
+  let h = cfg.h || 1024;
+  if (['uranus', 'neptune', 'triton', 'titania'].includes(bodyName?.toLowerCase())) {
+    w = 2048; h = 1024;
+  }
+  if (['earth', 'sun', 'jupiter', 'saturn', 'mars', 'venus', 'mercury'].includes(bodyName?.toLowerCase())) {
+    w = 4096; h = 2048;
+  }
+  const seed = cfg.seed;
   const P = cfg.period || 12;
   const canvas = makeCanvas(w, h);
   const ctx = canvas.getContext('2d');
@@ -1323,7 +1459,59 @@ function loadTexture(url, srgb, onDone) {
   });
 }
 
-/* muat seluruh aset; onProgress(dimuat, total, namaBerkas) */
+/* --- GENERATOR TEKSTUR PROSEDURAL HD ---
+   Jika file gambar < 2048x1024, timpa dengan canvas prosedural HD.
+   Fungsi shade tersedia dari 00-textures.js (buildSurfaceTexture). */
+async function ensureHDTexture(key, slot, tex) {
+  if (!tex || !tex.image) return tex;
+  const img = tex.image;
+  if (img.width >= 2048 && img.height >= 1024) return tex; // sudah HD
+
+  console.log(`[HD] ${key}.${slot}: ${img.width}x${img.height} -> using fallback`);
+  try {
+    const shadeMap = {
+      mercury: shadeMercury,
+      venus: shadeVenus,
+      earth: shadeEarth,
+      moon: shadeMoon,
+      mars: shadeMars,
+      jupiter: shadeJupiter,
+      saturn: shadeSaturn,
+      uranus: shadeUranus,
+      neptune: shadeNeptune,
+      sun: shadeSun,
+      io: shadeMoon,
+      europa: shadeMoon,
+      ganymede: shadeMoon,
+      callisto: shadeMoon,
+      titan: shadeMoon,
+      rhea: shadeMoon,
+      iapetus: shadeMoon,
+      titania: shadeMoon,
+      triton: shadeMoon,
+      phobos: shadeMoon,
+      deimos: shadeMoon,
+    };
+    const shadeFn = shadeMap[key.toLowerCase()] || shadeMoon;
+    const canvas = buildSurfaceTexture({
+      w: 2048, h: 1024, seed: 42, period: 12, shade: shadeFn
+    }, key);
+    const hdTex = new THREE.CanvasTexture(canvas);
+    hdTex.encoding = THREE.sRGBEncoding;
+    hdTex.wrapS = THREE.RepeatWrapping;
+    hdTex.wrapT = THREE.ClampToEdgeWrapping;
+    hdTex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
+    hdTex.minFilter = THREE.LinearMipmapLinearFilter;
+    hdTex.magFilter = THREE.LinearFilter;
+    hdTex.generateMipmaps = true;
+    console.log(`[HD] ${key}.${slot}: HD texture generated ${hdTex.image.width}x${hdTex.image.height}`);
+    return hdTex;
+  } catch (e) {
+    console.warn('[HD] gagal generate HD texture', e);
+    return tex;
+  }
+}
+
 async function loadAllAssets(onProgress) {
   const total = countAssets();
   let done = 0;
@@ -1347,6 +1535,17 @@ async function loadAllAssets(onProgress) {
     }
   }
   await Promise.all(jobs);
+
+  /* Tingkatkan ke HD procedural untuk aset yang resolusinya < 2048x1024 */
+  console.log('[HD] Starting HD texture upgrade...');
+  for (const key in TEX) {
+    for (const slot in TEX[key]) {
+      if (TEX[key][slot]) {
+        TEX[key][slot] = await ensureHDTexture(key, slot, TEX[key][slot]);
+      }
+    }
+  }
+  console.log('[HD] HD texture upgrade completed');
   return TEX;
 }
 
@@ -1707,7 +1906,7 @@ const PLANETS = [
     periodDays: 60189.0,
     axialTilt: 28.32,
     color: 0x4a7ad8,
-    texture: { w: 1024, h: 512, seed: 73, period: 12, shade: shadeNeptune, decorate: null },
+    texture: null, /* procedural HD */
     cloudTexture: null,
     atmosphere: { color: 0x7fa8ff, opacity: 0.34, radius: 1.055, fresnel: 3.2, power: 1.3 },
     ring: {
@@ -4296,11 +4495,10 @@ const RING_FRAG = [
   '}',
 ].join('\n');
 
-function makeRingMaterial() {
-  const t = TEX.saturn || {};
+function makeRingMaterial(ringTex) {
   return new THREE.ShaderMaterial({
     uniforms: {
-      uMap: { value: t.ring || null },
+      uMap: { value: ringTex || null },
       uSunDir: { value: new THREE.Vector3(1, 0, 0) },
       uPlanetCenter: { value: new THREE.Vector3() },
       uPlanetRadius: { value: 1 },
@@ -4698,26 +4896,37 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
      Euler lagi — itu sudah tidak dipakai sejak hierarki tiga tingkat. */
   if (cfg.axialTilt) spin.rotation.z = 0;
 
-  /* ----- cincin Saturnus (shader: ketebalan + bayangan planet) ----- */
+  /* ----- cincin planet (Saturnus, Uranus, Neptunus) ----- */
   let ringMesh = null;
-  if (cfg.ring && TEX.saturn && TEX.saturn.ring) {
-    const innerU = (cfg.ring.inner / RAD) * SIZE_FACTOR;
-    const outerU = (cfg.ring.outer / RAD) * SIZE_FACTOR;
-    const rGeo = new THREE.RingGeometry(innerU, outerU, 512, 1);
-    const pos = rGeo.attributes.position;
-    const uv = rGeo.attributes.uv;
-    const v3 = new THREE.Vector3();
-    for (let i = 0; i < pos.count; i++) {
-      v3.fromBufferAttribute(pos, i);
-      const t = (v3.length() - innerU) / (outerU - innerU);
-      uv.setXY(i, t, 0.5);
+  if (cfg.ring) {
+    let ringTex = null;
+    if (cfg.key === 'saturn' && TEX.saturn && TEX.saturn.ring) {
+      ringTex = TEX.saturn.ring;
+    } else if (cfg.ring.texture) {
+      // Cincin Uranus/Neptunus: buat dari procedural texture profil radial
+      const c = makeRingTexture(cfg.ring.texture.w, cfg.ring.texture.h, cfg.ring.texture.seed, cfg.ring.texture);
+      ringTex = canvasTexture(c, true);
     }
-    const rMat = makeRingMaterial();
-    rMat.uniforms.uRingInner.value = innerU;
-    rMat.uniforms.uRingOuter.value = outerU;
-    ringMesh = new THREE.Mesh(rGeo, rMat);
-    ringMesh.rotation.x = Math.PI / 2;
-    spin.add(ringMesh);
+
+    if (ringTex) {
+      const innerU = (cfg.ring.inner / RAD) * SIZE_FACTOR;
+      const outerU = (cfg.ring.outer / RAD) * SIZE_FACTOR;
+      const rGeo = new THREE.RingGeometry(innerU, outerU, 512, 1);
+      const pos = rGeo.attributes.position;
+      const uv = rGeo.attributes.uv;
+      const v3 = new THREE.Vector3();
+      for (let i = 0; i < pos.count; i++) {
+        v3.fromBufferAttribute(pos, i);
+        const t = (v3.length() - innerU) / (outerU - innerU);
+        uv.setXY(i, t, 0.5);
+      }
+      const rMat = makeRingMaterial(ringTex);
+      rMat.uniforms.uRingInner.value = innerU;
+      rMat.uniforms.uRingOuter.value = outerU;
+      ringMesh = new THREE.Mesh(rGeo, rMat);
+      ringMesh.rotation.x = Math.PI / 2;
+      spin.add(ringMesh);
+    }
   }
 
   const body = {
@@ -6056,10 +6265,15 @@ function updateCamera(dt) {
     accel.addScaledVector(fwd, az);
     accel.addScaledVector(_right, ax);
     accel.addScaledVector(upLocal, ay);
-    if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 5.0);
+    if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 8.0);
 
     cs.vel.addScaledVector(accel, dt);
-    cs.vel.multiplyScalar(Math.exp(-dt * 3.0));
+    
+    // Perbaikan licin: tambahkan friksi/damping lebih kuat
+    // Jika tidak ada input arah gerak (accel = 0), rem lebih keras
+    const damping = accel.lengthSq() > 0 ? 5.0 : 12.0;
+    cs.vel.multiplyScalar(Math.exp(-dt * damping));
+    
     const vmax = speed * 10;
     if (cs.vel.length() > vmax) cs.vel.setLength(vmax);
     cs.pos.addScaledVector(cs.vel, dt);
@@ -6774,9 +6988,14 @@ function updateHud() {
   const lbl = $('dateLabel');
   if (lbl) lbl.textContent = dstr + ' · ' + tstr + ' ' + tzLabel();
 
-  const distAU = camera.position.length() / (AU_KM / RAD);
+  /* Dengan floating origin, camera.position selalu dekat 0.
+     Gunakan cameraState.pos yang menyimpan koordinat absolut kamera. */
+  const distAU = cameraState.pos.length() / (AU_KM / RAD);
   const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
-  hud.textContent = follow + ' · ' + (distAU < 0.01 ? (distAU * 1000).toFixed(1) + ' rb SA' : distAU.toFixed(2) + ' SA') + ' dari Matahari · ' + Math.round(app.fps) + ' fps';
+  const distStr = distAU < 0.01 
+    ? (distAU * 149597870.7).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' km'
+    : distAU.toFixed(2) + ' SA';
+  hud.textContent = follow + ' · ' + distStr + ' dari Matahari · ' + Math.round(app.fps) + ' fps';
 }
 
 /* ---------- jalan ---------- */

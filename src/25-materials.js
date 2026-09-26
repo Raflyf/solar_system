@@ -177,11 +177,10 @@ const RING_FRAG = [
   '}',
 ].join('\n');
 
-function makeRingMaterial() {
-  const t = TEX.saturn || {};
+function makeRingMaterial(ringTex) {
   return new THREE.ShaderMaterial({
     uniforms: {
-      uMap: { value: t.ring || null },
+      uMap: { value: ringTex || null },
       uSunDir: { value: new THREE.Vector3(1, 0, 0) },
       uPlanetCenter: { value: new THREE.Vector3() },
       uPlanetRadius: { value: 1 },
