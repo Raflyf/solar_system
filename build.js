@@ -22,9 +22,14 @@ const assets = read(path.join(SRC, '05-assets.js'));
 const data = read(path.join(SRC, '10-data.js'));
 const laplace = read(path.join(SRC, '14-laplace.js'));
 const ephemeris = read(path.join(SRC, '15-ephemeris.js'));
+const meteorData = read(path.join(SRC, '16-meteor-data.js'));
+const eventsMod = read(path.join(SRC, '16-events.js'));
 const rotation = read(path.join(SRC, '16-rotation.js'));
 const satElements = read(path.join(SRC, '17-satellite-elements.js'));
+const earthView = read(path.join(SRC, '17-earthview.js'));
+const earthViewUi = read(path.join(SRC, '21-earthview-ui.js'));
 const poles = read(path.join(SRC, '19-poles.js'));
+const temporalBadge = read(path.join(SRC, '22-temporal-badge.js'));
 const starsData = read(path.join(SRC, '12-stars-data.js'));
 const constData = read(path.join(SRC, '13-constellations-data.js'));
 const stars = read(path.join(SRC, '18-stars.js'));
@@ -37,6 +42,7 @@ const uiHtml = read(path.join(SRC, '40-ui.html'));
 const css = read(path.join(SRC, '50-style.css'));
 const dateCss = read(path.join(SRC, '55-date.css'));
 const starsCss = read(path.join(SRC, '56-stars.css'));
+const evCss = read(path.join(SRC, '58-earthview.css'));
 
 const html = `<!DOCTYPE html>
 <html lang="id">
@@ -50,6 +56,7 @@ const html = `<!DOCTYPE html>
 ${css}
 ${dateCss}
 ${starsCss}
+${evCss}
 </style>
 </head>
 <body>
@@ -90,12 +97,32 @@ ${safe(ephemeris)}
 
 <script>
 "use strict";
+${safe(meteorData)}
+</script>
+
+<script>
+"use strict";
+${safe(eventsMod)}
+</script>
+
+<script>
+"use strict";
 ${safe(rotation)}
 </script>
 
 <script>
 "use strict";
 ${safe(satElements)}
+</script>
+
+<script>
+"use strict";
+${safe(earthView)}
+</script>
+
+<script>
+"use strict";
+${safe(earthViewUi)}
 </script>
 
 <script>
@@ -136,6 +163,11 @@ ${safe(controls)}
 <script>
 "use strict";
 ${safe(main)}
+</script>
+
+<script>
+"use strict";
+${safe(temporalBadge)}
 </script>
 
 <script>

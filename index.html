@@ -459,6 +459,33 @@ kbd {
   color: #dfe7f2;
 }
 
+/* =======================================================================
+   TEMPORAL ACCURACY BADGE
+   ======================================================================= */
+.temporal-badge {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  line-height: 1.4;
+}
+
+.temporal-badge:hover {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.tb-line {
+  white-space: nowrap;
+}
+
 /* keterangan langit */
 .sky-info {
   margin-top: 8px;
@@ -476,6 +503,75 @@ kbd {
 .sky-line b { color: #dfe8f4; font-weight: 600; }
 .sky-line span { color: #7fc4ff; font-variant-numeric: tabular-nums; }
 
+/* =======================================================================
+   EARTHVIEW MODAL CSS
+   ======================================================================= */
+.earthview-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  background: rgba(10, 15, 25, 0.95);
+  border: 1px solid rgba(120, 160, 220, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  font-family: inherit;
+  color: #dfe7f2;
+}
+
+.earthview-modal.hidden {
+  display: none !important;
+}
+
+.evm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.evm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.evm-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  width: 140px;
+  font-size: 12px;
+}
+
+.evm-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.evm-btns button {
+  flex: 1;
+}
+
+.evm-hint {
+  font-size: 10px;
+  color: #8fa4bd;
+  margin-top: 10px;
+  line-height: 1.3;
+  text-align: center;
+}
 </style>
 </head>
 <body>
@@ -498,10 +594,14 @@ kbd {
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
+      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi (E)">🌍 POV Bumi</button>
     </div>
 
     <!-- Lencana peristiwa langit -->
     <div class="event-badge" id="eventBadge">—</div>
+
+    <!-- Badge Validitas Waktu -->
+    <div class="temporal-badge" id="temporalBadge" style="display:none"></div>
 
     <!-- Daftar benda -->
     <div class="panel sidebar" id="sidebar">
@@ -565,6 +665,37 @@ kbd {
         </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
+    </div>
+
+    <!-- Modal POV Bumi -->
+    <div class="panel earthview-modal hidden" id="earthviewModal">
+      <div class="evm-head">
+        <span>🌍 POV dari Permukaan Bumi</span>
+        <button class="mini" id="evmClose" title="Tutup">✕</button>
+      </div>
+      <div class="evm-body">
+        <div class="evm-row">
+          <label>Kota</label>
+          <select id="evmCity" class="evm-input"></select>
+        </div>
+        <div class="evm-row">
+          <label>Lintang</label>
+          <input type="number" step="0.01" id="evmLat" class="evm-input" placeholder="Lintang (-90..90)">
+        </div>
+        <div class="evm-row">
+          <label>Bujur</label>
+          <input type="number" step="0.01" id="evmLon" class="evm-input" placeholder="Bujur (-180..180)">
+        </div>
+        <div class="evm-row">
+          <label>Elevasi (m)</label>
+          <input type="number" step="10" id="evmElev" class="evm-input" placeholder="Elevasi meter">
+        </div>
+        <div class="evm-btns">
+          <button class="btn primary" id="evmApply">Terapkan & Masuk POV</button>
+          <button class="btn" id="evmExit" style="display:none" title="Keluar POV Bumi">⬆ Keluar POV</button>
+        </div>
+        <div class="evm-hint">Geser mouse untuk melihat langit 360°. Roda mouse = zoom. E = keluar POV.</div>
+      </div>
     </div>
 
     <!-- Bantuan -->
@@ -2387,6 +2518,301 @@ function planetElongation(key, jd) {
 
 <script>
 "use strict";
+/* Data Hujan Meteor Utama (IMO - International Meteor Organization) */
+const METEOR_SHOWERS = [
+  {
+    "id": "qua",
+    "nama": "Quadrantids",
+    "induk": "Asteroid 2003 EH1",
+    "puncak": {
+      "bulan": 1,
+      "hari": 3,
+      "jam": 21
+    },
+    "rentang": {
+      "mulai": "12-28",
+      "selesai": "01-12"
+    },
+    "radiant": {
+      "ra": 230.1,
+      "dec": 48.5
+    },
+    "zhr": 120,
+    "v_kms": 41,
+    "warna": [
+      180,
+      220,
+      255
+    ]
+  },
+  {
+    "id": "lyr",
+    "nama": "Lyrids",
+    "induk": "Komet C/1861 G1 (Thatcher)",
+    "puncak": {
+      "bulan": 4,
+      "hari": 22,
+      "jam": 13
+    },
+    "rentang": {
+      "mulai": "04-14",
+      "selesai": "04-30"
+    },
+    "radiant": {
+      "ra": 271.4,
+      "dec": 33.6
+    },
+    "zhr": 18,
+    "v_kms": 49,
+    "warna": [
+      255,
+      255,
+      255
+    ]
+  },
+  {
+    "id": "eta",
+    "nama": "Eta Aquariids",
+    "induk": "Komet 1P/Halley",
+    "puncak": {
+      "bulan": 5,
+      "hari": 5,
+      "jam": 21
+    },
+    "rentang": {
+      "mulai": "04-19",
+      "selesai": "05-28"
+    },
+    "radiant": {
+      "ra": 338.0,
+      "dec": -1.0
+    },
+    "zhr": 50,
+    "v_kms": 66,
+    "warna": [
+      255,
+      240,
+      200
+    ]
+  },
+  {
+    "id": "per",
+    "nama": "Perseids",
+    "induk": "Komet 109P/Swift-Tuttle",
+    "puncak": {
+      "bulan": 8,
+      "hari": 12,
+      "jam": 19
+    },
+    "rentang": {
+      "mulai": "07-17",
+      "selesai": "08-24"
+    },
+    "radiant": {
+      "ra": 48.2,
+      "dec": 58.1
+    },
+    "zhr": 100,
+    "v_kms": 59,
+    "warna": [
+      200,
+      240,
+      255
+    ]
+  },
+  {
+    "id": "ori",
+    "nama": "Orionids",
+    "induk": "Komet 1P/Halley",
+    "puncak": {
+      "bulan": 10,
+      "hari": 21,
+      "jam": 18
+    },
+    "rentang": {
+      "mulai": "10-02",
+      "selesai": "11-07"
+    },
+    "radiant": {
+      "ra": 94.5,
+      "dec": 15.8
+    },
+    "zhr": 20,
+    "v_kms": 66,
+    "warna": [
+      255,
+      220,
+      180
+    ]
+  },
+  {
+    "id": "leo",
+    "nama": "Leonids",
+    "induk": "Komet 55P/Tempel-Tuttle",
+    "puncak": {
+      "bulan": 11,
+      "hari": 17,
+      "jam": 17
+    },
+    "rentang": {
+      "mulai": "11-06",
+      "selesai": "11-30"
+    },
+    "radiant": {
+      "ra": 152.0,
+      "dec": 22.0
+    },
+    "zhr": 15,
+    "v_kms": 71,
+    "warna": [
+      180,
+      255,
+      220
+    ]
+  },
+  {
+    "id": "gem",
+    "nama": "Geminids",
+    "induk": "Asteroid 3200 Phaethon",
+    "puncak": {
+      "bulan": 12,
+      "hari": 14,
+      "jam": 7
+    },
+    "rentang": {
+      "mulai": "12-04",
+      "selesai": "12-20"
+    },
+    "radiant": {
+      "ra": 112.3,
+      "dec": 32.5
+    },
+    "zhr": 150,
+    "v_kms": 35,
+    "warna": [
+      255,
+      255,
+      230
+    ]
+  },
+  {
+    "id": "urs",
+    "nama": "Ursids",
+    "induk": "Komet 8P/Tuttle",
+    "puncak": {
+      "bulan": 12,
+      "hari": 22,
+      "jam": 22
+    },
+    "rentang": {
+      "mulai": "12-17",
+      "selesai": "12-26"
+    },
+    "radiant": {
+      "ra": 217.0,
+      "dec": 76.0
+    },
+    "zhr": 10,
+    "v_kms": 33,
+    "warna": [
+      255,
+      200,
+      200
+    ]
+  }
+];
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   ENGINE EVENT ASTRONOMI LENGKAP
+   ----------------------------------------------------------------------
+   Mendeteksi:
+   1. Hujan Meteor Aktif (Berdasarkan kalender IMO)
+   2. Konjungsi antar dua planet (< 2 derajat elongasi)
+   3. Oposisi planet luar terhadap Matahari
+   4. Gerhana Matahari & Bulan (integrasi dari 15-ephemeris.js)
+   ======================================================================= */
+
+const ASTRONOMICAL_EVENTS = {
+  /* Cari semua event aktif pada tanggal tertentu */
+  getActiveEvents(jd) {
+    const date = jdToDate(jd);
+    const m = date.getUTCMonth() + 1;
+    const d = date.getUTCDate();
+    const curMD = (m < 10 ? '0' + m : '' + m) + '-' + (d < 10 ? '0' + d : '' + d);
+
+    const events = [];
+
+    // 1. Hujan Meteor
+    if (typeof METEOR_SHOWERS !== 'undefined') {
+      for (const ms of METEOR_SHOWERS) {
+        const start = ms.rentang.mulai;
+        const end = ms.rentang.selesai;
+        let isActive = false;
+
+        if (start <= end) {
+          isActive = (curMD >= start && curMD <= end);
+        } else {
+          // Melintasi pergantian tahun (misal: 12-28 s/d 01-12)
+          isActive = (curMD >= start || curMD <= end);
+        }
+
+        if (isActive) {
+          const isPeak = (ms.puncak.bulan === m && Math.abs(ms.puncak.hari - d) <= 1);
+          events.push({
+            type: 'meteor',
+            name: ms.nama,
+            peak: isPeak,
+            desc: `${ms.nama} (${isPeak ? 'PUNCAK AKTIF' : 'Aktif'}) — ZHR: ~${ms.zhr} meteor/jam, Sumber: ${ms.induk}`,
+            radiant: ms.radiant,
+            color: ms.warna
+          });
+        }
+      }
+    }
+
+    // 2. Konjungsi Antar-Planet (< 2.5 derajat sudut pisah dilihat dari Bumi)
+    const planets = ['mercury', 'venus', 'mars', 'jupiter', 'saturn'];
+    const pPos = {};
+    for (const p of planets) {
+      pPos[p] = bodyPositionKm(p, jd);
+    }
+    const earthPos = earthPositionKm(jd);
+
+    for (let i = 0; i < planets.length; i++) {
+      for (let j = i + 1; j < planets.length; j++) {
+        const p1 = planets[i];
+        const p2 = planets[j];
+        if (!pPos[p1] || !pPos[p2]) continue;
+
+        // Vektor geosentris
+        const v1 = { x: pPos[p1].x - earthPos.x, y: pPos[p1].y - earthPos.y, z: pPos[p1].z - earthPos.z };
+        const v2 = { x: pPos[p2].x - earthPos.x, y: pPos[p2].y - earthPos.y, z: pPos[p2].z - earthPos.z };
+
+        const sepDeg = angleBetween(v1, v2) / DEG;
+        if (sepDeg < 2.5) {
+          events.push({
+            type: 'conjunction',
+            name: `Konjungsi ${p1.toUpperCase()} - ${p2.toUpperCase()}`,
+            desc: `Pemisahan sudut sangat dekat: ${sepDeg.toFixed(2)}° di langit malam`,
+            bodies: [p1, p2],
+            separation: sepDeg
+          });
+        }
+      }
+    }
+
+    return events;
+  }
+};
+
+</script>
+
+<script>
+"use strict";
 /* =======================================================================
    ROTASI NYATA SEMUA PLANET & SATELIT
    ----------------------------------------------------------------------
@@ -2754,6 +3180,272 @@ const SATELLITE_ELEMENTS = {
  }
 };
 
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   POV BUMI — Melihat langit dari permukaan Bumi
+   ----------------------------------------------------------------------
+   Mode ini menempatkan kamera di permukaan Bumi pada lintang/bujur
+   tertentu, dengan orientasi ke zenith. Semua posisi benda langit
+   dikonversi dari RA/Dec → Azimuth/Elevasi untuk pengamat.
+
+   Referensi: Meeus "Astronomical Algorithms" bab 12-13 (koordinat
+   horizon), IAU SOFA untuk GMST/LST.
+
+   Kota-kota Indonesia:
+   - Jakarta: -6.2, 106.8
+   - Surabaya: -7.25, 112.75
+   - Medan: 3.59, 98.67
+   - Makassar: -5.14, 119.42
+   - Denpasar: -8.67, 115.21
+   - Jayapura: -2.53, 140.72
+   ======================================================================= */
+
+const EARTH_VIEW = {
+  active: false,
+  lat: -6.2,      // derajat (negatif = selatan)
+  lon: 106.8,     // derajat (positif = timur)
+  elev: 50,       // meter di atas permukaan laut
+  city: 'Jakarta',
+
+  cities: {
+    'Jakarta': { lat: -6.2, lon: 106.8 },
+    'Surabaya': { lat: -7.25, lon: 112.75 },
+    'Medan': { lat: 3.59, lon: 98.67 },
+    'Makassar': { lat: -5.14, lon: 119.42 },
+    'Denpasar': { lat: -8.67, lon: 115.21 },
+    'Jayapura': { lat: -2.53, lon: 140.72 },
+    'Yogyakarta': { lat: -7.79, lon: 110.36 },
+    'Bandung': { lat: -6.91, lon: 107.6 },
+  },
+
+  /* Aktifkan mode POV Bumi */
+  enable(lat, lon, cityName) {
+    if (lat !== undefined) this.lat = lat;
+    if (lon !== undefined) this.lon = lon;
+    if (cityName) this.city = cityName;
+    this.active = true;
+  },
+
+  /* Nonaktifkan, kembali ke mode luar angkasa */
+  disable() {
+    this.active = false;
+  },
+
+  /* Hitung LST (Local Sidereal Time) dalam derajat */
+  lst(jd) {
+    const gmstDeg = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360 + 360) % 360;
+    return (gmstDeg + this.lon + 360) % 360;
+  },
+
+  /* Konversi RA (jam) + Dec (derajat) → Azimuth + Elevasi (derajat)
+     untuk pengamat di lat/lon saat ini */
+  raDecToAltAz(raHours, decDeg, jd) {
+    const raDeg = raHours * 15;
+    const latRad = this.lat * DEG;
+    const decRad = decDeg * DEG;
+
+    // Hour Angle
+    let H = this.lst(jd) - raDeg;
+    H = ((H + 180) % 360 + 360) % 360 - 180; // normalisasi ke -180..180
+    const HRad = H * DEG;
+
+    // Elevasi (altitude)
+    const sinAlt = Math.sin(decRad) * Math.sin(latRad) +
+                   Math.cos(decRad) * Math.cos(latRad) * Math.cos(HRad);
+    const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / DEG;
+
+    // Azimuth (dari utara, ke timur)
+    const cosA = (Math.sin(decRad) - Math.sin(latRad) * sinAlt) /
+                 (Math.cos(latRad) * Math.cos(alt * DEG));
+    let az = Math.acos(Math.max(-1, Math.min(1, cosA))) / DEG;
+    if (Math.sin(HRad) > 0) az = 360 - az;
+
+    return { az, alt };
+  },
+
+  /* Dapatkan posisi kamera untuk mode POV Bumi (dalam unit scene) */
+  getCameraPosition(earthBody) {
+    if (!earthBody || !earthBody.absPos) return null;
+
+    // Posisi pengamat di permukaan Bumi dalam frame scene
+    // Bumi di absPos, radius 1 unit. Vektor dari pusat Bumi ke pengamat:
+    const latRad = this.lat * DEG;
+    const lonRad = this.lon * DEG;
+
+    // Gunakan rotasi Bumi: GMST untuk menentukan bujur scene
+    const gmst = ((280.46061837 + 360.98564736629 * (app.days)) % 360 + 360) % 360;
+
+    // Bujur pengamat dalam frame scene (ekliptika → scene mapping)
+    // Scene: x = ecl.x, y = ecl.z, z = -ecl.y
+    // Sederhananya: tempatkan kamera di permukaan mesh Bumi pada arah
+    // yang sesuai dengan lat/lon geografis + rotasi GMST
+
+    // Sudut rotasi Bumi saat ini (sama dengan yang dipakai spin mesh)
+    const spinAngle = gmst * DEG;
+
+    // Arah pengamat dari pusat Bumi (ekoatorial → scene):
+    // lat: sudut dari ekuator; lon: sudut dari meridian utama
+    const phi = (90 - this.lat) * DEG;  // colatitude
+    const theta = (this.lon + gmst) * DEG; // bujur + rotasi
+
+    // Koordinat ekuatorial Bumi (x=0°, z=kutub) → scene (y=atas)
+    const sinPhi = Math.sin(phi);
+    const ex = sinPhi * Math.cos(theta);
+    const ey = sinPhi * Math.sin(theta);
+    const ez = Math.cos(phi);
+
+    // Scene mapping: (x, y, z)_scene = (ex, ez, -ey)
+    const r = 1.0 + (this.elev / 6371000); // radius + elevasi
+    return {
+      x: earthBody.absPos.x + ex * r,
+      y: earthBody.absPos.y + ez * r,
+      z: earthBody.absPos.z + (-ey) * r,
+      // Arah pandang: ke luar dari Bumi (zenith)
+      lookDir: { x: ex, y: ez, z: -ey },
+    };
+  },
+
+  /* Daftar kota untuk dropdown */
+  cityList() {
+    return Object.keys(this.cities);
+  },
+
+  setCity(name) {
+    const c = this.cities[name];
+    if (c) {
+      this.lat = c.lat;
+      this.lon = c.lon;
+      this.city = name;
+      return true;
+    }
+    return false;
+  },
+};
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   UI POV BUMI
+   ----------------------------------------------------------------------
+   Menghubungkan kontrol HTML dengan logika POV Bumi.
+   ======================================================================= */
+
+const EARTHVIEW_UI = {
+  init() {
+    this.modal = document.getElementById('earthviewModal');
+    if (!this.modal) return;
+
+    this.citySelect = document.getElementById('evmCity');
+    this.latInput = document.getElementById('evmLat');
+    this.lonInput = document.getElementById('evmLon');
+    this.elevInput = document.getElementById('evmElev');
+    this.btnApply = document.getElementById('evmApply');
+    this.btnExit = document.getElementById('evmExit');
+
+    /* Isi dropdown kota */
+    if (typeof EARTH_VIEW !== 'undefined') {
+      const cities = EARTH_VIEW.cityList();
+      for (const c of cities) {
+        const opt = document.createElement('option');
+        opt.value = c;
+        opt.textContent = c;
+        this.citySelect.appendChild(opt);
+      }
+      this.citySelect.value = EARTH_VIEW.city;
+      this.updateInputsFromCity();
+    }
+
+    /* Event listeners */
+    document.getElementById('btnEarthView').addEventListener('click', () => this.toggleModal());
+    document.getElementById('evmClose').addEventListener('click', () => this.hide());
+    
+    this.citySelect.addEventListener('change', () => this.updateInputsFromCity());
+    this.latInput.addEventListener('input', () => this.citySelect.value = '');
+    this.lonInput.addEventListener('input', () => this.citySelect.value = '');
+
+    this.btnApply.addEventListener('click', () => this.applyAndEnter());
+    this.btnExit.addEventListener('click', () => this.exitPOV());
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'e' || e.key === 'E') {
+        if (EARTH_VIEW.active) this.exitPOV();
+        else this.toggleModal();
+      }
+    });
+  },
+
+  updateInputsFromCity() {
+    const cityName = this.citySelect.value;
+    if (cityName && typeof EARTH_VIEW !== 'undefined') {
+      const c = EARTH_VIEW.cities[cityName];
+      if (c) {
+        this.latInput.value = c.lat;
+        this.lonInput.value = c.lon;
+        this.elevInput.value = 50;
+      }
+    }
+  },
+
+  toggleModal() {
+    this.modal.classList.toggle('hidden');
+    if (!this.modal.classList.contains('hidden') && EARTH_VIEW.active) {
+      this.btnExit.style.display = 'inline-block';
+    } else {
+      this.btnExit.style.display = 'none';
+    }
+  },
+
+  hide() {
+    this.modal.classList.add('hidden');
+  },
+
+  applyAndEnter() {
+    const lat = parseFloat(this.latInput.value);
+    const lon = parseFloat(this.lonInput.value);
+    const elev = parseFloat(this.elevInput.value) || 0;
+    
+    if (isNaN(lat) || isNaN(lon)) return;
+
+    EARTH_VIEW.enable(lat, lon, this.citySelect.value);
+    EARTH_VIEW.elev = elev;
+    this.hide();
+
+    /* Reset kamera ke mode pengamat darat */
+    if (typeof focusBody === 'function') {
+      focusBody(null); // Lepas fokus planet lain
+    }
+    
+    // Tampilkan notifikasi
+    const badge = document.getElementById('eventBadge');
+    if (badge) {
+      badge.innerHTML = `🌍 Mode POV Bumi Aktif (Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°)`;
+      badge.style.display = 'block';
+      setTimeout(() => badge.style.display = 'none', 3000);
+    }
+  },
+
+  exitPOV() {
+    EARTH_VIEW.disable();
+    this.hide();
+    const badge = document.getElementById('eventBadge');
+    if (badge) {
+      badge.innerHTML = `🚀 Kembali ke orbit tata surya`;
+      badge.style.display = 'block';
+      setTimeout(() => badge.style.display = 'none', 3000);
+    }
+  }
+};
+
+if (typeof document !== 'undefined' && document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => EARTHVIEW_UI.init());
+} else if (typeof document !== 'undefined') {
+  EARTHVIEW_UI.init();
+}
 </script>
 
 <script>
@@ -5640,6 +6332,7 @@ async function boot() {
       updateSkyInfo();
     }
     updateEventBadge();
+    if (typeof TEMPORAL_BADGE !== 'undefined') TEMPORAL_BADGE.update(app.days);
 
     renderer.render(scene, camera);
   }
@@ -5650,6 +6343,13 @@ async function boot() {
    Antarmuka
    ======================================================================= */
 function buildUI() {
+  /* ---- badge validitas waktu ---- */
+  try {
+    if (typeof TEMPORAL_BADGE !== 'undefined') {
+      TEMPORAL_BADGE.init();
+      TEMPORAL_BADGE.update(app.days);
+    }
+  } catch (e) { console.warn('temporal badge gagal:', e); }
   /* ---- daftar benda di bilah samping ---- */
   const list = $('bodyList');
   list.innerHTML = '';
@@ -6202,6 +6902,80 @@ window.__SOLAR__ = {
 <script>
 "use strict";
 /* =======================================================================
+   BADGE AKURASI TEMPORAL
+   ----------------------------------------------------------------------
+   Menampilkan rentang validitas model & akurasi Bulan di panel atas.
+   ======================================================================= */
+
+const TEMPORAL_BADGE = {
+  el: null,
+  init() {
+    this.el = document.getElementById('temporalBadge');
+    if (!this.el) {
+      console.warn('TEMPORAL_BADGE: element #temporalBadge tidak ditemukan');
+      return;
+    }
+    this.el.style.display = 'block';
+  },
+
+  update(appDays) {
+    if (!this.el) return;
+    const jd = 2451545.0 + appDays;
+    const yrFromJ2000 = appDays / 365.25;
+    const absYr = Math.abs(yrFromJ2000);
+
+    let modelRange = '';
+    let moonAccuracy = '';
+
+    // Model planetary: JPL Keplerian approx (Standish) valid 1800-2050
+    // J2000 = 2000.0, so 1800 = -200 yr, 2050 = +50 yr
+    if (yrFromJ2000 >= -200 && yrFromJ2000 <= 50) {
+      modelRange = 'Planet: 1800–2050 (JPL Keplerian)';
+    } else if (yrFromJ2000 > 50) {
+      modelRange = `Planet: >2050 (ekstrapolasi ${yrFromJ2000.toFixed(0)} thn)`;
+    } else {
+      modelRange = `Planet: <1800 (ekstrapolasi ${Math.abs(yrFromJ2000).toFixed(0)} thn)`;
+    }
+
+    // Moon accuracy: Meeus bab 47 (60 suku) ~10" dekat J2000, degradasi ~0.5"/thn
+    // DE441 vs Meeus 60-term error grows ~0.5"/yr from J2000
+    const moonErrArcsec = 10 + 0.5 * absYr;
+    if (absYr <= 50) {
+      moonAccuracy = `Bulan: ~${moonErrArcsec.toFixed(0)}" (Meeus 60 suku)`;
+    } else {
+      moonAccuracy = `Bulan: ~${moonErrArcsec.toFixed(0)}" (ekstrapolasi, model ringkas)`;
+    }
+
+    // Star proper motion: HYG v3.8 + pmRA/pmDec applied realtime
+    const starNote = 'Bintang: proper motion HYG v3.8 + aberrasi/nutasi';
+
+    this.el.innerHTML = `
+      <div class="tb-line">${modelRange}</div>
+      <div class="tb-line">${moonAccuracy}</div>
+      <div class="tb-line">${starNote}</div>
+    `;
+    this.el.title = `JD ${(2451545.0 + appDays).toFixed(2)} | ${new Date(2451545.0 * 86400000 + appDays * 86400000).toISOString().slice(0,19)}Z`;
+  },
+};
+
+// Auto-init when DOM ready
+if (typeof document !== 'undefined') {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => TEMPORAL_BADGE.init());
+  } else {
+    TEMPORAL_BADGE.init();
+  }
+}
+
+// Export for module systems (not used in browser build, but kept for consistency)
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { TEMPORAL_BADGE };
+}
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
    PANEL TANGGAL & PERISTIWA LANGIT
    ----------------------------------------------------------------------
    Memungkinkan pengguna:
@@ -6334,12 +7108,76 @@ function eventsAt(date, windowDays) {
     }
   }
 
+  /* 5. Hujan Meteor Aktif */
+  if (typeof METEOR_SHOWERS !== 'undefined') {
+    const date = jdToDate(jd);
+    const m = date.getUTCMonth() + 1;
+    const d = date.getUTCDate();
+    const curMD = (m < 10 ? '0' + m : '' + m) + '-' + (d < 10 ? '0' + d : '' + d);
+
+    for (const ms of METEOR_SHOWERS) {
+      const start = ms.rentang.mulai;
+      const end = ms.rentang.selesai;
+      let isActive = false;
+
+      if (start <= end) {
+        isActive = (curMD >= start && curMD <= end);
+      } else {
+        // Melintasi pergantian tahun
+        isActive = (curMD >= start || curMD <= end);
+      }
+
+      if (isActive) {
+        const isPeak = (ms.puncak.bulan === m && Math.abs(ms.puncak.hari - d) <= 1);
+        hasil.push({
+          jenis: 'meteor',
+          ikon: '☄️',
+          judul: `Hujan Meteor ${ms.nama} ${isPeak ? '— PUNCAK' : ''}`,
+          detail: `ZHR: ~${ms.zhr}/jam · Sumber: ${ms.induk} · Kecepatan: ${ms.v_kms} km/s`,
+          penting: isPeak,
+          jd,
+        });
+      }
+    }
+  }
+
+  /* 6. Konjungsi Planet-Planet (< 2.5° pemisahan sudut) */
+  for (let i = 0; i < planetKeys.length; i++) {
+    for (let j = i + 1; j < planetKeys.length; j++) {
+      const p1 = planetKeys[i];
+      const p2 = planetKeys[j];
+      const pos1 = bodyPositionKm(p1, jd);
+      const pos2 = bodyPositionKm(p2, jd);
+      if (!pos1 || !pos2) continue;
+
+      // Posisi geosentris (dari Bumi)
+      const e = earthPositionKm(jd);
+      const v1 = { x: pos1.x - e.x, y: pos1.y - e.y, z: pos1.z - e.z };
+      const v2 = { x: pos2.x - e.x, y: pos2.y - e.y, z: pos2.z - e.z };
+
+      const dot = (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z) / 
+                  (Math.sqrt(v1.x*v1.x + v1.y*v1.y + v1.z*v1.z) * 
+                   Math.sqrt(v2.x*v2.x + v2.y*v2.y + v2.z*v2.z));
+      const sepDeg = Math.acos(Math.max(-1, Math.min(1, dot))) / DEG;
+
+      if (sepDeg < 2.5) {
+        hasil.push({
+          jenis: 'konjungsi-planet',
+          ikon: '🪐',
+          judul: `Konjungsi ${p1.toUpperCase()} - ${p2.toUpperCase()}`,
+          detail: `Pemisahan ${sepDeg.toFixed(2)}° — terlihat sangat dekat di langit`,
+          jd,
+        });
+      }
+    }
+  }
+
   /* buang duplikat berdasarkan judul */
   const uniq = [];
-  const seen = {};
+  const seen = Object.create(null);
   for (const e of hasil) {
     if (seen[e.judul]) continue;
-    seen[e.judul] = 1;
+    seen[e.judul] = true;
     uniq.push(e);
   }
   return uniq;

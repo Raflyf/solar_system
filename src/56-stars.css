@@ -75,6 +75,33 @@
   color: #dfe7f2;
 }
 
+/* =======================================================================
+   TEMPORAL ACCURACY BADGE
+   ======================================================================= */
+.temporal-badge {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+  background: rgba(0, 0, 0, 0.8);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: monospace;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  line-height: 1.4;
+}
+
+.temporal-badge:hover {
+  background: rgba(0, 0, 0, 0.95);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.tb-line {
+  white-space: nowrap;
+}
+
 /* keterangan langit */
 .sky-info {
   margin-top: 8px;

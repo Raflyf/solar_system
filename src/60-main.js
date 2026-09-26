@@ -188,6 +188,7 @@ async function boot() {
       updateSkyInfo();
     }
     updateEventBadge();
+    if (typeof TEMPORAL_BADGE !== 'undefined') TEMPORAL_BADGE.update(app.days);
 
     renderer.render(scene, camera);
   }
@@ -198,6 +199,13 @@ async function boot() {
    Antarmuka
    ======================================================================= */
 function buildUI() {
+  /* ---- badge validitas waktu ---- */
+  try {
+    if (typeof TEMPORAL_BADGE !== 'undefined') {
+      TEMPORAL_BADGE.init();
+      TEMPORAL_BADGE.update(app.days);
+    }
+  } catch (e) { console.warn('temporal badge gagal:', e); }
   /* ---- daftar benda di bilah samping ---- */
   const list = $('bodyList');
   list.innerHTML = '';
