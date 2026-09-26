@@ -175,7 +175,7 @@ async function boot() {
     computePositions(app.days, now * 0.001);
     updateCamera(dt);
     applyPositions();
-
+    updateOrbitLines(J2000_JD + app.days);
     updateTour(dt);
     updateLabels();
     updateOrbitLineVisibility();

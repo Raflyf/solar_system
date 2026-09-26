@@ -304,52 +304,51 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
   mesh.userData.bodyId = body.id;
   if (ringMesh) ringMesh.userData.bodyId = body.id;
 
-  /* garis orbit planet: elips nyata (fokus = Matahari) */
+  /* Garis orbit planet.
+     ------------------------------------------------------------------
+     BUG YANG DIPERBAIKI DI SINI:
+     Garis orbit dulu dibangun dengan rumus sendiri:
+        x = cos(th)*a - c ,  z = sin(th)*b ,  lalu line.rotation.x = incl
+     sedangkan posisi planet dihitung ephemerisPos() dengan konversi
+     ekliptika->scene yang BERBEDA:
+        x = p.x*k ,  y = p.z*k ,  z = -p.y*k
+     Dua sistem koordinat ini tidak pernah bertemu, jadi garis orbit
+     TIDAK PERNAH melewati planetnya — pengguna melaporkan "garis orbit
+     tidak sinkron".
+
+     Ditambah lagi garis dibangun SEKALI saat scene dibuat, sehingga tidak
+     ikut berubah saat tanggal simulasi berubah.
+
+     PERBAIKAN: garis orbit digambar dari EPHEMERIS yang sama dengan yang
+     dipakai menghitung posisi planet (lihat rebuildOrbitLines). Dengan
+     begitu garis selalu melewati planet, untuk tanggal berapa pun.
+     ------------------------------------------------------------------ */
   if (!isMoon) {
-    const a = cfg.aKm / RAD;
-    const b = a * Math.sqrt(1 - body.e * body.e);
-    const c = a * body.e;
-    const pts = [];
-    for (let i = 0; i <= 512; i++) {
-      const th = (i / 512) * Math.PI * 2;
-      pts.push(new THREE.Vector3(Math.cos(th) * a - c, 0, Math.sin(th) * b));
-    }
     const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: 0xa8c4e8, transparent: true, opacity: 0.30, depthWrite: false })
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({
+        color: 0xa8c4e8, transparent: true, opacity: 0.32, depthWrite: false,
+      })
     );
-    line.rotation.x = body.incl;
+    line.frustumCulled = false;
     scene.add(line);
     body.orbitLine = line;
+    body.orbitLineIsPlanet = true;
   } else {
-    /* Orbit satelit: lingkaran di sekitar induknya.
-       ------------------------------------------------------------------
-       Garis ini dulu digambar dengan radius penuh orbit (Bulan: 60 unit =
-       384.400 km). Dari dekat planet, lingkaran sebesar itu melewati layar
-       sebagai GARIS LURUS PANJANG yang terlihat aneh — pengguna melaporkan
-       "garis putih panjang".
-
-       Perbaikan: garis orbit satelit hanya digambar bila kamera cukup jauh
-       untuk melihatnya sebagai lingkaran (lihat updateOrbitLineVisibility).
-       Opacity juga diturunkan supaya tidak mendominasi.
-       ------------------------------------------------------------------ */
-    const a = (cfg.aKm / RAD) * MOON_ORBIT_FACTOR;
-    const pts = [];
-    for (let i = 0; i <= 256; i++) {
-      const th = (i / 256) * Math.PI * 2;
-      pts.push(new THREE.Vector3(Math.cos(th) * a, 0, Math.sin(th) * a));
-    }
+    /* Orbit satelit: digambar dari ephemeris yang sama dengan posisinya.
+       Lihat rebuildOrbitLines() — dengan begitu garis selalu melewati
+       satelitnya, untuk tanggal berapa pun. */
     const line = new THREE.Line(
-      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.BufferGeometry(),
       new THREE.LineBasicMaterial({
         color: 0x8fb0d8, transparent: true, opacity: 0.34, depthWrite: false,
       })
     );
-    line.rotation.x = body.incl;
+    line.frustumCulled = false;
     parentMoonPlane.add(line);
     body.orbitLine = line;
     body.orbitLineIsMoon = true;
-    body.orbitRadiusUnits = a;      /* dipakai untuk uji visibilitas */
+    body.orbitRadiusUnits = (cfg.aKm / RAD) * MOON_ORBIT_FACTOR;
   }
   return body;
 }
@@ -641,6 +640,163 @@ function computePositions(days, elapsed) {
   }
 }
 
+/* =======================================================================
+   GARIS ORBIT DARI EPHEMERIS
+   ----------------------------------------------------------------------
+   Menggambar ulang garis orbit planet memakai ephemerisPos() yang SAMA
+   dengan yang dipakai menghitung posisi planet. Dengan begitu garis
+   selalu melewati planetnya.
+
+   Dipanggil:
+     - sekali saat scene siap
+     - setiap tanggal simulasi berubah cukup jauh (lihat updateOrbitLines)
+   ======================================================================= */
+
+/* Resolusi garis orbit. 240 segmen menyisakan celah ~1.5% keliling antara
+   titik sampel, sehingga planet bisa tampak sedikit "di luar" garisnya.
+   720 segmen menurunkan celah itu ke ~0.5% — cukup halus untuk semua zoom. */
+const ORBIT_LINE_SEGMENTS = 720;
+let _orbitLineJd = null;          /* JD saat garis terakhir digambar */
+
+function rebuildOrbitLines(jd) {
+  const k = AU_KM / RAD;
+
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (!b.orbitLine) continue;
+
+    /* ---- ORBIT SATELIT ----
+       Garis orbit satelit digambar dalam kerangka LOKAL grup bulan, jadi
+       harus memakai offset yang sama persis dengan yang dipakai
+       applyPositions() untuk memindahkan bulan (lihat moonLocalOffset).
+       Sebelumnya di sini ada balik-putar axialTilt tambahan, padahal
+       applyPositions sudah melakukannya — akibatnya terjadi rotasi ganda
+       dan garis orbit meleset sampai 106% radius orbit. */
+    if (b.orbitLineIsMoon) {
+      const host = b.host;
+      if (!host) continue;
+
+      const period = b.periodDays || 27.32;
+      const n = (ORBIT_LINE_SEGMENTS + 1);
+      const arr = new Float32Array(n * 3);
+
+      for (let s = 0; s <= ORBIT_LINE_SEGMENTS; s++) {
+        const jdS = jd + (s / ORBIT_LINE_SEGMENTS) * period;
+        const l = moonLocalOffset(b, jdS);
+        arr[s * 3] = l.x;
+        arr[s * 3 + 1] = l.y;
+        arr[s * 3 + 2] = l.z;
+      }
+      const geo = b.orbitLine.geometry;
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      geo.attributes.position.needsUpdate = true;
+      geo.computeBoundingSphere();
+      continue;
+    }
+
+    /* ---- ORBIT PLANET ---- */
+    if (!b.orbitLineIsPlanet) continue;
+    const key = EPHEMERIS_KEY[b.key];
+    if (!key) continue;
+
+    const periodHari = b.periodDays || 365.25;
+    const posArr = new Float32Array((ORBIT_LINE_SEGMENTS + 1) * 3);
+
+    for (let s = 0; s <= ORBIT_LINE_SEGMENTS; s++) {
+      const jdSampel = jd + (s / ORBIT_LINE_SEGMENTS) * periodHari;
+      const p = planetPositionAU(key, jdSampel);
+      if (!p) continue;
+      posArr[s * 3] = p.x * k;
+      posArr[s * 3 + 1] = p.z * k;        /* z ekliptika -> y scene */
+      posArr[s * 3 + 2] = -p.y * k;       /* y ekliptika -> -z scene */
+    }
+
+    const geo = b.orbitLine.geometry;
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.attributes.position.needsUpdate = true;
+    geo.computeBoundingSphere();
+  }
+  _orbitLineJd = jd;
+}
+
+/* =======================================================================
+   SATU RUMUS UNTUK SATELIT
+   ----------------------------------------------------------------------
+   moonLocalOffset() adalah SATU-SATUNYA sumber posisi satelit relatif
+   induknya, dalam kerangka LOKAL grup bulan (anak dari moonPlane yang
+   sudah dirotasi axialTilt induk).
+
+   Dipakai oleh:
+     1. ephemerisPos()      -> posisi absolut (kamera, label, penanda)
+     2. applyPositions()    -> posisi render
+     3. rebuildOrbitLines() -> garis orbit
+
+   Sebelumnya tiga tempat ini memakai rumus masing-masing dengan rotasi
+   berbeda-beda, sehingga satelit dan garis orbitnya tidak pernah bertemu
+   (meleset sampai 106% radius orbit). Sekarang mustahil berbeda.
+   ======================================================================= */
+function moonLocalOffset(b, jd) {
+  const k = 1 / RAD;
+
+  if (b.name === 'Bulan') {
+    /* Bulan Bumi: teori Meeus bab 47 (presisi ~10") — perlu untuk gerhana.
+       Kerangka ekliptika -> scene: x, z(y_scene), -y(z_scene) */
+    const mk = moonPositionKm(jd);
+    return { x: mk.x * k, y: mk.z * k, z: -mk.y * k };
+  }
+
+  /* satelit lain: orbit Kepler dengan elemen nyata milik satelit itu */
+  const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
+  const e = b.e || 0;
+  const n = (2 * Math.PI) / (b.periodDays * 86400);
+  const T = (jd - J2000_JD) * 86400;
+  const M = (b.theta0 || 0) + n * T;
+
+  let E = M;
+  for (let i = 0; i < 6; i++) {
+    E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+  }
+
+  const xp = a * (Math.cos(E) - e);
+  const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+
+  /* bidang orbit dimiringkan oleh inklinasi orbit satelit terhadap
+     ekuator induknya */
+  const incl = b.incl || 0;
+  const ci = Math.cos(incl), si = Math.sin(incl);
+  return { x: xp, y: yp * si, z: yp * ci };
+}
+
+/* Offset satelit dalam kerangka SCENE (setelah kemiringan poros induk).
+   Dipakai ephemerisPos() untuk posisi absolut. */
+function moonSceneOffset(b, jd) {
+  const l = moonLocalOffset(b, jd);
+  const tilt = THREE.MathUtils.degToRad(b.host ? (b.host.axialTiltDeg || 0) : 0);
+  if (!tilt) return l;
+  const ct = Math.cos(tilt), st = Math.sin(tilt);
+  /* moonPlane.rotation.z memutar kerangka lokal ke kerangka scene */
+  return {
+    x: l.x * ct - l.y * st,
+    y: l.x * st + l.y * ct,
+    z: l.z,
+  };
+}
+
+/* Offset satelit terhadap induknya, dalam unit scene (tanpa posisi induk).
+   Dipertahankan sebagai alias supaya kode lama tetap jalan. */
+function moonOffsetUnits(b, jd) {
+  return moonSceneOffset(b, jd);
+}
+
+/* Perbarui garis orbit bila tanggal simulasi sudah bergeser cukup jauh.
+   Elemen orbit planet berubah sangat lambat (orde abad), jadi memperbarui
+   tiap ~10 hari sudah lebih dari cukup dan tidak membebani tiap frame. */
+function updateOrbitLines(jd) {
+  if (_orbitLineJd === null || Math.abs(jd - _orbitLineJd) > 10) {
+    rebuildOrbitLines(jd);
+  }
+}
+
 /* posisi ephemeris untuk sebuah benda, dalam unit scene (RAD).
    ----------------------------------------------------------------------
    BUG YANG DIPERBAIKI DI SINI:
@@ -661,56 +817,13 @@ function ephemerisPos(b, jd) {
     if (!b.host) return null;
     const hostPos = b.host.absPos;
     if (!hostPos) return null;
-    const k = 1 / RAD;
-
-    if (b.name === 'Bulan') {
-      /* Bulan Bumi: teori Meeus bab 47, presisi ~10" — dipakai untuk gerhana */
-      const mk = moonPositionKm(jd);
-      return {
-        x: hostPos.x + mk.x * k,
-        y: hostPos.y + mk.z * k,      /* z ekliptika -> y scene (atas) */
-        z: hostPos.z - mk.y * k,      /* y ekliptika -> -z scene */
-      };
-    }
-
-    /* satelit lain: orbit Kepler mengelilingi induk, memakai elemen NYATA */
-    const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
-    const e = b.e || 0;
-    const n = (2 * Math.PI) / (b.periodDays * 86400);   /* rad per detik */
-    const T = (jd - J2000_JD) * 86400;                  /* detik sejak J2000 */
-    const M = (b.theta0 || 0) + n * T;
-
-    /* selesaikan persamaan Kepler */
-    let E = M;
-    for (let i = 0; i < 6; i++) {
-      E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
-    }
-
-    /* posisi di bidang orbit (fokus di induk) */
-    const xp = a * (Math.cos(E) - e);
-    const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
-
-    /* miringkan bidang orbit, lalu putar oleh kemiringan poros induk
-       supaya bidang orbit satelit mengikuti ekuator induknya
-       (seperti Bulan yang mengorbit di bidang ekliptika, dan
-        satelit Jupiter yang mengorbit di bidang ekuator Jupiter) */
-    const incl = b.incl || 0;
-    const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
-    const ci = Math.cos(incl), si = Math.sin(incl);
-    let ox = xp;
-    let oy = yp * si;
-    let oz = yp * ci;
-    if (tilt) {
-      const ct = Math.cos(tilt), st = Math.sin(tilt);
-      const ny = oy * ct - ox * st;
-      const nx2 = oy * st + ox * ct;
-      oy = ny; ox = nx2;
-    }
-
+    /* SATU rumus: moonSceneOffset() — sama dengan yang dipakai
+       applyPositions() dan rebuildOrbitLines() */
+    const off = moonSceneOffset(b, jd);
     return {
-      x: hostPos.x + ox * k,
-      y: hostPos.y + oy * k,
-      z: hostPos.z + oz * k,
+      x: hostPos.x + off.x,
+      y: hostPos.y + off.y,
+      z: hostPos.z + off.z,
     };
   }
   const key = EPHEMERIS_KEY[b.key];
@@ -764,7 +877,9 @@ function applyPositions() {
         const dy = b.absPos.y - b.host.absPos.y;
         const dz = b.absPos.z - b.host.absPos.z;
 
-        /* balik-putar oleh kemiringan poros induk (moonPlane.rotation.z) */
+        /* balik-putar oleh kemiringan poros induk (moonPlane.rotation.z)
+           untuk mendapat offset dalam kerangka LOKAL grup bulan.
+           Kebalikan dari moonSceneOffset(): (x,y) -> (x ct + y st, -x st + y ct) */
         const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
         const ct = Math.cos(tilt), st = Math.sin(tilt);
         const lx = dx * ct + dy * st;
