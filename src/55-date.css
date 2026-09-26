@@ -3,7 +3,7 @@
    ======================================================================= */
 .date-panel {
   position: fixed;
-  top: 64px;
+  top: 86px;             /* di bawah toolbar (toolbar berakhir ≈ 78 px) */
   left: 50%;
   transform: translateX(-50%);
   width: min(420px, calc(100vw - 32px));
@@ -92,15 +92,24 @@
 .dp-ev-text i { color: #8fa4bd; font-style: normal; font-size: 10.5px; }
 .dp-empty { font-size: 11px; color: #6d8299; padding: 6px 0; }
 
-/* lencana peristiwa di HUD */
+/* lencana peristiwa — DI DALAM panel judul (dulu position:fixed dan
+   menimpa judul/toolbar; sekarang mengalir normal di bawah judul) */
 .event-badge {
-  position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
-  font-size: 11px; padding: 5px 12px; border-radius: 20px;
-  background: rgba(10, 14, 24, 0.85); color: #9fb4cc;
+  margin-top: 7px;
+  font-size: 11px; padding: 4px 10px; border-radius: 10px;
+  background: rgba(10, 14, 24, 0.55); color: #9fb4cc;
   border: 1px solid rgba(120, 160, 220, 0.2);
-  z-index: 55; pointer-events: none; white-space: nowrap;
+  display: inline-block; max-width: 100%;
+  white-space: normal; line-height: 1.35;
+  pointer-events: none;
 }
 .event-badge.aktif {
   background: rgba(255, 150, 40, 0.9); color: #1a1005;
   border-color: rgba(255, 200, 120, 0.9); font-weight: 700;
+}
+
+/* Di HP & layar sempit toolbar pindah ke bawah dan panel judul dipadatkan;
+   panel tanggal tidak perlu ruang toolbar di atas. */
+@media (max-width: 640px) {
+  .date-panel { top: 56px; max-height: calc(100vh - 150px); }
 }

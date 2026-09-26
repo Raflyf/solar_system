@@ -23,7 +23,7 @@ const ASSET_MANIFEST = {
   neptune:    { map: 'neptune.jpg' },
   milkyway:   { map: 'milkyway.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
-  phobos:     { map: 'phobos.png' },
+  phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },
   io:         { map: 'io.jpg' },
   europa:     { map: 'europa.jpg' },
@@ -75,58 +75,19 @@ function loadTexture(url, srgb, onDone) {
   });
 }
 
-/* --- GENERATOR TEKSTUR PROSEDURAL HD ---
-   Jika file gambar < 2048x1024, timpa dengan canvas prosedural HD.
-   Fungsi shade tersedia dari 00-textures.js (buildSurfaceTexture). */
-async function ensureHDTexture(key, slot, tex) {
-  if (!tex || !tex.image) return tex;
-  const img = tex.image;
-  if (img.width >= 2048 && img.height >= 1024) return tex; // sudah HD
-
-  console.log(`[HD] ${key}.${slot}: ${img.width}x${img.height} -> using fallback`);
-  try {
-    const shadeMap = {
-      mercury: shadeMercury,
-      venus: shadeVenus,
-      earth: shadeEarth,
-      moon: shadeMoon,
-      mars: shadeMars,
-      jupiter: shadeJupiter,
-      saturn: shadeSaturn,
-      uranus: shadeUranus,
-      neptune: shadeNeptune,
-      sun: shadeSun,
-      io: shadeMoon,
-      europa: shadeMoon,
-      ganymede: shadeMoon,
-      callisto: shadeMoon,
-      titan: shadeMoon,
-      rhea: shadeMoon,
-      iapetus: shadeMoon,
-      titania: shadeMoon,
-      triton: shadeMoon,
-      phobos: shadeMoon,
-      deimos: shadeMoon,
-    };
-    const shadeFn = shadeMap[key.toLowerCase()] || shadeMoon;
-    const canvas = buildSurfaceTexture({
-      w: 2048, h: 1024, seed: 42, period: 12, shade: shadeFn
-    }, key);
-    const hdTex = new THREE.CanvasTexture(canvas);
-    hdTex.encoding = THREE.sRGBEncoding;
-    hdTex.wrapS = THREE.RepeatWrapping;
-    hdTex.wrapT = THREE.ClampToEdgeWrapping;
-    hdTex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
-    hdTex.minFilter = THREE.LinearMipmapLinearFilter;
-    hdTex.magFilter = THREE.LinearFilter;
-    hdTex.generateMipmaps = true;
-    console.log(`[HD] ${key}.${slot}: HD texture generated ${hdTex.image.width}x${hdTex.image.height}`);
-    return hdTex;
-  } catch (e) {
-    console.warn('[HD] gagal generate HD texture', e);
-    return tex;
-  }
-}
+/* CATATAN PENTING — mengapa TIDAK ADA generator HD prosedural di sini:
+   ----------------------------------------------------------------------
+   Sebelumnya ada fungsi ensureHDTexture() yang mengganti setiap tekstur
+   beresolusi < 2048x1024 dengan tekstur PROSEDURAL buatan (shadeMoon dll).
+   Itu keliru dan sudah dihapus, karena:
+     1. Menghapus permukaan ASLI (Mars jadi abu-abu, Bumi kehilangan benua)
+        — terutama fatal di mode "Kualitas Ringan" (?q=lo) yang seluruh
+        asetnya < 2048x1024, sehingga SEMUA benda tertimpa tekstur palsu.
+     2. Membuat canvas 2 juta piksel x ~15 benda secara SEKUENSIAL di
+        thread utama -> layar pemuatan tersendat puluhan detik.
+   Prinsip sekarang: permukaan asli NASA/USGS SELALU dipertahankan apa
+   adanya. Kualitas visual dinaikkan lewat aset sumber resmi yang lebih
+   besar (lihat assets/hi/), bukan dengan mengarang permukaan. */
 
 async function loadAllAssets(onProgress) {
   const total = countAssets();
@@ -139,7 +100,9 @@ async function loadAllAssets(onProgress) {
     for (const slot in m) {
       const file = m[slot];
       if (!file) continue;
-      const srgb = true;   /* semua peta warna & cincin dalam ruang sRGB */
+      /* normal map menyimpan VEKTOR, bukan warna — wajib linear.
+         Peta warna & cincin dalam ruang sRGB. */
+      const srgb = (slot !== 'normal');
       jobs.push(
         loadTexture(ASSET_BASE + file, srgb, () => {
           done++;
@@ -151,16 +114,5 @@ async function loadAllAssets(onProgress) {
     }
   }
   await Promise.all(jobs);
-
-  /* Tingkatkan ke HD procedural untuk aset yang resolusinya < 2048x1024 */
-  console.log('[HD] Starting HD texture upgrade...');
-  for (const key in TEX) {
-    for (const slot in TEX[key]) {
-      if (TEX[key][slot]) {
-        TEX[key][slot] = await ensureHDTexture(key, slot, TEX[key][slot]);
-      }
-    }
-  }
-  console.log('[HD] HD texture upgrade completed');
   return TEX;
 }

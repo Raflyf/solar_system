@@ -32,7 +32,9 @@ function initControls(canvas) {
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') cameraState.boosting = true;
-    if (e.code === 'Escape') focusBody(null);
+    /* Esc menutup panel / melepas fokus; saat POV Bumi aktif, EARTHVIEW_UI
+       yang menangani Esc supaya tidak bentrok. */
+    if (e.code === 'Escape' && !(typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active)) focusBody(null);
     const handled = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
     if (handled.indexOf(e.code) >= 0) e.preventDefault();
   });
@@ -53,7 +55,13 @@ function initControls(canvas) {
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
     moved += Math.abs(dx) + Math.abs(dy);
-    if (cameraState.target) {
+    /* POV Bumi: putar pandangan dalam kerangka pengamat (azimut/elevasi),
+       bukan kerangka dunia — supaya horizon tetap mendatar. */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+      EARTH_VIEW.az -= dx * 0.0032;
+      /* "pegang langit": seret ke bawah = pandangan naik */
+      EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0032, -1.40, 1.5533);
+    } else if (cameraState.target) {
       cameraState.followYaw -= dx * 0.0040;
       cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.0040, -1.45, 1.45);
     } else {
@@ -65,6 +73,11 @@ function initControls(canvas) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const k = Math.exp(-e.deltaY * 0.0013);
+    /* POV Bumi: roda = zoom lensa (ubah fov), bukan ubah kecepatan */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+      EARTH_VIEW.fov = clampf(EARTH_VIEW.fov / k, 4, 100);
+      return;
+    }
     if (cameraState.target) {
       /* zoom manual mematikan auto-fit supaya pengguna punya kendali penuh */
       cameraState.followAutoFit = false;
@@ -93,6 +106,8 @@ function initControls(canvas) {
   /* klik = pilih benda (hanya jika tidak menyeret) */
   canvas.addEventListener('click', (e) => {
     if (moved > 6) return;
+    /* di mode POV Bumi, klik tidak memfokuskan benda lain */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) return;
     const rect = canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -125,7 +140,11 @@ function initControls(canvas) {
       const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += Math.abs(dx) + Math.abs(dy);
-      if (cameraState.target) {
+      if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+        /* POV Bumi: satu jari = lihat sekeliling (pegang langit) */
+        EARTH_VIEW.az -= dx * 0.0035;
+        EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0035, -1.40, 1.5533);
+      } else if (cameraState.target) {
         cameraState.followYaw -= dx * 0.006;
         cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.006, -1.45, 1.45);
       } else {
@@ -139,7 +158,10 @@ function initControls(canvas) {
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
       if (touchDist > 0) {
         const k = touchDist / d;
-        if (cameraState.target) {
+        if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+          /* POV Bumi: cubit melebar (k < 1) = fov mengecil = zoom masuk */
+          EARTH_VIEW.fov = clampf(EARTH_VIEW.fov * k, 4, 100);
+        } else if (cameraState.target) {
           cameraState.followDist = clampf(cameraState.followDist * k, 0.5, 1e7);
         } else {
           cameraState.baseSpeed = clampf(cameraState.baseSpeed / k, 2.0, 3000000);
@@ -191,6 +213,11 @@ function anyTransitionActive() {
 
 function focusBody(body) {
   const cs = cameraState;
+  /* Memilih benda lain saat POV Bumi aktif = keluar dari POV dulu */
+  if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active &&
+      typeof EARTHVIEW_UI !== 'undefined') {
+    EARTHVIEW_UI.exitPOV();
+  }
   if (!body) {
     cs.target = null;
     cs.followAutoFit = false;
@@ -318,6 +345,56 @@ function dirFromAngles(yaw, pitch) {
    dalam koordinat ABSOLUT, lalu dikonversi ke relatif saat dipakai. */
 function updateCamera(dt) {
   const cs = cameraState;
+
+  /* =====================================================================
+     POV BUMI — kamera berdiri di permukaan Bumi
+     ---------------------------------------------------------------------
+     BUG YANG DIPERBAIKI: sebelumnya EARTH_VIEW.enable() hanya menyalakan
+     bendera, tetapi TIDAK ADA satu baris pun di updateCamera() yang
+     membacanya — jadi menekan "Terapkan & Masuk POV" tidak menggerakkan
+     apa pun (keluhan: "pov bumi tidak berfungsi").
+
+     Sekarang: posisi kamera = titik pengamat nyata di permukaan (dihitung
+     dari lat/lon + GMST, sama seperti mesh Bumi), dan orientasi memakai
+     utara Bumi sebagai camera.up supaya langit tidak miring.
+     ===================================================================== */
+  if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+    const earth = findBody('earth');
+    const obs = EARTH_VIEW.computeObserver(app.days, earth);
+    if (obs) {
+      cs.target = null;
+      cs.transition = null;
+      cs.pos.copy(obs.pos);
+      cs.vel.set(0, 0, 0);
+
+      /* Selubung atmosfer Bumi memakai BackSide — dilihat dari dalam
+         (kamera di permukaan) ia akan menutupi SELURUH langit. Matikan
+         selama POV; dinyalakan kembali saat keluar. */
+      if (earth && earth.atmoMesh) earth.atmoMesh.visible = false;
+
+      rebaseOffset.copy(cs.pos);
+      camera.position.set(0, 0, 0);
+
+      /* arah pandang dari azimut/elevasi dalam kerangka pengamat ENU */
+      const fwd = EARTH_VIEW.viewDir(obs, _tmp);
+      camera.up.copy(obs.zenith);
+      camera.lookAt(fwd);
+
+    /* Pesawat dekat (near plane) harus sangat kecil di POV: kamera berdiri
+       50 m di atas permukaan, sedangkan near bawaan 0,0005 unit = 3,2 km —
+       permukaan dalam radius itu akan terpotong dan tampak "bolong".
+       Dengan logarithmicDepthBuffer, rasio near/far 1e-6 : 2e6 tetap presisi. */
+      const nearPov = 0.000002;
+      if (camera.near !== nearPov) { camera.near = nearPov; camera.updateProjectionMatrix(); }
+
+      /* zoom lensa khusus POV (roda mouse / pinch mengubah EARTH_VIEW.fov) */
+      if (Math.abs(camera.fov - EARTH_VIEW.fov) > 0.01) {
+        camera.fov = EARTH_VIEW.fov;
+        camera.updateProjectionMatrix();
+      }
+      return;
+    }
+  }
 
   if (cs.target) {
     const body = cs.target;

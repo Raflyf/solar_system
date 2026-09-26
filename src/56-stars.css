@@ -76,47 +76,56 @@
 }
 
 /* =======================================================================
-   TEMPORAL ACCURACY BADGE
+   TEMPORAL ACCURACY BADGE — sekarang DI DALAM panel tanggal
+   (dulu position:fixed di kanan atas dan menimpa panel info)
    ======================================================================= */
 .temporal-badge {
-  position: fixed;
-  top: 78px;
-  right: 18px;
-  z-index: 9;
-  max-width: min(350px, calc(100vw - 36px));
-  padding: 5px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  font: 10px/1.4 monospace;
-  pointer-events: none;
-  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  border: 1px solid rgba(140, 170, 220, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
 }
 
-.tb-line { white-space: normal; }
+.tb-line {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #9fb4cc;
+  white-space: normal;
+}
+.tb-line.tb-ok   { color: #7fd89a; }
+.tb-line.tb-warn { color: #e8c56a; }
+.tb-line.tb-bad  { color: #f08a7a; }
 
-@media (max-width: 900px) {
-  .temporal-badge {
-    top: 68px;
-    right: 10px;
-    max-width: min(280px, calc(100vw - 20px));
-    font-size: 9px;
-  }
-} 
-
-@media (max-width: 520px) {
-  .temporal-badge {
-    top: auto;
-    right: 8px;
-    bottom: 100px;
-    max-width: 48vw;
-    max-height: 56px;
-    overflow: hidden;
-    opacity: 0.78;
-  }
-  .tb-line:nth-child(n+2) { display: none; }
-} 
+/* =======================================================================
+   PANEL PENGAMAT (mode POV Bumi)
+   Ditempatkan di TENGAH-BAWAH (di atas bilah waktu) supaya tidak pernah
+   bertabrakan dengan panel info (kanan-atas) atau daftar benda (kiri-atas).
+   ======================================================================= */
+.observer-panel {
+  bottom: 96px; left: 50%; transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px 8px 12px;
+  font-size: 12px;
+  max-width: min(420px, calc(100vw - 36px));
+  z-index: 30;
+}
+.observer-panel.show { display: flex; }
+.obs-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: #55e08a;
+  box-shadow: 0 0 10px #55e08a;
+  animation: obsPulse 1.8s ease-in-out infinite;
+}
+@keyframes obsPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.82); }
+}
+.obs-text { flex: 1; color: #cfe0f4; letter-spacing: 0.2px; }
 
 /* keterangan langit */
 .sky-info {
@@ -131,6 +140,9 @@
   justify-content: space-between;
   gap: 8px;
   padding: 2px 0;
+  /* jangan meluber keluar panel: bungkus ke baris berikutnya */
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .sky-line b { color: #dfe8f4; font-weight: 600; }
-.sky-line span { color: #7fc4ff; font-variant-numeric: tabular-nums; }
+.sky-line span { color: #7fc4ff; font-variant-numeric: tabular-nums; white-space: nowrap; }

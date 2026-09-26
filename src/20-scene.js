@@ -644,7 +644,15 @@ function buildSky() {
   const t = TEX.milkyway || {};
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
-    mat = new THREE.MeshBasicMaterial({ map: t.map, side: THREE.BackSide, depthWrite: false, fog: false });
+    /* Langit Bima Sakti harus TERLIHAT, bukan sekadar ada: tekstur citra
+       nyata sangat gelap (pita galaksi rata-rata < 45/255) dan tone mapping
+       ACES meredupkannya lagi. toneMapped=false + pengali 1.9 menampilkan
+       pita kabut seperti dilihat mata, tanpa mencuci bintang katalog. */
+    mat = new THREE.MeshBasicMaterial({
+      map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
+      toneMapped: false,
+    });
+    mat.color.setRGB(1.9, 1.9, 1.9);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
@@ -652,6 +660,45 @@ function buildSky() {
   skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 64, 48), mat);
   skyMesh.frustumCulled = false;
   skyMesh.renderOrder = -200;
+  /* Kalibrasi orientasi langit — DIUKUR empiris dari citra vs data nyata
+     (tools: analisis kurva puncak kecerahan tekstur):
+       • Kurva puncak kecerahan tekstur berimpit pita galaksi dengan
+         median |b_gal| = 4,7° (tafsir ekuator memberi 35° — jelas salah).
+       • Titik paling terang ada di u = 0,498 ≈ pusat galaksi (l = 0).
+     Jadi tekstur milkyway.jpg adalah peta GALAKTIK:
+         u = 0,5 + l/360 (mod 1)  ·  v = 0,5 − b/180
+     Konversi ke kerangka scene (ekliptika J2000, SAMA dengan bintang &
+     planet): galaktik → ekuator J2000 (matriks IAU) → eqVecToScene().
+     Kuaternion bola dipasang dari tiga vektor basis:
+       bola (u=.5,v=.5) → pusat galaksi ; bola (v=0) → kutub galaksi ;
+       bola (u=.25,v=.5) → cross keduanya.
+     Tanpa kalibrasi ini pita Bima Sakti meleset jauh dari posisi bintang
+     dan planet yang sebenarnya. */
+  {
+    /* Matriks galaktik -> ekuator J2000 = transpose matriks ekuator->galaktik
+       (IAU 1958 / Hipparcos vol. 1, sec. 2.5.3). VERIFIKASI: baris pertama
+       M^T·(1,0,0) memberi RA 266,4° Dec −28,9° = pusat galaksi yang benar;
+       M^T·(0,0,1) memberi RA 192,9° Dec +27,1° = kutub galaksi utara.
+       (Catatan: memakai matriks ekuator->galaktik secara langsung — tanpa
+       transpose — menggeser orientasi langit ~90°, jadi urutan indeks di
+       bawah ini penting.) */
+    const Mge = [
+      [-0.0548755604,  0.4941094279, -0.8676661490],
+      [-0.8734370902, -0.4448296300, -0.1980763734],
+      [-0.4838350155,  0.7469822445,  0.4559837762],
+    ];
+    const galToScene = (xg, yg, zg) => {
+      const xe = Mge[0][0] * xg + Mge[0][1] * yg + Mge[0][2] * zg;
+      const ye = Mge[1][0] * xg + Mge[1][1] * yg + Mge[1][2] * zg;
+      const ze = Mge[2][0] * xg + Mge[2][1] * yg + Mge[2][2] * zg;
+      const p = eqVecToScene(xe, ye, ze, 1);
+      return new THREE.Vector3(p.x, p.y, p.z);
+    };
+    const ax = galToScene(1, 0, 0);      /* pusat galaksi  (l=0°, b=0°)  */
+    const ay = galToScene(0, 0, 1);      /* kutub galaksi  (b=+90°)      */
+    const az = new THREE.Vector3().crossVectors(ax, ay);
+    skyMesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, ay, az));
+  }
   scene.add(skyMesh);
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
 }
