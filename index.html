@@ -49,6 +49,9 @@ html, body {
   backdrop-filter: blur(14px) saturate(1.3);
   -webkit-backdrop-filter: blur(14px) saturate(1.3);
   box-shadow: var(--shadow);
+  /* Panel UI SELALU di atas label 3D (label punya z-index 1).
+     Tanpa ini, label benda (mis. "Mars") tercetak menembus panel info. */
+  z-index: 5;
 }
 
 /* ---------------- judul ---------------- */
@@ -82,7 +85,18 @@ html, body {
 .top-buttons {
   top: 18px; right: 18px;
   display: flex; gap: 8px; padding: 10px;
+  /* Toolbar TIDAK BOLEH membungkus (wrap) — kalau membungkus, tombolnya
+     menimpa panel di bawahnya (keluhan "UI bertumpuk"). Kalau ruang kurang,
+     toolbar digeser horizontal, bukan turun baris. */
+  flex-wrap: nowrap;
+  max-width: calc(100vw - 36px);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
+.top-buttons::-webkit-scrollbar { display: none; }
+.top-buttons .btn { flex: 0 0 auto; }
+.top-buttons .btn .bi { margin-right: 7px; }
 
 /* ---------------- daftar benda ---------------- */
 .sidebar {
@@ -206,7 +220,7 @@ kbd {
 .mini:hover { color: var(--text); background: rgba(140,170,220,.14); }
 
 /* ---------------- label melayang ---------------- */
-#labelLayer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+#labelLayer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
 .flabel {
   position: absolute; transform: translate(-50%, -50%);
   font-size: 11.5px; letter-spacing: .5px; white-space: nowrap;
@@ -220,12 +234,15 @@ kbd {
 .flabel.moon { font-size: 10.5px; color: #b9c8e2; }
 .flabel.small { opacity: .75; }
 
-/* ---------------- HUD sudut ---------------- */
+/* ---------------- HUD sudut ----------------
+   Dulu di kanan-atas dan bisa tertimpa panel info; sekarang di kanan-bawah
+   (di bawah bilah waktu pada layar sempit HUD disembunyikan). */
 .hud-corner {
-  position: absolute; top: 78px; right: 20px;
+  position: absolute; bottom: 18px; right: 20px;
   font-size: 11px; color: var(--muted); letter-spacing: .6px;
   text-align: right; text-shadow: 0 1px 4px #000;
   pointer-events: none;
+  max-width: 30vw;
 }
 
 /* ---------------- pemuat ---------------- */
@@ -253,136 +270,210 @@ kbd {
 .loader-pct { font-size: 12px; color: var(--accent); font-weight: 700; letter-spacing: 1px; }
 .loader-hint { font-size: 11px; color: #6d7f9c; margin-top: 18px; line-height: 1.5; }
 
-/* ---------------- responsif ---------------- */
-@media (max-width: 900px) {
-  .sidebar { display: none; }
-  .title-panel { padding: 9px 13px; }
-  .title-main { font-size: 15px; letter-spacing: 2.5px; }
-  .title-sub { display: none; }
-  .top-buttons { top: 14px; right: 14px; padding: 7px; }
-  .btn { padding: 8px 11px; font-size: 12px; }
-  #btnLabels { display: none; }
-  .info-panel { top: auto; bottom: 118px; right: 12px; left: 12px; width: auto; }
-  .timebar { bottom: 12px; padding: 9px 11px; }
-  .hud-corner { display: none; }
+/* =======================================================================
+   RESPONSIF — semua perangkat
+   ----------------------------------------------------------------------
+   Prinsip:
+     • Panel yang saling menimpa DILARANG: setiap elemen punya "band"
+       vertikal sendiri (atas / tengah / bawah).
+     • Target sentuh minimal 44x44 px (pedoman WCAG / Apple HIG).
+     • Toolbar TIDAK membungkus (wrap) di desktop — kalau tidak, tombolnya
+       menimpa panel di bawahnya seperti pada laporan pengguna.
+     • Di HP, toolbar jadi satu baris ikon (label disembunyikan), panel
+       info jadi bottom-sheet, dan bilah waktu tetap di bawah.
+   ======================================================================= */
+
+/* --- tablet & layar sedang --- */
+@media (max-width: 1180px) {
+  .top-buttons { gap: 6px; padding: 8px; }
+  .btn { padding: 8px 10px; font-size: 12px; }
+  .sidebar { width: 208px; }
+  .info-panel { width: 268px; }
 }
 
-@media (max-width: 520px) {
-  .top-buttons {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 6px;
-    padding: 6px 8px;
-    top: auto;
-    bottom: 170px;
-    left: 50%;
-    transform: translateX(-50%);
-    right: auto;
-    background: rgba(12, 17, 28, 0.85);
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    box-shadow: var(--shadow);
+@media (max-width: 980px) {
+  .title-sub { display: none; }
+  .title-panel { padding: 9px 13px; }
+  .title-main { font-size: 15px; letter-spacing: 2.5px; }
+  /* daftar benda jadi laci: disembunyikan, bisa dibuka lewat tombol */
+  .sidebar {
+    width: 240px;
+    transform: translateX(-260px);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+    top: 92px;
+    max-height: calc(100vh - 260px);
+  }
+  .sidebar.open {
+    transform: none; opacity: 1; pointer-events: auto;
+  }
+  /* Badge peristiwa jangan menutupi panel di bawah di layar pendek */
+  .title-panel .event-badge { display: none; }
+  .info-panel { width: 260px; }
+  .hud-corner { display: none; }
+  /* label 3D di bawah panel supaya tidak menembus */
+  #labelLayer { z-index: 1; }
+  /* Bilah waktu ikut disesuaikan: left/right penuh, transform dimatikan
+     (kalau tidak, translateX(-50%) menggeser bilah keluar layar). */
+  .timebar {
+    left: 12px; right: 12px;
     width: auto;
-    max-width: calc(100vw - 16px);
+    transform: none;
   }
-  .top-buttons .btn {
-    padding: 10px 12px;
-    font-size: 13px;
-    min-height: 44px;
-    min-width: 44px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-  .top-buttons .btn span {
-    display: none;
-  }
-  .top-buttons .btn:only-child::after,
-  .top-buttons .btn:first-child::after,
-  .top-buttons .btn:last-child::after {
-    content: attr(title);
-    font-size: 10px;
-    display: block;
-    margin-top: -2px;
-  }
+}
+
+/* --- HP: satu kolom, toolbar ikon, panel jadi lembar bawah --- */
+@media (max-width: 640px) {
   .title-panel {
-    top: 12px; left: 12px; right: 12px;
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    left: 10px; right: 10px;
     padding: 8px 12px;
     text-align: center;
   }
   .title-main { font-size: 14px; letter-spacing: 2px; }
-  .sidebar { display: none; }
-  .info-panel {
-    top: auto; bottom: 12px; left: 12px; right: 12px;
-    max-height: 220px; overflow-y: auto;
+
+  /* toolbar: satu baris ikon yang bisa digeser horizontal bila sempit */
+  .top-buttons {
+    top: auto;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 112px);
+    left: calc(env(safe-area-inset-left, 0px) + 10px);
+    right: calc(env(safe-area-inset-right, 0px) + 10px);
+    display: flex;
+    flex-wrap: nowrap;
+    justify-content: center;
+    gap: 8px;
+    padding: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
-  .timebar {
-    bottom: 12px; left: 12px; right: 12px;
-    padding: 10px 12px;
-    border-radius: 12px;
-  }
-  .time-row { gap: 8px; }
-  .time-speed { font-size: 11px; }
-  #speedSlider { max-width: 180px; }
-  .time-date {
-    flex-wrap: wrap;
-    gap: 6px;
+  .top-buttons::-webkit-scrollbar { display: none; }
+  .top-buttons .btn {
+    flex: 0 0 auto;
+    min-width: 48px;
+    min-height: 48px;
+    padding: 8px;
+    display: inline-flex;
+    align-items: center;
     justify-content: center;
   }
-  #tzSelect { min-width: 140px; font-size: 12px; padding: 4px 8px; }
-  .dateLabel { font-size: 12px; }
-  .btnNow { min-height: 44px; min-width: 44px; padding: 10px; }
-  .info-panel .info-actions {
-    display: flex; gap: 6px; flex-wrap: wrap;
+  .top-buttons .btn .bt { display: none; }      /* hanya ikon */
+  .top-buttons .btn .bi { font-size: 18px; line-height: 1; margin-right: 0; }
+
+  /* panel info: lembar bawah penuh lebar */
+  .info-panel {
+    top: auto;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 112px);
+    left: 10px; right: 10px;
+    width: auto;
+    max-height: 46vh;
+    overflow-y: auto;
+    padding: 12px 14px 11px;
+    z-index: 25;
   }
+  .info-panel.show { animation: popIn .24s cubic-bezier(.2,.9,.3,1); }
+  .info-name { font-size: 17px; }
+  .info-table { font-size: 12px; }
+  .info-panel .info-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .info-panel .btn.small {
-    flex: 1 1 auto; min-width: 90px;
-    min-height: 40px; padding: 8px 10px;
-    font-size: 12px;
+    flex: 1 1 auto; min-width: 88px; min-height: 42px;
+    padding: 8px 10px; font-size: 12px;
   }
+
+  /* bilah waktu: bawah, aman dari notch DAN home indicator (safe area) */
+  .timebar {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 10px);
+    left: calc(env(safe-area-inset-left, 0px) + 10px);
+    right: calc(env(safe-area-inset-right, 0px) + 10px);
+    width: auto;
+    /* jangan pakai transform translateX(-50%) dari aturan dasar — kalau
+       left/right sudah 10px, transform itu menggeser bilah keluar layar
+       (terbukti di uji viewport 390px: meluber 175 px ke kiri). */
+    transform: none;
+    margin: 0;
+    padding: 9px 11px;
+    gap: 9px;
+    border-radius: 12px;
+    z-index: 26;
+  }
+  /* beri ruang home indicator: panel waktu naik sedikit bila perlu */
+  #tzSelect { margin-bottom: env(safe-area-inset-bottom, 0px); }
+  .time-label { font-size: 9.5px; letter-spacing: 1px; }
+  .time-speed { font-size: 11px; }
+  .time-date { flex-wrap: wrap; gap: 6px; justify-content: center; }
+  #tzSelect { min-width: 130px; font-size: 12px; padding: 5px 7px; }
+  .btn.icon, #btnPause, #btnNow {
+    min-height: 42px; min-width: 42px; padding: 9px;
+  }
+
+  /* tombol lipat daftar: target sentuh 44 px (WCAG) */
+  #btnSidebar {
+    min-width: 44px; min-height: 44px;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 16px;
+  }
+
+  /* toolbar: tombol ikon sedikit lebih lega supaya tidak rapat tepi */
+  .top-buttons { padding: 6px 10px; }
+
+  /* badge peristiwa: sudah di dalam panel judul — tinggal dirapikan */
   .event-badge {
-    top: 12px; right: 12px; left: 12px;
-    font-size: 11px; padding: 6px 10px;
+    font-size: 10.5px; padding: 4px 9px;
+    text-align: left;
   }
-  .event-badge::before {
-    content: '📍 ';
-  }
-  .temporal-badge {
-    top: auto; right: 8px; bottom: 100px;
-    max-width: 48vw;
-    max-height: 56px;
-    overflow: hidden;
-    opacity: 0.78;
-  }
-  .tb-line:nth-child(n+2) { display: none; }
+
+  /* panel bantuan & modal POV */
   .help-panel {
-    top: 60px; left: 12px; right: 12px;
-    max-height: 60vh; overflow-y: auto;
+    top: 56px; left: 10px; right: 10px;
+    max-height: 70vh; overflow-y: auto;
+    transform: none;
+    z-index: 60;
   }
+  .help-panel.show { animation: popIn .2s ease; }
   .help-table { font-size: 12px; }
-  .help-table td { padding: 6px 10px; }
+  .help-table td { padding: 6px 8px; }
   .earthview-modal {
-    width: calc(100vw - 24px);
-    max-width: 320px;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    padding: 12px;
-    border-radius: 10px;
+    width: calc(100vw - 20px);
+    max-width: 340px;
+    max-height: 82vh;
+    overflow-y: auto;
+    padding: 13px;
+    z-index: 70;
   }
   .evm-input { width: 100%; font-size: 14px; padding: 8px 10px; }
+  .evm-btns { flex-direction: column; }
   .evm-btns button { min-height: 44px; }
-  .evm-hint { font-size: 10px; }
-  .hud-corner { display: none; }
+
+  /* panel pengamat (POV Bumi) — di bawah judul, penuh lebar */
+  .observer-panel {
+    top: 56px; left: 10px; right: 10px;
+    bottom: auto;
+    transform: none;
+    max-width: none;
+  }
 }
 
-@media (max-height: 760px) {
+/* --- layar sangat pendek (HP landscape): rapatkan --- */
+@media (max-height: 560px) {
+  .title-panel { display: none; }
+  .top-buttons { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+  .info-panel { max-height: 40vh; bottom: calc(env(safe-area-inset-bottom, 0px) + 96px); }
+  .event-badge { top: 8px; }
+}
+
+/* --- desktop pendek: panel atas/bawah disesuaikan --- */
+@media (max-height: 760px) and (min-width: 641px) {
   .title-sub { display: none; }
+  /* Badge peristiwa disembunyikan di layar pendek: tanpa ini panel judul
+     lebih tinggi dari slot yang tersedia dan badge "Purnama" terpotong
+     oleh panel Jelajahi di bawahnya (terlihat di uji screenshot). */
+  .title-panel .event-badge { display: none; }
   .title-panel { padding: 9px 14px 8px; }
   .title-main { font-size: 16px; }
-  .sidebar { top: 78px; max-height: calc(100vh - 180px); }
-  .info-panel { top: 78px; }
+  .sidebar { top: 74px; max-height: calc(100vh - 170px); }
+  .info-panel { top: 74px; max-height: calc(100vh - 190px); overflow-y: auto; }
 }
 
 /* =======================================================================
@@ -390,7 +481,7 @@ kbd {
    ======================================================================= */
 .date-panel {
   position: fixed;
-  top: 64px;
+  top: 86px;             /* di bawah toolbar (toolbar berakhir ≈ 78 px) */
   left: 50%;
   transform: translateX(-50%);
   width: min(420px, calc(100vw - 32px));
@@ -479,17 +570,26 @@ kbd {
 .dp-ev-text i { color: #8fa4bd; font-style: normal; font-size: 10.5px; }
 .dp-empty { font-size: 11px; color: #6d8299; padding: 6px 0; }
 
-/* lencana peristiwa di HUD */
+/* lencana peristiwa — DI DALAM panel judul (dulu position:fixed dan
+   menimpa judul/toolbar; sekarang mengalir normal di bawah judul) */
 .event-badge {
-  position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
-  font-size: 11px; padding: 5px 12px; border-radius: 20px;
-  background: rgba(10, 14, 24, 0.85); color: #9fb4cc;
+  margin-top: 7px;
+  font-size: 11px; padding: 4px 10px; border-radius: 10px;
+  background: rgba(10, 14, 24, 0.55); color: #9fb4cc;
   border: 1px solid rgba(120, 160, 220, 0.2);
-  z-index: 55; pointer-events: none; white-space: nowrap;
+  display: inline-block; max-width: 100%;
+  white-space: normal; line-height: 1.35;
+  pointer-events: none;
 }
 .event-badge.aktif {
   background: rgba(255, 150, 40, 0.9); color: #1a1005;
   border-color: rgba(255, 200, 120, 0.9); font-weight: 700;
+}
+
+/* Di HP & layar sempit toolbar pindah ke bawah dan panel judul dipadatkan;
+   panel tanggal tidak perlu ruang toolbar di atas. */
+@media (max-width: 640px) {
+  .date-panel { top: 56px; max-height: calc(100vh - 150px); }
 }
 
 /* =======================================================================
@@ -570,47 +670,56 @@ kbd {
 }
 
 /* =======================================================================
-   TEMPORAL ACCURACY BADGE
+   TEMPORAL ACCURACY BADGE — sekarang DI DALAM panel tanggal
+   (dulu position:fixed di kanan atas dan menimpa panel info)
    ======================================================================= */
 .temporal-badge {
-  position: fixed;
-  top: 78px;
-  right: 18px;
-  z-index: 9;
-  max-width: min(350px, calc(100vw - 36px));
-  padding: 5px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.8);
-  color: #fff;
-  font: 10px/1.4 monospace;
-  pointer-events: none;
-  overflow-wrap: anywhere;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 7px 9px;
+  border: 1px solid rgba(140, 170, 220, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
 }
 
-.tb-line { white-space: normal; }
+.tb-line {
+  font-size: 10.5px;
+  line-height: 1.45;
+  color: #9fb4cc;
+  white-space: normal;
+}
+.tb-line.tb-ok   { color: #7fd89a; }
+.tb-line.tb-warn { color: #e8c56a; }
+.tb-line.tb-bad  { color: #f08a7a; }
 
-@media (max-width: 900px) {
-  .temporal-badge {
-    top: 68px;
-    right: 10px;
-    max-width: min(280px, calc(100vw - 20px));
-    font-size: 9px;
-  }
-} 
-
-@media (max-width: 520px) {
-  .temporal-badge {
-    top: auto;
-    right: 8px;
-    bottom: 100px;
-    max-width: 48vw;
-    max-height: 56px;
-    overflow: hidden;
-    opacity: 0.78;
-  }
-  .tb-line:nth-child(n+2) { display: none; }
-} 
+/* =======================================================================
+   PANEL PENGAMAT (mode POV Bumi)
+   Ditempatkan di TENGAH-BAWAH (di atas bilah waktu) supaya tidak pernah
+   bertabrakan dengan panel info (kanan-atas) atau daftar benda (kiri-atas).
+   ======================================================================= */
+.observer-panel {
+  bottom: 96px; left: 50%; transform: translateX(-50%);
+  display: none;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px 8px 12px;
+  font-size: 12px;
+  max-width: min(420px, calc(100vw - 36px));
+  z-index: 30;
+}
+.observer-panel.show { display: flex; }
+.obs-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  background: #55e08a;
+  box-shadow: 0 0 10px #55e08a;
+  animation: obsPulse 1.8s ease-in-out infinite;
+}
+@keyframes obsPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.55; transform: scale(0.82); }
+}
+.obs-text { flex: 1; color: #cfe0f4; letter-spacing: 0.2px; }
 
 /* keterangan langit */
 .sky-info {
@@ -625,9 +734,12 @@ kbd {
   justify-content: space-between;
   gap: 8px;
   padding: 2px 0;
+  /* jangan meluber keluar panel: bungkus ke baris berikutnya */
+  flex-wrap: wrap;
+  min-width: 0;
 }
 .sky-line b { color: #dfe8f4; font-weight: 600; }
-.sky-line span { color: #7fc4ff; font-variant-numeric: tabular-nums; }
+.sky-line span { color: #7fc4ff; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* =======================================================================
    EARTHVIEW MODAL CSS
@@ -711,23 +823,21 @@ kbd {
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
       <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
+      <!-- Lencana peristiwa langit — DI DALAM panel judul supaya tidak
+           pernah bertabrakan dengan toolbar atau panel lain -->
+      <div class="event-badge" id="eventBadge">—</div>
     </div>
 
     <!-- Tombol kanan atas -->
     <div class="panel top-buttons" id="topButtons">
-      <button class="btn primary" id="btnDate" title="Pilih tanggal & lihat peristiwa langit (T)">📅 Tanggal</button>
-      <button class="btn" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
-      <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
-      <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
-      <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
-      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi (E)">🌍 POV Bumi</button>
+      <button class="btn" id="btnDrawer" title="Daftar benda langit"><span class="bi">☰</span><span class="bt">Daftar</span></button>
+      <button class="btn primary" id="btnDate" title="Pilih tanggal & lihat peristiwa langit (T)"><span class="bi">📅</span><span class="bt">Tanggal</span></button>
+      <button class="btn" id="btnTour" title="Tur otomatis mengelilingi tata surya"><span class="bi">▶</span><span class="bt">Tur Terpandu</span></button>
+      <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)"><span class="bi">🏷</span><span class="bt">Label</span></button>
+      <button class="btn" id="btnQuality" title="Ubah kualitas tekstur"><span class="bi">◈</span><span class="bt">Kualitas</span></button>
+      <button class="btn" id="btnHelp" title="Daftar kontrol (H)"><span class="bi">?</span><span class="bt">Bantuan</span></button>
+      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi"><span class="bi">🌍</span><span class="bt">POV Bumi</span></button>
     </div>
-
-    <!-- Lencana peristiwa langit -->
-    <div class="event-badge" id="eventBadge">—</div>
-
-    <!-- Badge Validitas Waktu -->
-    <div class="temporal-badge" id="temporalBadge" style="display:none"></div>
 
     <!-- Daftar benda -->
     <div class="panel sidebar" id="sidebar">
@@ -744,6 +854,7 @@ kbd {
           <label class="chk"><input type="checkbox" id="chkConst" checked> Garis rasi bintang</label>
           <label class="chk"><input type="checkbox" id="chkStarNames"> Nama bintang &amp; galaksi</label>
         </div>
+        <div class="sky-info" id="skyInfo"></div>
       </div>
     </div>
 
@@ -791,6 +902,13 @@ kbd {
         </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
+    </div>
+
+    <!-- Panel status pengamat (mode POV Bumi) -->
+    <div class="panel observer-panel" id="observerPanel">
+      <span class="obs-dot"></span>
+      <span class="obs-text" id="observerText">Pengamat: —</span>
+      <button class="mini" id="btnObsExit" title="Keluar dari POV Bumi">✕</button>
     </div>
 
     <!-- Modal POV Bumi -->
@@ -1407,7 +1525,7 @@ const ASSET_MANIFEST = {
   neptune:    { map: 'neptune.jpg' },
   milkyway:   { map: 'milkyway.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
-  phobos:     { map: 'phobos.png' },
+  phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },
   io:         { map: 'io.jpg' },
   europa:     { map: 'europa.jpg' },
@@ -1459,58 +1577,19 @@ function loadTexture(url, srgb, onDone) {
   });
 }
 
-/* --- GENERATOR TEKSTUR PROSEDURAL HD ---
-   Jika file gambar < 2048x1024, timpa dengan canvas prosedural HD.
-   Fungsi shade tersedia dari 00-textures.js (buildSurfaceTexture). */
-async function ensureHDTexture(key, slot, tex) {
-  if (!tex || !tex.image) return tex;
-  const img = tex.image;
-  if (img.width >= 2048 && img.height >= 1024) return tex; // sudah HD
-
-  console.log(`[HD] ${key}.${slot}: ${img.width}x${img.height} -> using fallback`);
-  try {
-    const shadeMap = {
-      mercury: shadeMercury,
-      venus: shadeVenus,
-      earth: shadeEarth,
-      moon: shadeMoon,
-      mars: shadeMars,
-      jupiter: shadeJupiter,
-      saturn: shadeSaturn,
-      uranus: shadeUranus,
-      neptune: shadeNeptune,
-      sun: shadeSun,
-      io: shadeMoon,
-      europa: shadeMoon,
-      ganymede: shadeMoon,
-      callisto: shadeMoon,
-      titan: shadeMoon,
-      rhea: shadeMoon,
-      iapetus: shadeMoon,
-      titania: shadeMoon,
-      triton: shadeMoon,
-      phobos: shadeMoon,
-      deimos: shadeMoon,
-    };
-    const shadeFn = shadeMap[key.toLowerCase()] || shadeMoon;
-    const canvas = buildSurfaceTexture({
-      w: 2048, h: 1024, seed: 42, period: 12, shade: shadeFn
-    }, key);
-    const hdTex = new THREE.CanvasTexture(canvas);
-    hdTex.encoding = THREE.sRGBEncoding;
-    hdTex.wrapS = THREE.RepeatWrapping;
-    hdTex.wrapT = THREE.ClampToEdgeWrapping;
-    hdTex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
-    hdTex.minFilter = THREE.LinearMipmapLinearFilter;
-    hdTex.magFilter = THREE.LinearFilter;
-    hdTex.generateMipmaps = true;
-    console.log(`[HD] ${key}.${slot}: HD texture generated ${hdTex.image.width}x${hdTex.image.height}`);
-    return hdTex;
-  } catch (e) {
-    console.warn('[HD] gagal generate HD texture', e);
-    return tex;
-  }
-}
+/* CATATAN PENTING — mengapa TIDAK ADA generator HD prosedural di sini:
+   ----------------------------------------------------------------------
+   Sebelumnya ada fungsi ensureHDTexture() yang mengganti setiap tekstur
+   beresolusi < 2048x1024 dengan tekstur PROSEDURAL buatan (shadeMoon dll).
+   Itu keliru dan sudah dihapus, karena:
+     1. Menghapus permukaan ASLI (Mars jadi abu-abu, Bumi kehilangan benua)
+        — terutama fatal di mode "Kualitas Ringan" (?q=lo) yang seluruh
+        asetnya < 2048x1024, sehingga SEMUA benda tertimpa tekstur palsu.
+     2. Membuat canvas 2 juta piksel x ~15 benda secara SEKUENSIAL di
+        thread utama -> layar pemuatan tersendat puluhan detik.
+   Prinsip sekarang: permukaan asli NASA/USGS SELALU dipertahankan apa
+   adanya. Kualitas visual dinaikkan lewat aset sumber resmi yang lebih
+   besar (lihat assets/hi/), bukan dengan mengarang permukaan. */
 
 async function loadAllAssets(onProgress) {
   const total = countAssets();
@@ -1523,7 +1602,9 @@ async function loadAllAssets(onProgress) {
     for (const slot in m) {
       const file = m[slot];
       if (!file) continue;
-      const srgb = true;   /* semua peta warna & cincin dalam ruang sRGB */
+      /* normal map menyimpan VEKTOR, bukan warna — wajib linear.
+         Peta warna & cincin dalam ruang sRGB. */
+      const srgb = (slot !== 'normal');
       jobs.push(
         loadTexture(ASSET_BASE + file, srgb, () => {
           done++;
@@ -1535,17 +1616,6 @@ async function loadAllAssets(onProgress) {
     }
   }
   await Promise.all(jobs);
-
-  /* Tingkatkan ke HD procedural untuk aset yang resolusinya < 2048x1024 */
-  console.log('[HD] Starting HD texture upgrade...');
-  for (const key in TEX) {
-    for (const slot in TEX[key]) {
-      if (TEX[key][slot]) {
-        TEX[key][slot] = await ensureHDTexture(key, slot, TEX[key][slot]);
-      }
-    }
-  }
-  console.log('[HD] HD texture upgrade completed');
   return TEX;
 }
 
@@ -3384,145 +3454,172 @@ const SATELLITE_ELEMENTS = {
 <script>
 "use strict";
 /* =======================================================================
-   POV BUMI — Melihat langit dari permukaan Bumi
+   POV BUMI — Melihat langit dari permukaan Bumi (benar-benar diterapkan)
    ----------------------------------------------------------------------
-   Mode ini menempatkan kamera di permukaan Bumi pada lintang/bujur
-   tertentu, dengan orientasi ke zenith. Semua posisi benda langit
-   dikonversi dari RA/Dec → Azimuth/Elevasi untuk pengamat.
+   Cara kerja:
+     1. Titik pengamat dihitung dari lat/lon + rotasi Bumi yang SAMA dengan
+        yang dipakai mesh Bumi (GMST), jadi titik itu menempel pada tempat
+        yang benar di permukaan — bukan sekadar "di dekat Bumi".
+     2. Kerangka lokal pengamat (ENU — East/North/Up):
+          zenith = radial keluar dari pusat Bumi (Up)
+          north  = proyeksi kutub utara Bumi ke bidang horizontal lokal
+          east   = north × zenith (aturan tangan kanan ENU)
+        Kamera menghadap azimut `az` (0 = utara, + = timur) dan elevasi
+        `el` (0 = horizon, + = ke atas), dengan camera.up = zenith supaya
+        horizon selalu mendatar.
+     3. Kamera (floating origin) ditempatkan di titik itu; seluruh tata
+        surya + bola langit digeser relatif terhadapnya — sama seperti mode
+        lain, sehingga tidak ada masalah presisi float32.
 
-   Referensi: Meeus "Astronomical Algorithms" bab 12-13 (koordinat
-   horizon), IAU SOFA untuk GMST/LST.
+   KONVENSI TEKSTUR BUMI (terverifikasi dari citra earth_day.jpg):
+     U = 0,5  → bujur 0° (Greenwich)      [bukan 180°]
+     U = 0    → 180° B ; U = 1 → 180° T
+   Three.js SphereGeometry: titik lokal (sebelum rotasi harian) untuk
+   lintang φ dan bujur λ adalah
+     x = cos φ · cos λ ,  y = sin φ ,  z = −cos φ · sin λ
+   Rotasi harian mesh = R_y(GMST) sehingga bujur yang menghadap +X berubah
+   mengikuti waktu — inilah yang membuat pengamat "terbawa" rotasi Bumi.
 
-   Kota-kota Indonesia:
-   - Jakarta: -6.2, 106.8
-   - Surabaya: -7.25, 112.75
-   - Medan: 3.59, 98.67
-   - Makassar: -5.14, 119.42
-   - Denpasar: -8.67, 115.21
-   - Jayapura: -2.53, 140.72
+   Referensi: Meeus bab 12–13 (koordinat horizon), IAU SOFA (GMST),
+   IAU WGCCRE 2015 (orientasi poros Bumi).
    ======================================================================= */
 
 const EARTH_VIEW = {
   active: false,
-  lat: -6.2,      // derajat (negatif = selatan)
-  lon: 106.8,     // derajat (positif = timur)
-  elev: 50,       // meter di atas permukaan laut
+  lat: -6.2,      /* derajat (negatif = selatan) */
+  lon: 106.8,     /* derajat (positif = timur) */
+  elev: 50,       /* meter di atas permukaan laut */
   city: 'Jakarta',
+  az: 0,          /* azimut pandang (radian, 0 = utara, + = timur) */
+  el: 0.30,       /* elevasi pandang (radian, dari horizon) */
+  fov: 50,        /* zoom lensa khusus POV (derajat) */
 
   cities: {
-    'Jakarta': { lat: -6.2, lon: 106.8 },
-    'Surabaya': { lat: -7.25, lon: 112.75 },
-    'Medan': { lat: 3.59, lon: 98.67 },
-    'Makassar': { lat: -5.14, lon: 119.42 },
-    'Denpasar': { lat: -8.67, lon: 115.21 },
-    'Jayapura': { lat: -2.53, lon: 140.72 },
+    'Jakarta':    { lat: -6.20, lon: 106.80 },
+    'Surabaya':   { lat: -7.25, lon: 112.75 },
+    'Medan':      { lat:  3.59, lon:  98.67 },
+    'Makassar':   { lat: -5.14, lon: 119.42 },
+    'Denpasar':   { lat: -8.67, lon: 115.21 },
+    'Jayapura':   { lat: -2.53, lon: 140.72 },
     'Yogyakarta': { lat: -7.79, lon: 110.36 },
-    'Bandung': { lat: -6.91, lon: 107.6 },
+    'Bandung':    { lat: -6.91, lon: 107.60 },
+    'Pontianak':  { lat: -0.02, lon: 109.34 },
+    'Balikpapan': { lat: -1.27, lon: 116.83 },
   },
 
-  /* Aktifkan mode POV Bumi */
-  enable(lat, lon, cityName) {
-    if (lat !== undefined) this.lat = lat;
-    if (lon !== undefined) this.lon = lon;
+  /* Sudut rotasi Bumi (GMST) dalam RADIAN pada JD tertentu.
+     Harus identik dengan b._spinAngle yang dipakai mesh Bumi. */
+  gmstRad(jd) {
+    const gmstDeg = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360 + 360) % 360;
+    return gmstDeg * DEG;
+  },
+
+  /* Vektor kutub utara Bumi dalam kerangka scene (dari tabel IAU). */
+  poleVec(out) {
+    out = out || new THREE.Vector3();
+    const p = poleVectorScene(0, 90);   /* Bumi: RA 0°, Dec +90° */
+    out.set(p.x, p.y, p.z).normalize();
+    return out;
+  },
+
+  /* Titik pengamat pada permukaan Bumi.
+     days   : hari simulasi sejak J2000
+     earth  : body Bumi (butuh absPos)
+     hasil  : { pos, zenith, north, east, up }  (Vector3, koordinat ABSOLUT) */
+  computeObserver(days, earth) {
+    if (!earth || !earth.absPos) return null;
+    const jd = J2000_JD + days;
+    const W = this.gmstRad(jd);
+    const latR = this.lat * DEG;
+    const lonR = this.lon * DEG;
+    const cl = Math.cos(latR);
+
+    /* titik di permukaan, kerangka lokal mesh (sebelum rotasi harian) */
+    const r = 1.0 + (this.elev || 0) / 6371000;   /* 1 unit = radius Bumi */
+    const local = new THREE.Vector3(cl * Math.cos(lonR), Math.sin(latR), -cl * Math.sin(lonR))
+      .multiplyScalar(r);
+
+    /* rotasi harian (R_y(W)) lalu orientasi poros planet, lalu posisi Bumi.
+       Urutan ini mengikuti hierarki grup: group > tiltGroup > spin > mesh. */
+    local.applyAxisAngle(AXIS_Y_TEST, W);
+    const q = poleQuaternion('earth');
+    if (q) local.applyQuaternion(q);
+    const pos = local.clone().add(earth.absPos);
+
+    /* zenith = arah radial keluar dari pusat Bumi */
+    const zenith = local.clone().normalize();
+
+    /* north = komponen kutub utara yang tegak lurus zenith */
+    const pole = this.poleVec();
+    const north = pole.clone().addScaledVector(zenith, -pole.dot(zenith));
+    if (north.lengthSq() < 1e-12) {
+      /* tepat di kutub: tidak ada arah utara yang unik */
+      north.set(0, 1, 0).addScaledVector(zenith, -zenith.y);
+      if (north.lengthSq() < 1e-12) north.set(1, 0, 0);
+    }
+    north.normalize();
+
+    /* east = north × zenith (kerangka ENU tangan kanan) */
+    const east = new THREE.Vector3().crossVectors(north, zenith).normalize();
+
+    return { pos: pos, zenith: zenith, north: north, east: east, gmstRad: W };
+  },
+
+  /* Arah pandang dari azimut/elevasi dalam kerangka pengamat.
+     az: 0 = utara, +π/2 = timur ; el: 0 = horizon, +π/2 = zenith. */
+  viewDir(obs, out) {
+    out = out || new THREE.Vector3();
+    const ca = Math.cos(this.az), sa = Math.sin(this.az);
+    const ce = Math.cos(this.el), se = Math.sin(this.el);
+    out.set(0, 0, 0);
+    out.addScaledVector(obs.north, ce * ca);
+    out.addScaledVector(obs.east,  ce * sa);
+    out.addScaledVector(obs.zenith, se);
+    return out.normalize();
+  },
+
+  /* Masuk mode POV (kamera di permukaan). */
+  enable(lat, lon, cityName, elev) {
+    if (lat !== undefined && isFinite(lat)) this.lat = Math.max(-89.9, Math.min(89.9, lat));
+    if (lon !== undefined && isFinite(lon)) this.lon = ((lon + 180) % 360 + 360) % 360 - 180;
     if (cityName) this.city = cityName;
+    if (elev !== undefined && isFinite(elev)) this.elev = Math.max(0, elev);
     this.active = true;
+    this.az = 0;           /* mulai menghadap utara */
+    this.el = 0.30;        /* sedikit ke atas */
+    this.fov = 50;
+    const earth = findBody('earth');
+    const obs = this.computeObserver(app.days, earth);
+    if (obs) {
+      cameraState.vel.set(0, 0, 0);
+      cameraState.target = null;
+      cameraState.transition = null;
+    }
   },
 
-  /* Nonaktifkan, kembali ke mode luar angkasa */
   disable() {
     this.active = false;
+    cameraState.vel.set(0, 0, 0);
   },
 
-  /* Hitung LST (Local Sidereal Time) dalam derajat */
-  lst(jd) {
-    const gmstDeg = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360 + 360) % 360;
-    return (gmstDeg + this.lon + 360) % 360;
+  /* LST (Local Sidereal Time) dalam derajat — untuk panel pengamat. */
+  lstDeg(days) {
+    const gmstDeg = this.gmstRad(J2000_JD + days) / DEG;
+    return ((gmstDeg + this.lon) % 360 + 360) % 360;
   },
 
-  /* Konversi RA (jam) + Dec (derajat) → Azimuth + Elevasi (derajat)
-     untuk pengamat di lat/lon saat ini */
-  raDecToAltAz(raHours, decDeg, jd) {
-    const raDeg = raHours * 15;
-    const latRad = this.lat * DEG;
-    const decRad = decDeg * DEG;
-
-    // Hour Angle
-    let H = this.lst(jd) - raDeg;
-    H = ((H + 180) % 360 + 360) % 360 - 180; // normalisasi ke -180..180
-    const HRad = H * DEG;
-
-    // Elevasi (altitude)
-    const sinAlt = Math.sin(decRad) * Math.sin(latRad) +
-                   Math.cos(decRad) * Math.cos(latRad) * Math.cos(HRad);
-    const alt = Math.asin(Math.max(-1, Math.min(1, sinAlt))) / DEG;
-
-    // Azimuth (dari utara, ke timur)
-    const cosA = (Math.sin(decRad) - Math.sin(latRad) * sinAlt) /
-                 (Math.cos(latRad) * Math.cos(alt * DEG));
-    let az = Math.acos(Math.max(-1, Math.min(1, cosA))) / DEG;
-    if (Math.sin(HRad) > 0) az = 360 - az;
-
-    return { az, alt };
-  },
-
-  /* Dapatkan posisi kamera untuk mode POV Bumi (dalam unit scene) */
-  getCameraPosition(earthBody) {
-    if (!earthBody || !earthBody.absPos) return null;
-
-    // Posisi pengamat di permukaan Bumi dalam frame scene
-    // Bumi di absPos, radius 1 unit. Vektor dari pusat Bumi ke pengamat:
-    const latRad = this.lat * DEG;
-    const lonRad = this.lon * DEG;
-
-    // Gunakan rotasi Bumi: GMST untuk menentukan bujur scene
-    const gmst = ((280.46061837 + 360.98564736629 * (app.days)) % 360 + 360) % 360;
-
-    // Bujur pengamat dalam frame scene (ekliptika → scene mapping)
-    // Scene: x = ecl.x, y = ecl.z, z = -ecl.y
-    // Sederhananya: tempatkan kamera di permukaan mesh Bumi pada arah
-    // yang sesuai dengan lat/lon geografis + rotasi GMST
-
-    // Sudut rotasi Bumi saat ini (sama dengan yang dipakai spin mesh)
-    const spinAngle = gmst * DEG;
-
-    // Arah pengamat dari pusat Bumi (ekoatorial → scene):
-    // lat: sudut dari ekuator; lon: sudut dari meridian utama
-    const phi = (90 - this.lat) * DEG;  // colatitude
-    const theta = (this.lon + gmst) * DEG; // bujur + rotasi
-
-    // Koordinat ekuatorial Bumi (x=0°, z=kutub) → scene (y=atas)
-    const sinPhi = Math.sin(phi);
-    const ex = sinPhi * Math.cos(theta);
-    const ey = sinPhi * Math.sin(theta);
-    const ez = Math.cos(phi);
-
-    // Scene mapping: (x, y, z)_scene = (ex, ez, -ey)
-    const r = 1.0 + (this.elev / 6371000); // radius + elevasi
-    return {
-      x: earthBody.absPos.x + ex * r,
-      y: earthBody.absPos.y + ez * r,
-      z: earthBody.absPos.z + (-ey) * r,
-      // Arah pandang: ke luar dari Bumi (zenith)
-      lookDir: { x: ex, y: ez, z: -ey },
-    };
-  },
-
-  /* Daftar kota untuk dropdown */
-  cityList() {
-    return Object.keys(this.cities);
-  },
+  cityList() { return Object.keys(this.cities); },
 
   setCity(name) {
     const c = this.cities[name];
-    if (c) {
-      this.lat = c.lat;
-      this.lon = c.lon;
-      this.city = name;
-      return true;
-    }
+    if (c) { this.lat = c.lat; this.lon = c.lon; this.city = name; return true; }
     return false;
   },
 };
+
+/* sumbu Y lokal untuk rotasi harian (konstanta terpisah agar modul ini
+   tidak bergantung pada urutan pemuatan file lain) */
+const AXIS_Y_TEST = new THREE.Vector3(0, 1, 0);
 
 </script>
 
@@ -3531,7 +3628,14 @@ const EARTH_VIEW = {
 /* =======================================================================
    UI POV BUMI
    ----------------------------------------------------------------------
-   Menghubungkan kontrol HTML dengan logika POV Bumi.
+   Menghubungkan kontrol HTML dengan logika POV Bumi (17-earthview.js).
+
+   Catatan penting tentang tombol keluar:
+     • Tombol keyboard "E" TIDAK dipakai untuk keluar, karena E adalah
+       tombol "naik" saat terbang bebas (lihat help panel). Dulu ada
+       pendengar yang membajak tombol E dan membuat terbang bebas aneh.
+     • Keluar dari POV lewat: tombol ✕ di panel pengamat, tombol
+       "Keluar POV" di modal, atau Escape.
    ======================================================================= */
 
 const EARTHVIEW_UI = {
@@ -3545,6 +3649,9 @@ const EARTHVIEW_UI = {
     this.elevInput = document.getElementById('evmElev');
     this.btnApply = document.getElementById('evmApply');
     this.btnExit = document.getElementById('evmExit');
+    this.obsPanel = document.getElementById('observerPanel');
+    this.obsText = document.getElementById('observerText');
+    this.hint = this.modal.querySelector('.evm-hint');
 
     /* Isi dropdown kota */
     if (typeof EARTH_VIEW !== 'undefined') {
@@ -3562,7 +3669,9 @@ const EARTHVIEW_UI = {
     /* Event listeners */
     document.getElementById('btnEarthView').addEventListener('click', () => this.toggleModal());
     document.getElementById('evmClose').addEventListener('click', () => this.hide());
-    
+    const btnObsExit = document.getElementById('btnObsExit');
+    if (btnObsExit) btnObsExit.addEventListener('click', () => this.exitPOV());
+
     this.citySelect.addEventListener('change', () => this.updateInputsFromCity());
     this.latInput.addEventListener('input', () => this.citySelect.value = '');
     this.lonInput.addEventListener('input', () => this.citySelect.value = '');
@@ -3570,12 +3679,15 @@ const EARTHVIEW_UI = {
     this.btnApply.addEventListener('click', () => this.applyAndEnter());
     this.btnExit.addEventListener('click', () => this.exitPOV());
 
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'e' || e.key === 'E') {
-        if (EARTH_VIEW.active) this.exitPOV();
-        else this.toggleModal();
+    /* Escape = keluar POV (hanya saat POV aktif). Tidak memakai tombol E
+       supaya tidak bentrok dengan kontrol terbang bebas. */
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+        this.exitPOV();
       }
     });
+
+    this.syncButtons();
   },
 
   updateInputsFromCity() {
@@ -3590,13 +3702,23 @@ const EARTHVIEW_UI = {
     }
   },
 
+  /* Sinkronkan tampilan tombol & panel pengamat dengan status POV. */
+  syncButtons() {
+    const active = typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active;
+    if (this.btnExit) this.btnExit.style.display = active ? 'inline-block' : 'none';
+    if (this.obsPanel) this.obsPanel.classList.toggle('show', active);
+    const btn = document.getElementById('btnEarthView');
+    if (btn) btn.classList.toggle('active', active);
+    if (this.hint) {
+      this.hint.textContent = active
+        ? 'Seret = lihat sekeliling · Roda/pinch = zoom · ✕ atau Esc = keluar POV.'
+        : 'Seret = lihat sekeliling · Roda/pinch = zoom lensa.';
+    }
+  },
+
   toggleModal() {
     this.modal.classList.toggle('hidden');
-    if (!this.modal.classList.contains('hidden') && EARTH_VIEW.active) {
-      this.btnExit.style.display = 'inline-block';
-    } else {
-      this.btnExit.style.display = 'none';
-    }
+    this.syncButtons();
   },
 
   hide() {
@@ -3607,44 +3729,66 @@ const EARTHVIEW_UI = {
     const lat = parseFloat(this.latInput.value);
     const lon = parseFloat(this.lonInput.value);
     const elev = parseFloat(this.elevInput.value) || 0;
-    
-    if (isNaN(lat) || isNaN(lon)) return;
 
-    EARTH_VIEW.enable(lat, lon, this.citySelect.value);
-    EARTH_VIEW.elev = elev;
+    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+      if (this.hint) this.hint.textContent = '⚠ Lintang harus −90…90 dan bujur −180…180.';
+      return;
+    }
+
+    /* Lepas fokus benda lain supaya kamera benar-benar milik pengamat */
+    if (typeof focusBody === 'function') focusBody(null);
+
+    EARTH_VIEW.enable(lat, lon, this.citySelect.value, elev);
     this.hide();
-
-    /* Reset kamera ke mode pengamat darat */
-    if (typeof focusBody === 'function') {
-      focusBody(null); // Lepas fokus planet lain
-    }
-    
-    // Tampilkan notifikasi
-    const badge = document.getElementById('eventBadge');
-    if (badge) {
-      badge.innerHTML = `🌍 Mode POV Bumi Aktif (Lat: ${lat.toFixed(2)}°, Lon: ${lon.toFixed(2)}°)`;
-      badge.style.display = 'block';
-      setTimeout(() => badge.style.display = 'none', 3000);
-    }
+    this.syncButtons();
+    this.updateObserverPanel();
   },
 
   exitPOV() {
     EARTH_VIEW.disable();
-    this.hide();
-    const badge = document.getElementById('eventBadge');
-    if (badge) {
-      badge.innerHTML = `🚀 Kembali ke orbit tata surya`;
-      badge.style.display = 'block';
-      setTimeout(() => badge.style.display = 'none', 3000);
+    /* tampilkan kembali selubung atmosfer Bumi */
+    if (typeof findBody === 'function') {
+      const e = findBody('earth');
+      if (e && e.atmoMesh) e.atmoMesh.visible = true;
     }
-  }
+    /* Kembalikan fov & near plane kamera normal */
+    if (typeof camera !== 'undefined' && camera) {
+      camera.fov = 50;
+      camera.near = 0.0005;
+      camera.updateProjectionMatrix();
+    }
+    this.hide();
+    this.syncButtons();
+  },
+
+  /* Teks panel pengamat: kota, koordinat, jam sidereal lokal (LST). */
+  updateObserverPanel() {
+    if (!this.obsText || typeof EARTH_VIEW === 'undefined' || !EARTH_VIEW.active) return;
+    const lat = EARTH_VIEW.lat, lon = EARTH_VIEW.lon;
+    const lst = EARTH_VIEW.lstDeg(typeof app !== 'undefined' ? app.days : 0);
+    const h = Math.floor(lst / 15), m = Math.floor((lst / 15 - h) * 60);
+    const ns = lat >= 0 ? 'LU' : 'LS', ew = lon >= 0 ? 'BT' : 'BB';
+    this.obsText.textContent =
+      'Pengamat: ' + EARTH_VIEW.city +
+      ' (' + Math.abs(lat).toFixed(1) + '° ' + ns + ', ' +
+      Math.abs(lon).toFixed(1) + '° ' + ew + ')' +
+      ' · LST ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+  },
 };
+
+/* Perbarui panel pengamat tiap ~2 detik (hemat: hanya saat POV aktif). */
+setInterval(() => {
+  if (typeof EARTHVIEW_UI !== 'undefined' && typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+    EARTHVIEW_UI.updateObserverPanel();
+  }
+}, 2000);
 
 if (typeof document !== 'undefined' && document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => EARTHVIEW_UI.init());
 } else if (typeof document !== 'undefined') {
   EARTHVIEW_UI.init();
 }
+
 </script>
 
 <script>
@@ -3848,21 +3992,39 @@ function starAlpha(mag) {
   return Math.max(0.30, Math.min(1.0, 1.30 - mag * 0.135));
 }
 
+/* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
+   PENTING — BUG KERANGKA YANG DIPERBAIKI:
+   Dulu bintang dipetakan langsung dari kerangka EKUATOR (kutub langit di +Y),
+   sedangkan planet & Matahari dari kerangka EKLIPTIKA (kutub ekliptika di +Y).
+   Selisihnya 23,44° (kemiringan ekliptika) — pita Bima Sakti, rasi bintang,
+   dan langit POV Bumi jadi meleset dari posisi planet yang sebenarnya.
+
+   Sekarang bintang memakai kerangka SCENE YANG SAMA dengan ephemerisPos():
+     +X = titik Aries (RA 0°, Dec 0°)
+     +Y = kutub utara ekliptika
+     +Z = −y_ekliptika
+   Konversi: (xe, ye, ze)_ekuator --R_x(ε)--> (xe, ye·cosε + ze·sinε,
+   −ye·sinε + ze·cosε)_ekliptika --> (x, z, −y) ke scene.
+   Terverifikasi: arah Matahari dari ephemeris (planet) dan dari RA/Dec
+   (bintang) berimpit < 0,01° — lihat tools/test_frames.js. */
+const COS_EPS_OBL = Math.cos(23.4392911 * DEG);
+const SIN_EPS_OBL = Math.sin(23.4392911 * DEG);
+
+function eqVecToScene(xe, ye, ze, radius) {
+  const yl = ye * COS_EPS_OBL + ze * SIN_EPS_OBL;
+  const zl = -ye * SIN_EPS_OBL + ze * COS_EPS_OBL;
+  return { x: xe * radius, y: zl * radius, z: -yl * radius };
+}
+
 /* ---------- konversi RA/Dec -> vektor satuan ----------
-   Hasil: kerangka ekuatorial kartesian (x ke RA=0h, z ke kutub langit).
-   Lalu dipetakan ke orientasi scene (y scene = atas = kutub langit). */
+   Hasil: kerangka scene yang sama dengan planet (lihat eqVecToScene). */
 function raDecToScene(raHours, decDeg, radius) {
   const ra = raHours * 15 * DEG;
   const dec = decDeg * DEG;
-  const x = Math.cos(dec) * Math.cos(ra);
-  const y = Math.cos(dec) * Math.sin(ra);
-  const z = Math.sin(dec);
-  /* x -> x, z(equatorial) -> y(scene, atas), y -> -z */
-  return {
-    x: x * radius,
-    y: z * radius,
-    z: -y * radius,
-  };
+  const xe = Math.cos(dec) * Math.cos(ra);
+  const ye = Math.cos(dec) * Math.sin(ra);
+  const ze = Math.sin(dec);
+  return eqVecToScene(xe, ye, ze, radius);
 }
 
 /* ---------- BIMA SAKTI ----------
@@ -4091,13 +4253,15 @@ function buildStarField() {
       const ux2 = Math.cos(dec2) * Math.cos(ra2);
       const uy2 = Math.cos(dec2) * Math.sin(ra2);
       const uz2 = Math.sin(dec2);
-      pos[i * 3] = ux2 * SKY_RADIUS;
-      pos[i * 3 + 1] = uz2 * SKY_RADIUS;
-      pos[i * 3 + 2] = -uy2 * SKY_RADIUS;
+      const s2 = eqVecToScene(ux2, uy2, uz2, SKY_RADIUS);
+      pos[i * 3] = s2.x;
+      pos[i * 3 + 1] = s2.y;
+      pos[i * 3 + 2] = s2.z;
     } else {
-      pos[i * 3] = ux * SKY_RADIUS;
-      pos[i * 3 + 1] = uz * SKY_RADIUS;
-      pos[i * 3 + 2] = -uy * SKY_RADIUS;
+      const s1 = eqVecToScene(ux, uy, uz, SKY_RADIUS);
+      pos[i * 3] = s1.x;
+      pos[i * 3 + 1] = s1.y;
+      pos[i * 3 + 2] = s1.z;
     }
 
     const inv = 1 / 255;
@@ -4188,13 +4352,14 @@ function buildStarField() {
       lz = Math.sin(dec2);
     }
 
+    const sPos = eqVecToScene(lx, ly, lz, SKY_RADIUS);
     starField.labeled.push({
       nama: nama, bayer: s[1], con: s[2], mag: s[3],
       distLy: Math.sqrt(s[4] ** 2 + s[5] ** 2 + s[6] ** 2) * 3.261563777,
       spect: s[10],
-      x: lx * SKY_RADIUS,
-      y: lz * SKY_RADIUS,
-      z: -ly * SKY_RADIUS,
+      x: sPos.x,
+      y: sPos.y,
+      z: sPos.z,
       rgb: [s[7], s[8], s[9]],
     });
   }
@@ -4234,8 +4399,10 @@ function buildStarField() {
         const a1 = applyPM(ux, uy, uz, a[11] || 0, a[12] || 0);
         const b1 = applyPM(ux2, uy2, uz2, b[11] || 0, b[12] || 0);
         
-        lpos.push(a1[0] * SKY_RADIUS, a1[2] * SKY_RADIUS, -a1[1] * SKY_RADIUS);
-        lpos.push(b1[0] * SKY_RADIUS, b1[2] * SKY_RADIUS, -b1[1] * SKY_RADIUS);
+        const pa = eqVecToScene(a1[0], a1[1], a1[2], SKY_RADIUS);
+        const pb = eqVecToScene(b1[0], b1[1], b1[2], SKY_RADIUS);
+        lpos.push(pa.x, pa.y, pa.z);
+        lpos.push(pb.x, pb.y, pb.z);
       }
     }
   }
@@ -5191,7 +5358,15 @@ function buildSky() {
   const t = TEX.milkyway || {};
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
-    mat = new THREE.MeshBasicMaterial({ map: t.map, side: THREE.BackSide, depthWrite: false, fog: false });
+    /* Langit Bima Sakti harus TERLIHAT, bukan sekadar ada: tekstur citra
+       nyata sangat gelap (pita galaksi rata-rata < 45/255) dan tone mapping
+       ACES meredupkannya lagi. toneMapped=false + pengali 1.9 menampilkan
+       pita kabut seperti dilihat mata, tanpa mencuci bintang katalog. */
+    mat = new THREE.MeshBasicMaterial({
+      map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
+      toneMapped: false,
+    });
+    mat.color.setRGB(1.9, 1.9, 1.9);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
@@ -5199,6 +5374,45 @@ function buildSky() {
   skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 64, 48), mat);
   skyMesh.frustumCulled = false;
   skyMesh.renderOrder = -200;
+  /* Kalibrasi orientasi langit — DIUKUR empiris dari citra vs data nyata
+     (tools: analisis kurva puncak kecerahan tekstur):
+       • Kurva puncak kecerahan tekstur berimpit pita galaksi dengan
+         median |b_gal| = 4,7° (tafsir ekuator memberi 35° — jelas salah).
+       • Titik paling terang ada di u = 0,498 ≈ pusat galaksi (l = 0).
+     Jadi tekstur milkyway.jpg adalah peta GALAKTIK:
+         u = 0,5 + l/360 (mod 1)  ·  v = 0,5 − b/180
+     Konversi ke kerangka scene (ekliptika J2000, SAMA dengan bintang &
+     planet): galaktik → ekuator J2000 (matriks IAU) → eqVecToScene().
+     Kuaternion bola dipasang dari tiga vektor basis:
+       bola (u=.5,v=.5) → pusat galaksi ; bola (v=0) → kutub galaksi ;
+       bola (u=.25,v=.5) → cross keduanya.
+     Tanpa kalibrasi ini pita Bima Sakti meleset jauh dari posisi bintang
+     dan planet yang sebenarnya. */
+  {
+    /* Matriks galaktik -> ekuator J2000 = transpose matriks ekuator->galaktik
+       (IAU 1958 / Hipparcos vol. 1, sec. 2.5.3). VERIFIKASI: baris pertama
+       M^T·(1,0,0) memberi RA 266,4° Dec −28,9° = pusat galaksi yang benar;
+       M^T·(0,0,1) memberi RA 192,9° Dec +27,1° = kutub galaksi utara.
+       (Catatan: memakai matriks ekuator->galaktik secara langsung — tanpa
+       transpose — menggeser orientasi langit ~90°, jadi urutan indeks di
+       bawah ini penting.) */
+    const Mge = [
+      [-0.0548755604,  0.4941094279, -0.8676661490],
+      [-0.8734370902, -0.4448296300, -0.1980763734],
+      [-0.4838350155,  0.7469822445,  0.4559837762],
+    ];
+    const galToScene = (xg, yg, zg) => {
+      const xe = Mge[0][0] * xg + Mge[0][1] * yg + Mge[0][2] * zg;
+      const ye = Mge[1][0] * xg + Mge[1][1] * yg + Mge[1][2] * zg;
+      const ze = Mge[2][0] * xg + Mge[2][1] * yg + Mge[2][2] * zg;
+      const p = eqVecToScene(xe, ye, ze, 1);
+      return new THREE.Vector3(p.x, p.y, p.z);
+    };
+    const ax = galToScene(1, 0, 0);      /* pusat galaksi  (l=0°, b=0°)  */
+    const ay = galToScene(0, 0, 1);      /* kutub galaksi  (b=+90°)      */
+    const az = new THREE.Vector3().crossVectors(ax, ay);
+    skyMesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, ay, az));
+  }
   scene.add(skyMesh);
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
 }
@@ -5882,7 +6096,9 @@ function initControls(canvas) {
   window.addEventListener('keydown', (e) => {
     keys[e.code] = true;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') cameraState.boosting = true;
-    if (e.code === 'Escape') focusBody(null);
+    /* Esc menutup panel / melepas fokus; saat POV Bumi aktif, EARTHVIEW_UI
+       yang menangani Esc supaya tidak bentrok. */
+    if (e.code === 'Escape' && !(typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active)) focusBody(null);
     const handled = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
     if (handled.indexOf(e.code) >= 0) e.preventDefault();
   });
@@ -5903,7 +6119,13 @@ function initControls(canvas) {
     const dx = e.clientX - lastX, dy = e.clientY - lastY;
     lastX = e.clientX; lastY = e.clientY;
     moved += Math.abs(dx) + Math.abs(dy);
-    if (cameraState.target) {
+    /* POV Bumi: putar pandangan dalam kerangka pengamat (azimut/elevasi),
+       bukan kerangka dunia — supaya horizon tetap mendatar. */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+      EARTH_VIEW.az -= dx * 0.0032;
+      /* "pegang langit": seret ke bawah = pandangan naik */
+      EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0032, -1.40, 1.5533);
+    } else if (cameraState.target) {
       cameraState.followYaw -= dx * 0.0040;
       cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.0040, -1.45, 1.45);
     } else {
@@ -5915,6 +6137,11 @@ function initControls(canvas) {
   canvas.addEventListener('wheel', (e) => {
     e.preventDefault();
     const k = Math.exp(-e.deltaY * 0.0013);
+    /* POV Bumi: roda = zoom lensa (ubah fov), bukan ubah kecepatan */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+      EARTH_VIEW.fov = clampf(EARTH_VIEW.fov / k, 4, 100);
+      return;
+    }
     if (cameraState.target) {
       /* zoom manual mematikan auto-fit supaya pengguna punya kendali penuh */
       cameraState.followAutoFit = false;
@@ -5943,6 +6170,8 @@ function initControls(canvas) {
   /* klik = pilih benda (hanya jika tidak menyeret) */
   canvas.addEventListener('click', (e) => {
     if (moved > 6) return;
+    /* di mode POV Bumi, klik tidak memfokuskan benda lain */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) return;
     const rect = canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -5975,7 +6204,11 @@ function initControls(canvas) {
       const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += Math.abs(dx) + Math.abs(dy);
-      if (cameraState.target) {
+      if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+        /* POV Bumi: satu jari = lihat sekeliling (pegang langit) */
+        EARTH_VIEW.az -= dx * 0.0035;
+        EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0035, -1.40, 1.5533);
+      } else if (cameraState.target) {
         cameraState.followYaw -= dx * 0.006;
         cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.006, -1.45, 1.45);
       } else {
@@ -5989,7 +6222,10 @@ function initControls(canvas) {
       const d = Math.sqrt(dx * dx + dy * dy) || 1;
       if (touchDist > 0) {
         const k = touchDist / d;
-        if (cameraState.target) {
+        if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+          /* POV Bumi: cubit melebar (k < 1) = fov mengecil = zoom masuk */
+          EARTH_VIEW.fov = clampf(EARTH_VIEW.fov * k, 4, 100);
+        } else if (cameraState.target) {
           cameraState.followDist = clampf(cameraState.followDist * k, 0.5, 1e7);
         } else {
           cameraState.baseSpeed = clampf(cameraState.baseSpeed / k, 2.0, 3000000);
@@ -6041,6 +6277,11 @@ function anyTransitionActive() {
 
 function focusBody(body) {
   const cs = cameraState;
+  /* Memilih benda lain saat POV Bumi aktif = keluar dari POV dulu */
+  if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active &&
+      typeof EARTHVIEW_UI !== 'undefined') {
+    EARTHVIEW_UI.exitPOV();
+  }
   if (!body) {
     cs.target = null;
     cs.followAutoFit = false;
@@ -6168,6 +6409,56 @@ function dirFromAngles(yaw, pitch) {
    dalam koordinat ABSOLUT, lalu dikonversi ke relatif saat dipakai. */
 function updateCamera(dt) {
   const cs = cameraState;
+
+  /* =====================================================================
+     POV BUMI — kamera berdiri di permukaan Bumi
+     ---------------------------------------------------------------------
+     BUG YANG DIPERBAIKI: sebelumnya EARTH_VIEW.enable() hanya menyalakan
+     bendera, tetapi TIDAK ADA satu baris pun di updateCamera() yang
+     membacanya — jadi menekan "Terapkan & Masuk POV" tidak menggerakkan
+     apa pun (keluhan: "pov bumi tidak berfungsi").
+
+     Sekarang: posisi kamera = titik pengamat nyata di permukaan (dihitung
+     dari lat/lon + GMST, sama seperti mesh Bumi), dan orientasi memakai
+     utara Bumi sebagai camera.up supaya langit tidak miring.
+     ===================================================================== */
+  if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+    const earth = findBody('earth');
+    const obs = EARTH_VIEW.computeObserver(app.days, earth);
+    if (obs) {
+      cs.target = null;
+      cs.transition = null;
+      cs.pos.copy(obs.pos);
+      cs.vel.set(0, 0, 0);
+
+      /* Selubung atmosfer Bumi memakai BackSide — dilihat dari dalam
+         (kamera di permukaan) ia akan menutupi SELURUH langit. Matikan
+         selama POV; dinyalakan kembali saat keluar. */
+      if (earth && earth.atmoMesh) earth.atmoMesh.visible = false;
+
+      rebaseOffset.copy(cs.pos);
+      camera.position.set(0, 0, 0);
+
+      /* arah pandang dari azimut/elevasi dalam kerangka pengamat ENU */
+      const fwd = EARTH_VIEW.viewDir(obs, _tmp);
+      camera.up.copy(obs.zenith);
+      camera.lookAt(fwd);
+
+    /* Pesawat dekat (near plane) harus sangat kecil di POV: kamera berdiri
+       50 m di atas permukaan, sedangkan near bawaan 0,0005 unit = 3,2 km —
+       permukaan dalam radius itu akan terpotong dan tampak "bolong".
+       Dengan logarithmicDepthBuffer, rasio near/far 1e-6 : 2e6 tetap presisi. */
+      const nearPov = 0.000002;
+      if (camera.near !== nearPov) { camera.near = nearPov; camera.updateProjectionMatrix(); }
+
+      /* zoom lensa khusus POV (roda mouse / pinch mengubah EARTH_VIEW.fov) */
+      if (Math.abs(camera.fov - EARTH_VIEW.fov) > 0.01) {
+        camera.fov = EARTH_VIEW.fov;
+        camera.updateProjectionMatrix();
+      }
+      return;
+    }
+  }
 
   if (cs.target) {
     const body = cs.target;
@@ -6603,7 +6894,19 @@ function buildUI() {
   }
   $('btnHelp').addEventListener('click', () => $('helpPanel').classList.toggle('show'));
   $('btnHelpClose').addEventListener('click', () => $('helpPanel').classList.remove('show'));
-  $('btnSidebar').addEventListener('click', () => $('sidebar').classList.toggle('hidden'));
+  $('btnSidebar').addEventListener('click', () => {
+    const sb = $('sidebar');
+    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.remove('open');
+    else sb.classList.toggle('hidden');
+  });
+  /* Tombol "Daftar" di toolbar: di HP membuka laci, di desktop
+     menyembunyikan/menampilkan bilah samping. */
+  const drawerBtn = $('btnDrawer');
+  if (drawerBtn) drawerBtn.addEventListener('click', () => {
+    const sb = $('sidebar');
+    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.toggle('open');
+    else sb.classList.toggle('hidden');
+  });
   $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
 
   $('btnFocus').addEventListener('click', () => {
@@ -6652,8 +6955,13 @@ function buildUI() {
     url.searchParams.set('q', next);
     location.href = url.toString();
   });
-  $('btnQuality').textContent = '◈ Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
-  $('btnQuality').classList.toggle('active', app.qualityTier === 'hi');
+  {
+    const lbl = $('btnQuality').querySelector('.bt');
+    const txt = 'Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
+    if (lbl) lbl.textContent = txt;
+    else $('btnQuality').textContent = '◈ ' + txt;
+    $('btnQuality').classList.toggle('active', app.qualityTier === 'hi');
+  }
 
   /* ---- pintasan papan tombol ---- */
   window.addEventListener('keydown', (e) => {
@@ -6734,7 +7042,12 @@ function updateBodyListActive() {
 function setBtn(id, text, active) {
   const b = $(id);
   if (!b) return;
-  b.textContent = text;
+  /* Tombol toolbar punya DUA lapis: .bi (ikon) + .bt (label). Di layar
+     kecil .bt disembunyikan (ikon saja). Karena itu jangan menimpa seluruh
+     isi tombol — cukup ganti labelnya, kalau tidak ikon ikut terhapus. */
+  const lbl = b.querySelector('.bt');
+  if (lbl) lbl.textContent = String(text).replace(/^[^A-Za-z0-9]+/, '');
+  else b.textContent = text;
   b.classList.toggle('active', !!active);
 }
 
@@ -6991,7 +7304,9 @@ function updateHud() {
   /* Dengan floating origin, camera.position selalu dekat 0.
      Gunakan cameraState.pos yang menyimpan koordinat absolut kamera. */
   const distAU = cameraState.pos.length() / (AU_KM / RAD);
-  const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  const follow = (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active)
+    ? ('POV Bumi — ' + EARTH_VIEW.city)
+    : cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
   const distStr = distAU < 0.01 
     ? (distAU * 149597870.7).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' km'
     : distAU.toFixed(2) + ' SA';
@@ -7123,61 +7438,80 @@ window.__SOLAR__ = {
 /* =======================================================================
    BADGE AKURASI TEMPORAL
    ----------------------------------------------------------------------
-   Menampilkan rentang validitas model & akurasi Bulan di panel atas.
+   Menampilkan rentang validitas model untuk tanggal simulasi saat ini.
+   Dulu badge ini melayang di kanan atas layar dan MENIMPA panel info
+   (keluhan pengguna: "UI bentrok dan tertutup"). Sekarang badge hidup
+   DI DALAM panel Tanggal sebagai baris keterangan, jadi tidak mungkin
+   bertabrakan dengan elemen lain.
+
+   Rentang validitas (jujur, berdasarkan sumber model):
+     • Planet : elemen Keplerian JPL (Standish 1990) — 1800–2050.
+                Di luar itu nilainya ekstrapolasi.
+     • Bulan  : deret Meeus bab 47 (60 suku) — akurasi terbaik di dekat
+                J2000, memburuk ±0,5"/tahun menjauh dari J2000.
+     • Bintang: katalog HYG v3.8 (epoch J2000) + proper motion linear.
+                Linearitas proper motion tetap baik untuk ±1.000 tahun,
+                tetapi presisi posisi terbaik tetap di dekat J2000.
    ======================================================================= */
 
 const TEMPORAL_BADGE = {
   el: null,
+  _lastKey: '',
+
   init() {
     this.el = document.getElementById('temporalBadge');
-    if (!this.el) {
-      console.warn('TEMPORAL_BADGE: element #temporalBadge tidak ditemukan');
-      return;
-    }
-    this.el.style.display = 'block';
+    /* tidak wajib ada — badge hidup di dalam panel tanggal yang dibuat
+       secara dinamis oleh buildDatePanel() */
+  },
+
+  /* Warna status: hijau = dalam rentang terbaik, kuning = ekstrapolasi
+     dekat, merah = jauh di luar rentang (klaim akurasi tidak lagi valid). */
+  statusFor(yrFromJ2000) {
+    const a = Math.abs(yrFromJ2000);
+    if (yrFromJ2000 >= -200 && yrFromJ2000 <= 50) return 'ok';
+    if (a <= 300) return 'warn';
+    return 'bad';
   },
 
   update(appDays) {
+    if (!this.el) this.init();
     if (!this.el) return;
-    const jd = 2451545.0 + appDays;
+    /* hemat: panel tanggal tertutup = elemen tidak terlihat -> jangan
+       menyusun ulang DOM setiap frame. Selain itu, hanya tulis ulang
+       bila teks benar-benar berubah (berbasis hari). */
+    if (this.el.offsetParent === null) return;
+    const dayKey = Math.round(appDays);
+    if (dayKey === this._lastKey) return;
+    this._lastKey = dayKey;
+
     const yrFromJ2000 = appDays / 365.25;
     const absYr = Math.abs(yrFromJ2000);
 
-    let modelRange = '';
-    let moonAccuracy = '';
-
-    // Model planetary: JPL Keplerian approx (Standish) valid 1800-2050
-    // J2000 = 2000.0, so 1800 = -200 yr, 2050 = +50 yr
+    let planetTxt;
     if (yrFromJ2000 >= -200 && yrFromJ2000 <= 50) {
-      modelRange = 'Planet: 1800–2050 (JPL Keplerian)';
+      planetTxt = 'Planet: dalam rentang terbaik (JPL Keplerian 1800–2050)';
     } else if (yrFromJ2000 > 50) {
-      modelRange = `Planet: >2050 (ekstrapolasi ${yrFromJ2000.toFixed(0)} thn)`;
+      planetTxt = `Planet: ekstrapolasi ${yrFromJ2000.toFixed(0)} thn setelah 2050`;
     } else {
-      modelRange = `Planet: <1800 (ekstrapolasi ${Math.abs(yrFromJ2000).toFixed(0)} thn)`;
+      planetTxt = `Planet: ekstrapolasi ${absYr.toFixed(0)} thn sebelum 1800`;
     }
 
-    // Moon accuracy: Meeus bab 47 (60 suku) ~10" dekat J2000, degradasi ~0.5"/thn
-    // DE441 vs Meeus 60-term error grows ~0.5"/yr from J2000
-    const moonErrArcsec = 10 + 0.5 * absYr;
-    if (absYr <= 50) {
-      moonAccuracy = `Bulan: ~${moonErrArcsec.toFixed(0)}" (Meeus 60 suku)`;
-    } else {
-      moonAccuracy = `Bulan: ~${moonErrArcsec.toFixed(0)}" (ekstrapolasi, model ringkas)`;
-    }
+    /* error Bulan membesar ~0,5"/tahun dari J2000 (perbandingan terhadap
+       DE441 pada 2026 memberi ~22", konsisten dengan laju ini) */
+    const moonErr = 10 + 0.5 * absYr;
+    const moonTxt = absYr <= 50
+      ? `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" (deret Meeus 60 suku)`
+      : `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" — makin jauh dari J2000, makin kasar`;
 
-    // Star proper motion: HYG v3.8 + pmRA/pmDec applied realtime
-    const starNote = 'Bintang: proper motion HYG v3.8 + aberrasi/nutasi';
+    const starTxt = 'Bintang: HYG v3.8 + proper motion nyata';
 
-    this.el.innerHTML = `
-      <div class="tb-line">${modelRange}</div>
-      <div class="tb-line">${moonAccuracy}</div>
-      <div class="tb-line">${starNote}</div>
-    `;
-    this.el.title = `JD ${(2451545.0 + appDays).toFixed(2)} | ${new Date(2451545.0 * 86400000 + appDays * 86400000).toISOString().slice(0,19)}Z`;
+    this.el.innerHTML =
+      `<div class="tb-line tb-${this.statusFor(yrFromJ2000)}">${planetTxt}</div>` +
+      `<div class="tb-line tb-${absYr <= 50 ? 'ok' : absYr <= 300 ? 'warn' : 'bad'}">${moonTxt}</div>` +
+      `<div class="tb-line tb-ok">${starTxt}</div>`;
   },
 };
 
-// Auto-init when DOM ready
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => TEMPORAL_BADGE.init());
@@ -7186,10 +7520,10 @@ if (typeof document !== 'undefined') {
   }
 }
 
-// Export for module systems (not used in browser build, but kept for consistency)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { TEMPORAL_BADGE };
 }
+
 </script>
 
 <script>
@@ -7495,6 +7829,11 @@ function buildDatePanel() {
         <button class="dp-chip" data-offset="365">+1 thn</button>
       </div>
       <div class="dp-current" id="dpCurrent">—</div>
+
+      <div class="dp-section">
+        <div class="dp-section-title">Validitas model pada tanggal ini</div>
+        <div class="temporal-badge" id="temporalBadge"></div>
+      </div>
 
       <div class="dp-section">
         <div class="dp-section-title">Peristiwa saat ini</div>

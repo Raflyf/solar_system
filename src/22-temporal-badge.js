@@ -1,61 +1,80 @@
 /* =======================================================================
    BADGE AKURASI TEMPORAL
    ----------------------------------------------------------------------
-   Menampilkan rentang validitas model & akurasi Bulan di panel atas.
+   Menampilkan rentang validitas model untuk tanggal simulasi saat ini.
+   Dulu badge ini melayang di kanan atas layar dan MENIMPA panel info
+   (keluhan pengguna: "UI bentrok dan tertutup"). Sekarang badge hidup
+   DI DALAM panel Tanggal sebagai baris keterangan, jadi tidak mungkin
+   bertabrakan dengan elemen lain.
+
+   Rentang validitas (jujur, berdasarkan sumber model):
+     • Planet : elemen Keplerian JPL (Standish 1990) — 1800–2050.
+                Di luar itu nilainya ekstrapolasi.
+     • Bulan  : deret Meeus bab 47 (60 suku) — akurasi terbaik di dekat
+                J2000, memburuk ±0,5"/tahun menjauh dari J2000.
+     • Bintang: katalog HYG v3.8 (epoch J2000) + proper motion linear.
+                Linearitas proper motion tetap baik untuk ±1.000 tahun,
+                tetapi presisi posisi terbaik tetap di dekat J2000.
    ======================================================================= */
 
 const TEMPORAL_BADGE = {
   el: null,
+  _lastKey: '',
+
   init() {
     this.el = document.getElementById('temporalBadge');
-    if (!this.el) {
-      console.warn('TEMPORAL_BADGE: element #temporalBadge tidak ditemukan');
-      return;
-    }
-    this.el.style.display = 'block';
+    /* tidak wajib ada — badge hidup di dalam panel tanggal yang dibuat
+       secara dinamis oleh buildDatePanel() */
+  },
+
+  /* Warna status: hijau = dalam rentang terbaik, kuning = ekstrapolasi
+     dekat, merah = jauh di luar rentang (klaim akurasi tidak lagi valid). */
+  statusFor(yrFromJ2000) {
+    const a = Math.abs(yrFromJ2000);
+    if (yrFromJ2000 >= -200 && yrFromJ2000 <= 50) return 'ok';
+    if (a <= 300) return 'warn';
+    return 'bad';
   },
 
   update(appDays) {
+    if (!this.el) this.init();
     if (!this.el) return;
-    const jd = 2451545.0 + appDays;
+    /* hemat: panel tanggal tertutup = elemen tidak terlihat -> jangan
+       menyusun ulang DOM setiap frame. Selain itu, hanya tulis ulang
+       bila teks benar-benar berubah (berbasis hari). */
+    if (this.el.offsetParent === null) return;
+    const dayKey = Math.round(appDays);
+    if (dayKey === this._lastKey) return;
+    this._lastKey = dayKey;
+
     const yrFromJ2000 = appDays / 365.25;
     const absYr = Math.abs(yrFromJ2000);
 
-    let modelRange = '';
-    let moonAccuracy = '';
-
-    // Model planetary: JPL Keplerian approx (Standish) valid 1800-2050
-    // J2000 = 2000.0, so 1800 = -200 yr, 2050 = +50 yr
+    let planetTxt;
     if (yrFromJ2000 >= -200 && yrFromJ2000 <= 50) {
-      modelRange = 'Planet: 1800–2050 (JPL Keplerian)';
+      planetTxt = 'Planet: dalam rentang terbaik (JPL Keplerian 1800–2050)';
     } else if (yrFromJ2000 > 50) {
-      modelRange = `Planet: >2050 (ekstrapolasi ${yrFromJ2000.toFixed(0)} thn)`;
+      planetTxt = `Planet: ekstrapolasi ${yrFromJ2000.toFixed(0)} thn setelah 2050`;
     } else {
-      modelRange = `Planet: <1800 (ekstrapolasi ${Math.abs(yrFromJ2000).toFixed(0)} thn)`;
+      planetTxt = `Planet: ekstrapolasi ${absYr.toFixed(0)} thn sebelum 1800`;
     }
 
-    // Moon accuracy: Meeus bab 47 (60 suku) ~10" dekat J2000, degradasi ~0.5"/thn
-    // DE441 vs Meeus 60-term error grows ~0.5"/yr from J2000
-    const moonErrArcsec = 10 + 0.5 * absYr;
-    if (absYr <= 50) {
-      moonAccuracy = `Bulan: ~${moonErrArcsec.toFixed(0)}" (Meeus 60 suku)`;
-    } else {
-      moonAccuracy = `Bulan: ~${moonErrArcsec.toFixed(0)}" (ekstrapolasi, model ringkas)`;
-    }
+    /* error Bulan membesar ~0,5"/tahun dari J2000 (perbandingan terhadap
+       DE441 pada 2026 memberi ~22", konsisten dengan laju ini) */
+    const moonErr = 10 + 0.5 * absYr;
+    const moonTxt = absYr <= 50
+      ? `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" (deret Meeus 60 suku)`
+      : `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" — makin jauh dari J2000, makin kasar`;
 
-    // Star proper motion: HYG v3.8 + pmRA/pmDec applied realtime
-    const starNote = 'Bintang: proper motion HYG v3.8 + aberrasi/nutasi';
+    const starTxt = 'Bintang: HYG v3.8 + proper motion nyata';
 
-    this.el.innerHTML = `
-      <div class="tb-line">${modelRange}</div>
-      <div class="tb-line">${moonAccuracy}</div>
-      <div class="tb-line">${starNote}</div>
-    `;
-    this.el.title = `JD ${(2451545.0 + appDays).toFixed(2)} | ${new Date(2451545.0 * 86400000 + appDays * 86400000).toISOString().slice(0,19)}Z`;
+    this.el.innerHTML =
+      `<div class="tb-line tb-${this.statusFor(yrFromJ2000)}">${planetTxt}</div>` +
+      `<div class="tb-line tb-${absYr <= 50 ? 'ok' : absYr <= 300 ? 'warn' : 'bad'}">${moonTxt}</div>` +
+      `<div class="tb-line tb-ok">${starTxt}</div>`;
   },
 };
 
-// Auto-init when DOM ready
 if (typeof document !== 'undefined') {
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => TEMPORAL_BADGE.init());
@@ -64,7 +83,6 @@ if (typeof document !== 'undefined') {
   }
 }
 
-// Export for module systems (not used in browser build, but kept for consistency)
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { TEMPORAL_BADGE };
 }

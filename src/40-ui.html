@@ -8,23 +8,21 @@
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
       <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
+      <!-- Lencana peristiwa langit — DI DALAM panel judul supaya tidak
+           pernah bertabrakan dengan toolbar atau panel lain -->
+      <div class="event-badge" id="eventBadge">—</div>
     </div>
 
     <!-- Tombol kanan atas -->
     <div class="panel top-buttons" id="topButtons">
-      <button class="btn primary" id="btnDate" title="Pilih tanggal & lihat peristiwa langit (T)">📅 Tanggal</button>
-      <button class="btn" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
-      <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
-      <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
-      <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
-      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi (E)">🌍 POV Bumi</button>
+      <button class="btn" id="btnDrawer" title="Daftar benda langit"><span class="bi">☰</span><span class="bt">Daftar</span></button>
+      <button class="btn primary" id="btnDate" title="Pilih tanggal & lihat peristiwa langit (T)"><span class="bi">📅</span><span class="bt">Tanggal</span></button>
+      <button class="btn" id="btnTour" title="Tur otomatis mengelilingi tata surya"><span class="bi">▶</span><span class="bt">Tur Terpandu</span></button>
+      <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)"><span class="bi">🏷</span><span class="bt">Label</span></button>
+      <button class="btn" id="btnQuality" title="Ubah kualitas tekstur"><span class="bi">◈</span><span class="bt">Kualitas</span></button>
+      <button class="btn" id="btnHelp" title="Daftar kontrol (H)"><span class="bi">?</span><span class="bt">Bantuan</span></button>
+      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi"><span class="bi">🌍</span><span class="bt">POV Bumi</span></button>
     </div>
-
-    <!-- Lencana peristiwa langit -->
-    <div class="event-badge" id="eventBadge">—</div>
-
-    <!-- Badge Validitas Waktu -->
-    <div class="temporal-badge" id="temporalBadge" style="display:none"></div>
 
     <!-- Daftar benda -->
     <div class="panel sidebar" id="sidebar">
@@ -41,6 +39,7 @@
           <label class="chk"><input type="checkbox" id="chkConst" checked> Garis rasi bintang</label>
           <label class="chk"><input type="checkbox" id="chkStarNames"> Nama bintang &amp; galaksi</label>
         </div>
+        <div class="sky-info" id="skyInfo"></div>
       </div>
     </div>
 
@@ -88,6 +87,13 @@
         </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
+    </div>
+
+    <!-- Panel status pengamat (mode POV Bumi) -->
+    <div class="panel observer-panel" id="observerPanel">
+      <span class="obs-dot"></span>
+      <span class="obs-text" id="observerText">Pengamat: —</span>
+      <button class="mini" id="btnObsExit" title="Keluar dari POV Bumi">✕</button>
     </div>
 
     <!-- Modal POV Bumi -->

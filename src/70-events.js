@@ -301,6 +301,11 @@ function buildDatePanel() {
       <div class="dp-current" id="dpCurrent">—</div>
 
       <div class="dp-section">
+        <div class="dp-section-title">Validitas model pada tanggal ini</div>
+        <div class="temporal-badge" id="temporalBadge"></div>
+      </div>
+
+      <div class="dp-section">
         <div class="dp-section-title">Peristiwa saat ini</div>
         <div class="dp-events" id="dpEvents"></div>
       </div>

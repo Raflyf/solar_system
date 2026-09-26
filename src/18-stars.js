@@ -57,21 +57,39 @@ function starAlpha(mag) {
   return Math.max(0.30, Math.min(1.0, 1.30 - mag * 0.135));
 }
 
+/* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
+   PENTING — BUG KERANGKA YANG DIPERBAIKI:
+   Dulu bintang dipetakan langsung dari kerangka EKUATOR (kutub langit di +Y),
+   sedangkan planet & Matahari dari kerangka EKLIPTIKA (kutub ekliptika di +Y).
+   Selisihnya 23,44° (kemiringan ekliptika) — pita Bima Sakti, rasi bintang,
+   dan langit POV Bumi jadi meleset dari posisi planet yang sebenarnya.
+
+   Sekarang bintang memakai kerangka SCENE YANG SAMA dengan ephemerisPos():
+     +X = titik Aries (RA 0°, Dec 0°)
+     +Y = kutub utara ekliptika
+     +Z = −y_ekliptika
+   Konversi: (xe, ye, ze)_ekuator --R_x(ε)--> (xe, ye·cosε + ze·sinε,
+   −ye·sinε + ze·cosε)_ekliptika --> (x, z, −y) ke scene.
+   Terverifikasi: arah Matahari dari ephemeris (planet) dan dari RA/Dec
+   (bintang) berimpit < 0,01° — lihat tools/test_frames.js. */
+const COS_EPS_OBL = Math.cos(23.4392911 * DEG);
+const SIN_EPS_OBL = Math.sin(23.4392911 * DEG);
+
+function eqVecToScene(xe, ye, ze, radius) {
+  const yl = ye * COS_EPS_OBL + ze * SIN_EPS_OBL;
+  const zl = -ye * SIN_EPS_OBL + ze * COS_EPS_OBL;
+  return { x: xe * radius, y: zl * radius, z: -yl * radius };
+}
+
 /* ---------- konversi RA/Dec -> vektor satuan ----------
-   Hasil: kerangka ekuatorial kartesian (x ke RA=0h, z ke kutub langit).
-   Lalu dipetakan ke orientasi scene (y scene = atas = kutub langit). */
+   Hasil: kerangka scene yang sama dengan planet (lihat eqVecToScene). */
 function raDecToScene(raHours, decDeg, radius) {
   const ra = raHours * 15 * DEG;
   const dec = decDeg * DEG;
-  const x = Math.cos(dec) * Math.cos(ra);
-  const y = Math.cos(dec) * Math.sin(ra);
-  const z = Math.sin(dec);
-  /* x -> x, z(equatorial) -> y(scene, atas), y -> -z */
-  return {
-    x: x * radius,
-    y: z * radius,
-    z: -y * radius,
-  };
+  const xe = Math.cos(dec) * Math.cos(ra);
+  const ye = Math.cos(dec) * Math.sin(ra);
+  const ze = Math.sin(dec);
+  return eqVecToScene(xe, ye, ze, radius);
 }
 
 /* ---------- BIMA SAKTI ----------
@@ -300,13 +318,15 @@ function buildStarField() {
       const ux2 = Math.cos(dec2) * Math.cos(ra2);
       const uy2 = Math.cos(dec2) * Math.sin(ra2);
       const uz2 = Math.sin(dec2);
-      pos[i * 3] = ux2 * SKY_RADIUS;
-      pos[i * 3 + 1] = uz2 * SKY_RADIUS;
-      pos[i * 3 + 2] = -uy2 * SKY_RADIUS;
+      const s2 = eqVecToScene(ux2, uy2, uz2, SKY_RADIUS);
+      pos[i * 3] = s2.x;
+      pos[i * 3 + 1] = s2.y;
+      pos[i * 3 + 2] = s2.z;
     } else {
-      pos[i * 3] = ux * SKY_RADIUS;
-      pos[i * 3 + 1] = uz * SKY_RADIUS;
-      pos[i * 3 + 2] = -uy * SKY_RADIUS;
+      const s1 = eqVecToScene(ux, uy, uz, SKY_RADIUS);
+      pos[i * 3] = s1.x;
+      pos[i * 3 + 1] = s1.y;
+      pos[i * 3 + 2] = s1.z;
     }
 
     const inv = 1 / 255;
@@ -397,13 +417,14 @@ function buildStarField() {
       lz = Math.sin(dec2);
     }
 
+    const sPos = eqVecToScene(lx, ly, lz, SKY_RADIUS);
     starField.labeled.push({
       nama: nama, bayer: s[1], con: s[2], mag: s[3],
       distLy: Math.sqrt(s[4] ** 2 + s[5] ** 2 + s[6] ** 2) * 3.261563777,
       spect: s[10],
-      x: lx * SKY_RADIUS,
-      y: lz * SKY_RADIUS,
-      z: -ly * SKY_RADIUS,
+      x: sPos.x,
+      y: sPos.y,
+      z: sPos.z,
       rgb: [s[7], s[8], s[9]],
     });
   }
@@ -443,8 +464,10 @@ function buildStarField() {
         const a1 = applyPM(ux, uy, uz, a[11] || 0, a[12] || 0);
         const b1 = applyPM(ux2, uy2, uz2, b[11] || 0, b[12] || 0);
         
-        lpos.push(a1[0] * SKY_RADIUS, a1[2] * SKY_RADIUS, -a1[1] * SKY_RADIUS);
-        lpos.push(b1[0] * SKY_RADIUS, b1[2] * SKY_RADIUS, -b1[1] * SKY_RADIUS);
+        const pa = eqVecToScene(a1[0], a1[1], a1[2], SKY_RADIUS);
+        const pb = eqVecToScene(b1[0], b1[1], b1[2], SKY_RADIUS);
+        lpos.push(pa.x, pa.y, pa.z);
+        lpos.push(pb.x, pb.y, pb.z);
       }
     }
   }

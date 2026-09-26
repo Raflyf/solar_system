@@ -245,7 +245,19 @@ function buildUI() {
   }
   $('btnHelp').addEventListener('click', () => $('helpPanel').classList.toggle('show'));
   $('btnHelpClose').addEventListener('click', () => $('helpPanel').classList.remove('show'));
-  $('btnSidebar').addEventListener('click', () => $('sidebar').classList.toggle('hidden'));
+  $('btnSidebar').addEventListener('click', () => {
+    const sb = $('sidebar');
+    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.remove('open');
+    else sb.classList.toggle('hidden');
+  });
+  /* Tombol "Daftar" di toolbar: di HP membuka laci, di desktop
+     menyembunyikan/menampilkan bilah samping. */
+  const drawerBtn = $('btnDrawer');
+  if (drawerBtn) drawerBtn.addEventListener('click', () => {
+    const sb = $('sidebar');
+    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.toggle('open');
+    else sb.classList.toggle('hidden');
+  });
   $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
 
   $('btnFocus').addEventListener('click', () => {
@@ -294,8 +306,13 @@ function buildUI() {
     url.searchParams.set('q', next);
     location.href = url.toString();
   });
-  $('btnQuality').textContent = '◈ Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
-  $('btnQuality').classList.toggle('active', app.qualityTier === 'hi');
+  {
+    const lbl = $('btnQuality').querySelector('.bt');
+    const txt = 'Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
+    if (lbl) lbl.textContent = txt;
+    else $('btnQuality').textContent = '◈ ' + txt;
+    $('btnQuality').classList.toggle('active', app.qualityTier === 'hi');
+  }
 
   /* ---- pintasan papan tombol ---- */
   window.addEventListener('keydown', (e) => {
@@ -376,7 +393,12 @@ function updateBodyListActive() {
 function setBtn(id, text, active) {
   const b = $(id);
   if (!b) return;
-  b.textContent = text;
+  /* Tombol toolbar punya DUA lapis: .bi (ikon) + .bt (label). Di layar
+     kecil .bt disembunyikan (ikon saja). Karena itu jangan menimpa seluruh
+     isi tombol — cukup ganti labelnya, kalau tidak ikon ikut terhapus. */
+  const lbl = b.querySelector('.bt');
+  if (lbl) lbl.textContent = String(text).replace(/^[^A-Za-z0-9]+/, '');
+  else b.textContent = text;
   b.classList.toggle('active', !!active);
 }
 
@@ -633,7 +655,9 @@ function updateHud() {
   /* Dengan floating origin, camera.position selalu dekat 0.
      Gunakan cameraState.pos yang menyimpan koordinat absolut kamera. */
   const distAU = cameraState.pos.length() / (AU_KM / RAD);
-  const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  const follow = (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active)
+    ? ('POV Bumi — ' + EARTH_VIEW.city)
+    : cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
   const distStr = distAU < 0.01 
     ? (distAU * 149597870.7).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' km'
     : distAU.toFixed(2) + ' SA';
