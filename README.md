@@ -2,6 +2,8 @@
 
 Satu berkas HTML mandiri berisi tata surya 3D skala nyata yang bisa diterbangi dan di-zoom.
 
+**Demo:** buka `index.html` (atau deploy — lihat bagian Deploy di bawah).
+
 ## Cara pakai
 
 Buka `index.html` dengan klik dua kali (Chrome / Edge / Firefox terbaru).
@@ -74,3 +76,45 @@ untuk menyusun ulang `index.html`.
   dan Bulan, serta Bintik Merah Besar.
 - Penanda navigasi (titik berwarna) membuat planet tetap bisa ditemukan pada
   skala nyata, dan otomatis menghilang saat kamera sudah dekat.
+
+## Deploy
+
+Proyek ini **situs statis murni** — tidak ada build step, tidak ada dependensi
+runtime, tidak ada server. `index.html` sudah berisi segalanya.
+
+### Vercel (disarankan, 1 menit)
+
+Lewat dashboard:
+
+1. <https://vercel.com/new> → **Import Git Repository** → pilih `solar_system`
+2. Framework Preset: **Other**
+3. Build Command: **kosongkan** · Output Directory: **kosongkan**
+4. **Deploy**
+
+Lewat CLI:
+
+```bash
+npm i -g vercel
+vercel login
+vercel --prod
+```
+
+Hasilnya: `https://solar-system-<hash>.vercel.app`. Setiap `git push` ke `main`
+akan otomatis deploy ulang.
+
+### Alternatif
+
+- **GitHub Pages:** Settings → Pages → Source: `main` / root → jadi di
+  `https://raflyf.github.io/solar_system/`
+- **Netlify / Cloudflare Pages:** drag-and-drop folder ini, atau hubungkan repo
+  (build command kosong, publish directory: `.`)
+
+### Catatan deploy
+
+- `vercel.json` hanya mengatur `cleanUrls` dan header cache. Boleh dihapus —
+  tanpa itu pun deploy tetap berhasil.
+- Berkasnya 694 KB. Gzip ± 180 KB karena three.js memampatkan sangat baik.
+- WebGL wajib aktif. Di peramban tanpa WebGL, aplikasi menampilkan pesan galat
+  yang jelas alih-alih layar kosong.
+- Berjalan penuh di HTTPS — tidak ada permintaan jaringan sama sekali setelah
+  halaman dimuat (tidak ada CDN, tidak ada API, tidak ada font eksternal).
