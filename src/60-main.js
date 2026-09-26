@@ -6,6 +6,7 @@ const app = {
   days: 0,                 /* hari simulasi sejak 2000-01-01 */
   daysPerSecond: 1,
   paused: false,
+  scrubbing: false,        /* true saat slider "Geser waktu" sedang ditarik */
   labelsOn: true,
   orbitsOn: true,
   ready: false,
@@ -160,9 +161,11 @@ async function boot() {
     acc += dt; frames++;
     if (acc > 0.5) { app.fps = frames / acc; acc = 0; frames = 0; }
 
-    if (!app.paused) {
+    if (!app.paused && !app.scrubbing) {
       /* waktu dibekukan selama transisi kamera agar lompatan mulus;
-         diperlambat otomatis saat kamera sangat dekat permukaan */
+         diperlambat otomatis saat kamera sangat dekat permukaan.
+         Saat slider "Geser waktu" ditarik, waktu TIDAK maju sendiri —
+         posisinya ditentukan langsung oleh slider. */
       if (!anyTransitionActive()) app.days += dt * app.daysPerSecond * effectiveTimeScale();
     }
 
@@ -302,6 +305,145 @@ function buildUI() {
   };
   slider.addEventListener('input', upd);
   upd();
+
+  /* ======================================================================
+     SLIDER GESER WAKTU (scrub) — maju / mundur bebas dari tampilan utama
+     ----------------------------------------------------------------------
+     Cara kerja: slider selalu bertengger di tengah (500 dari 0..1000).
+     Tarik ke kanan -> waktu maju; ke kiri -> waktu mundur. Begitu dilepas,
+     slider kembali ke tengah dan waktu TETAP di posisi barunya, jadi bisa
+     ditarik berulang tanpa batas (tidak "mentok" di ujung seperti slider
+     absolut).
+
+     Skala mengikuti laju waktu yang sedang aktif (TIME_TABLE), supaya
+     terasa konsisten: pada 1 hari/detik, geser penuh = ±30 hari; pada
+     1 tahun/detik, geser penuh = ±10 tahun, dst.
+     ====================================================================== */
+  const scrub = $('timeScrub');
+  const scrubLabel = $('scrubLabel');
+  if (scrub) {
+    let scrubBaseDays = app.days;   /* posisi waktu saat tarikan dimulai */
+    let scrubStartVal = 500;
+
+    /* besar lompatan untuk tarikan penuh (setengah rentang slider).
+       Akar dari laju membuat slider berguna di semua tingkat:
+       1 hari/dtk -> 30 hari ; 1 abad/dtk -> ~3.000 hari (±8 tahun). */
+    const scrubSpanDays = () => {
+      const rate = Math.max(1e-6, app.daysPerSecond);
+      return Math.max(1, Math.sqrt(rate) * 30);
+    };
+
+    const scrubApply = () => {
+      const delta = (parseInt(scrub.value, 10) - scrubStartVal) / 500;  /* -1..1 */
+      const days = scrubBaseDays + delta * scrubSpanDays();
+      app.days = days;
+      computePositions(app.days, performance.now() * 0.001);
+      applyPositions();
+      updateLabels();
+      updateHud();
+      updateEventBadge();
+      if (typeof TEMPORAL_BADGE !== 'undefined') TEMPORAL_BADGE.update(app.days);
+      if (datePanelState.open) renderDatePanel();
+      /* tampilkan besar pergeseran sebagai umpan balik */
+      if (scrubLabel) {
+        const d = days - scrubBaseDays;
+        const abs = Math.abs(d);
+        let txt;
+        if (abs < 1) txt = (d * 24).toFixed(1) + ' jam';
+        else if (abs < 60) txt = d.toFixed(1) + ' hari';
+        else if (abs < 730) txt = (d / 30.44).toFixed(1) + ' bulan';
+        else txt = (d / 365.25).toFixed(1) + ' tahun';
+        scrubLabel.textContent = (d >= 0 ? '+' : '−') + txt.replace('-', '');
+        scrubLabel.classList.add('aktif');
+      }
+    };
+
+    const scrubBegin = (resetValue) => {
+      if (app.scrubbing) return;
+      app.scrubbing = true;
+      scrubBaseDays = app.days;
+      scrubStartVal = 500;
+      /* pointer: mulai selalu dari tengah. Keyboard: jangan reset nilainya,
+         karena nilai itulah yang baru saja diubah oleh tombol panah. */
+      if (resetValue) scrub.value = '500';
+    };
+    const scrubEnd = () => {
+      app.scrubbing = false;
+      /* pertahankan waktu di posisi baru; slider kembali ke tengah */
+      scrub.value = '500';
+      if (scrubLabel) {
+        scrubLabel.textContent = 'mundur ⟷ maju';
+        scrubLabel.classList.remove('aktif');
+      }
+    };
+
+    /* pointer events mencakup mouse + sentuh + stylus */
+    scrub.addEventListener('pointerdown', () => scrubBegin(true));
+    scrub.addEventListener('input', () => { scrubBegin(false); scrubApply(); });
+    /* pointerup di WINDOW: kalau pengguna melepas di luar slider, drag tetap
+       diakhiri dengan benar (tanpa ini slider "nyangkut" di posisi tengah) */
+    window.addEventListener('pointerup', () => { if (app.scrubbing) scrubEnd(); });
+    scrub.addEventListener('pointercancel', scrubEnd);
+
+    /* keyboard (panah kiri/kanan): pakai langkah langsung seperti roda mouse.
+       Catatan: event `change` tidak dipakai karena di Chrome ia terpicu pada
+       SETIAP penekanan panah, sehingga reset-ke-tengah terjadi terlalu cepat
+       dan akumulasi pergeseran tidak bekerja. */
+    const scrubStep = (stepDays) => {
+      app.days += stepDays;
+      computePositions(app.days, performance.now() * 0.001);
+      applyPositions(); updateLabels(); updateHud(); updateEventBadge();
+      if (typeof TEMPORAL_BADGE !== 'undefined') TEMPORAL_BADGE.update(app.days);
+      if (datePanelState.open) renderDatePanel();
+      if (scrubLabel) {
+        const abs = Math.abs(stepDays);
+        const txt = abs < 1 ? (stepDays * 24).toFixed(1) + ' jam'
+                  : abs < 60 ? stepDays.toFixed(1) + ' hari'
+                  : (stepDays / 365.25).toFixed(1) + ' tahun';
+        scrubLabel.textContent = (stepDays >= 0 ? '+' : '−') + txt.replace('-', '');
+        scrubLabel.classList.add('aktif');
+        clearTimeout(scrubLabel._t);
+        scrubLabel._t = setTimeout(() => {
+          scrubLabel.textContent = 'mundur ⟷ maju';
+          scrubLabel.classList.remove('aktif');
+        }, 900);
+      }
+    };
+    scrub.addEventListener('keydown', (e) => {
+      let step = 0;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') step = +1;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') step = -1;
+      else if (e.key === 'PageUp') step = +10;
+      else if (e.key === 'PageDown') step = -10;
+      if (!step) return;
+      e.preventDefault();
+      e.stopPropagation();   /* jangan sampai tombol panah juga "menerbangkan" kamera */
+      scrubStep(step * scrubSpanDays() * 0.1);
+      scrub.value = '500';
+    });
+    scrub.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const step = (e.deltaY < 0 ? 1 : -1) * scrubSpanDays() * 0.1;
+      app.days += step;
+      computePositions(app.days, performance.now() * 0.001);
+      applyPositions(); updateLabels(); updateHud(); updateEventBadge();
+      if (typeof TEMPORAL_BADGE !== 'undefined') TEMPORAL_BADGE.update(app.days);
+      if (datePanelState.open) renderDatePanel();
+      if (scrubLabel) {
+        const abs = Math.abs(step);
+        const txt = abs < 1 ? (step * 24).toFixed(1) + ' jam'
+                  : abs < 60 ? step.toFixed(1) + ' hari'
+                  : (step / 365.25).toFixed(1) + ' tahun';
+        scrubLabel.textContent = (step >= 0 ? '+' : '−') + txt.replace('-', '');
+        scrubLabel.classList.add('aktif');
+        clearTimeout(scrubLabel._t);
+        scrubLabel._t = setTimeout(() => {
+          scrubLabel.textContent = 'mundur ⟷ maju';
+          scrubLabel.classList.remove('aktif');
+        }, 900);
+      }
+    }, { passive: false });
+  }
 
   /* tombol kualitas tekstur */
   $('btnQuality').addEventListener('click', () => {

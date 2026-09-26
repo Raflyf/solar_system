@@ -69,6 +69,15 @@
           <span class="time-speed" id="speedLabel">1 dtk = 1 hari</span>
         </div>
         <input type="range" id="speedSlider" min="0" max="11" step="1" value="5">
+        <!-- Slider geser waktu: tarik ke kiri = mundur, ke kanan = maju.
+             Selalu bertengger di tengah; begitu dilepas kembali ke tengah
+             dan waktu tetap di posisi baru (bisa diulang tanpa batas). -->
+        <div class="time-row time-scrub-row">
+          <span class="time-label">Geser waktu ⟵⟶</span>
+          <input type="range" id="timeScrub" min="0" max="1000" step="1" value="500"
+                 title="Geser ke kiri = mundur · ke kanan = maju">
+          <span class="time-scrub-val" id="scrubLabel">mundur ⟷ maju</span>
+        </div>
         <div class="time-date">
           <span id="dateLabel">—</span>
           <select id="tzSelect" title="Zona waktu tampilan jam">
@@ -145,6 +154,7 @@
         <tr><td><kbd>1</kbd>…<kbd>8</kbd></td><td>Lompat ke planet ke-1 s/d ke-8</td></tr>
         <tr><td><kbd>0</kbd></td><td>Lompat ke Matahari</td></tr>
         <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd> <kbd>P</kbd></td><td>Label / orbit / bantuan / jeda</td></tr>
+        <tr><td>Slider <b>Geser waktu</b></td><td>Maju / mundurkan waktu bebas — geser kiri = mundur, kanan = maju</td></tr>
       </table>
       <div class="help-note">
         Semua jarak & ukuran memakai <b>skala 1 : 1</b> — jarak antar planet nyata,
