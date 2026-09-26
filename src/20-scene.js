@@ -861,26 +861,29 @@ function rebuildOrbitLines(jd) {
        applyPositions sudah melakukannya — akibatnya terjadi rotasi ganda
        dan garis orbit meleset sampai 106% radius orbit. */
     if (b.orbitLineIsMoon) {
-      const host = b.host;
-      if (!host) continue;
+          const host = b.host;
+          if (!host) continue;
 
-      const period = b.periodDays || 27.32;
-      const n = (ORBIT_LINE_SEGMENTS + 1);
-      const arr = new Float32Array(n * 3);
+          const period = b.periodDays || 27.32;
+          const n = (ORBIT_LINE_SEGMENTS + 1);
+          const arr = new Float32Array(n * 3);
 
-      for (let s = 0; s <= ORBIT_LINE_SEGMENTS; s++) {
-        const jdS = jd + (s / ORBIT_LINE_SEGMENTS) * period;
-        const l = moonLocalOffset(b, jdS);
-        arr[s * 3] = l.x;
-        arr[s * 3 + 1] = l.y;
-        arr[s * 3 + 2] = l.z;
-      }
-      const geo = b.orbitLine.geometry;
-      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
-      geo.attributes.position.needsUpdate = true;
-      geo.computeBoundingSphere();
-      continue;
-    }
+          for (let s = 0; s <= ORBIT_LINE_SEGMENTS; s++) {
+            const jdS = jd + (s / ORBIT_LINE_SEGMENTS) * period;
+            /* Pakai moonHostPlaneOffset(..., true) supaya verteks orbit
+               berada di frame moonPlane induk — sama persis dengan
+               posisi render di applyPositions(). */
+            const l = moonHostPlaneOffset(b, jdS, true);
+            arr[s * 3] = l.x;
+            arr[s * 3 + 1] = l.y;
+            arr[s * 3 + 2] = l.z;
+          }
+          const geo = b.orbitLine.geometry;
+          geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+          geo.attributes.position.needsUpdate = true;
+          geo.computeBoundingSphere();
+          continue;
+        }
 
     /* ---- ORBIT PLANET ---- */
     if (!b.orbitLineIsPlanet) continue;
@@ -1014,6 +1017,38 @@ function moonSceneOffset(b, jd) {
   return { x: _v1.x, y: _v1.y, z: _v1.z };
 }
 
+/* Konversi offset scene-frame ke frame lokal moonPlane induknya.
+   Posisi satelit dan verteks orbit WAJIB memakai transform identik karena
+   keduanya anak dari host.moonPlane. */
+function moonParentLocalOffset(b, x, y, z) {
+  if (!b.host || !b.host.key) return { x, y, z };
+  const q = poleQuaternion(b.name === 'Bulan' ? 'earth' : b.host.key);
+  if (!q) return { x, y, z };
+  _v1.set(x, y, z).applyQuaternion(_invQ.copy(q).invert());
+  return { x: _v1.x, y: _v1.y, z: _v1.z };
+}
+
+function moonHostPlaneOffset(b, jd, orbitSample) {
+  /* SATU SUMBER: selalu pakai moonSceneOffset lalu inverse parent quaternion.
+     moonSceneOffset sudah mengembalikan offset dalam frame scene/ekliptika
+     untuk semua satelit (termasuk Bulan Bumi). */
+  const off = moonSceneOffset(b, jd);
+  return moonParentLocalOffset(b, off.x, off.y, off.z);
+}
+
+/* Dipertahankan sebagai alias agar kode lama tetap jalan. */
+function moonOffsetUnits(b, jd) {
+  return moonSceneOffset(b, jd);
+}
+
+function moonOffsetInScene(b, jd) {
+  return moonSceneOffset(b, jd);
+}
+
+function moonOffsetLocal(b, jd) {
+  return moonLocalOffset(b, jd);
+}
+
 /* Offset satelit terhadap induknya, dalam unit scene (tanpa posisi induk).
    Dipertahankan sebagai alias supaya kode lama tetap jalan. */
 function moonOffsetUnits(b, jd) {
@@ -1026,6 +1061,35 @@ function moonOffsetUnits(b, jd) {
 function updateOrbitLines(jd) {
   if (_orbitLineJd === null || Math.abs(jd - _orbitLineJd) > 10) {
     rebuildOrbitLines(jd);
+  } else {
+    /* Orbit Bulan bergeser cukup cepat karena perturbasi Matahari
+       (presesi apsidal, dll), sehingga garis orbit yang digambar 10 hari
+       lalu tidak akan pas dengan posisi Bulan sekarang (bisa meleset
+       hingga ribuan km). Perbarui garis orbit Bulan setiap saat. */
+    rebuildMoonOrbitLine(jd);
+  }
+}
+
+function rebuildMoonOrbitLine(jd) {
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (b.orbitLineIsMoon && b.name === 'Bulan') {
+      const period = b.periodDays || 27.32;
+      const n = (ORBIT_LINE_SEGMENTS + 1);
+      const arr = new Float32Array(n * 3);
+
+      for (let s = 0; s <= ORBIT_LINE_SEGMENTS; s++) {
+        const jdS = jd + (s / ORBIT_LINE_SEGMENTS) * period;
+        const l = moonHostPlaneOffset(b, jdS, true);
+        arr[s * 3] = l.x;
+        arr[s * 3 + 1] = l.y;
+        arr[s * 3 + 2] = l.z;
+      }
+      const geo = b.orbitLine.geometry;
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      geo.attributes.position.needsUpdate = true;
+      geo.computeBoundingSphere();
+    }
   }
 }
 
@@ -1104,42 +1168,12 @@ function applyPositions() {
          posisi RENDER-nya sama dengan absPos yang dipakai kamera.
          ------------------------------------------------------------------ */
       if (b.absPos && b.host && b.host.absPos) {
-        /* offset bulan terhadap induk, dalam kerangka scene */
-        const dx = b.absPos.x - b.host.absPos.x;
-        const dy = b.absPos.y - b.host.absPos.y;
-        const dz = b.absPos.z - b.host.absPos.z;
-
-        /* Balik-putar oleh orientasi bidang orbit induk untuk mendapat
-           offset dalam kerangka LOKAL grup bulan.
-           ------------------------------------------------------------------
-           PENTING: Bulan Bumi tidak memakai orientasi poros Bumi, karena
-           orbitnya sejajar EKLIPTIKA (miring 5,145 derajat), bukan ekuator
-           Bumi (23,44 derajat). Kalau dipaksa memakai poros Bumi, sisi
-           dekat Bulan meleset ~23 derajat dari Bumi.
-           ------------------------------------------------------------------ */
-        if (b.name === 'Bulan') {
-                  /* moonPlane Bumi dirotasi oleh kuaternion kutub Bumi (23.44°).
-                     dx/dy/dz adalah offset dalam frame SCENE (ekliptika).
-                     Harus dibalik-putar ke frame LOCAL moonPlane agar posisi render
-                     cocok dengan absPos yang dipakai kamera. */
-                  const q = poleQuaternion('earth');
-                  if (q) {
-                    _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
-                    b.group.position.copy(_v1);
-                  } else {
-                    b.group.position.set(dx, dy, dz);
-                  }
-                } else {
-          const q = poleQuaternion(b.host.key);
-          if (q) {
-            _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
-            b.group.position.copy(_v1);
-          } else {
-            const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
-            const ct = Math.cos(tilt), st = Math.sin(tilt);
-            b.group.position.set(dx * ct + dy * st, -dx * st + dy * ct, dz);
-          }
-        }
+        /* SATU SUMBER KEBENARAN: moonHostPlaneOffset(b, jd, false).
+           Fungsi ini dipakai oleh applyPositions() DAN rebuildOrbitLines(),
+           sehingga posisi render dan verteks garis orbit dijamin berada pada
+           frame moonPlane induk yang sama persis — tidak mungkin meleset lagi. */
+        const off = moonHostPlaneOffset(b, app.jd || J2000_JD + app.days, false);
+        b.group.position.set(off.x, off.y, off.z);
       }
       if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
       /* LIBRASI LINTANG: goyangan naik-turun Bulan (+-6,7°). Diterapkan
