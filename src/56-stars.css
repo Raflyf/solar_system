@@ -127,6 +127,24 @@
 }
 .obs-text { flex: 1; color: #cfe0f4; letter-spacing: 0.2px; }
 
+/* PENTING — override mobile memakai selektor ID (#observerPanel) supaya
+   specificity-nya (1,0,0) LEBIH TINGGI dari aturan dasar .observer-panel
+   (0,1,0) di atas. Dengan begini urutan pemuatan file CSS tidak lagi
+   menentukan: tanpa ini, `top` dari media query + `bottom` dari aturan
+   dasar bisa aktif bersamaan dan panel melar menutupi seluruh layar
+   (terbukti di uji viewport 390×844). */
+@media (max-width: 640px) {
+  #observerPanel {
+    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    left: calc(env(safe-area-inset-left, 0px) + 10px);
+    right: calc(env(safe-area-inset-right, 0px) + 10px);
+    bottom: auto;
+    transform: none;
+    max-width: none;
+    font-size: 11.5px;
+  }
+}
+
 /* keterangan langit */
 .sky-info {
   margin-top: 8px;

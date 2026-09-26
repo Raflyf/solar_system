@@ -332,26 +332,35 @@ kbd {
     right: calc(env(safe-area-inset-right, 0px) + 10px);
     display: flex;
     flex-wrap: nowrap;
-    justify-content: center;
-    gap: 8px;
-    padding: 6px;
+    /* Trik centering + scroll: flex-start + auto-margin di ujung.
+       Kalau muat, tombol terlihat terpusat; kalau tidak muat (HP 360 px),
+       tombol pertama tetap terlihat utuh dan baris bisa digeser —
+       beda dengan justify-content:center yang memotong sisi kiri. */
+    justify-content: flex-start;
+    gap: 4px;
+    padding: 4px;
     overflow-x: auto;
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
   .top-buttons::-webkit-scrollbar { display: none; }
+  .top-buttons .btn:first-child { margin-left: auto; }
+  .top-buttons .btn:last-child { margin-right: auto; }
+  /* 7 tombol × 44 px + 6 × 4 px gap + 8 px padding = 340 px: muat utuh
+     di viewport 390 px (terverifikasi), dan tetap bisa digeser di 360 px.
+     44 px = minimum target sentuh WCAG. */
   .top-buttons .btn {
     flex: 0 0 auto;
-    min-width: 48px;
-    min-height: 48px;
-    padding: 8px;
+    min-width: 44px;
+    min-height: 44px;
+    padding: 7px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
   }
   .top-buttons .btn .bt { display: none; }      /* hanya ikon */
-  .top-buttons .btn .bi { font-size: 18px; line-height: 1; margin-right: 0; }
+  .top-buttons .btn .bi { font-size: 17px; line-height: 1; margin-right: 0; }
 
   /* panel info: lembar bawah penuh lebar */
   .info-panel {
@@ -437,13 +446,8 @@ kbd {
   .evm-btns { flex-direction: column; }
   .evm-btns button { min-height: 44px; }
 
-  /* panel pengamat (POV Bumi) — di bawah judul, penuh lebar */
-  .observer-panel {
-    top: 56px; left: 10px; right: 10px;
-    bottom: auto;
-    transform: none;
-    max-width: none;
-  }
+  /* panel pengamat (POV Bumi) — diatur di 56-stars.css (setelah aturan
+     dasarnya) supaya tidak kalah urutan CSS. Lihat komentar di sana. */
 }
 
 /* --- layar sangat pendek (HP landscape): rapatkan --- */
@@ -465,4 +469,14 @@ kbd {
   .title-main { font-size: 16px; }
   .sidebar { top: 74px; max-height: calc(100vh - 170px); }
   .info-panel { top: 74px; max-height: calc(100vh - 190px); overflow-y: auto; }
+}
+
+/* --- HP sangat sempit (<=374 px): perkecil toolbar sedikit supaya
+   7 tombol muat penuh tanpa perlu digeser. Target sentuh tetap 42 px
+   (di atas minimum praktis 40 px), dan tombol tetap bisa digeser
+   horizontal bila layarnya lebih sempit lagi. --- */
+@media (max-width: 374px) {
+  .top-buttons { gap: 3px; padding: 3px; }
+  .top-buttons .btn { min-width: 42px; min-height: 42px; padding: 6px; }
+  .top-buttons .btn .bi { font-size: 16px; }
 }
