@@ -47,6 +47,18 @@ with gzip.open(SRC, "rt", encoding="utf-8", errors="replace") as f:
             ci = float(r["ci"]) if r["ci"] else None
         except ValueError:
             ci = None
+# Proper motion: pmra = mas/yr (sudah dikali cos(dec) di HYG),
+        # pmdec = mas/yr. Konversi ke rad/tahun untuk aplikasi runtime.
+        try:
+            pmra = float(r["pmra"]) if r["pmra"] else 0.0
+            pmdec = float(r["pmdec"]) if r["pmdec"] else 0.0
+        except ValueError:
+            pmra = pmdec = 0.0
+        # mas/yr -> rad/yr: 1 mas = 4.848136811e-9 rad
+        MAS_TO_RAD = 4.848136811e-9
+        pmra_rad = pmra * MAS_TO_RAD
+        pmdec_rad = pmdec * MAS_TO_RAD
+
         rows.append({
             "hip": r["hip"] or "",
             "nama": (r["proper"] or "").strip(),
@@ -59,6 +71,8 @@ with gzip.open(SRC, "rt", encoding="utf-8", errors="replace") as f:
             "x": x, "y": y, "z": z,
             "spect": (r["spect"] or "").strip(),
             "lum": float(r["lum"]) if r["lum"] else None,
+            "pmra": round(pmra_rad, 15),
+            "pmdec": round(pmdec_rad, 15),
         })
 
 print(f"bintang terang (mag <= {MAG_LIMIT}): {len(rows)}")
@@ -123,6 +137,8 @@ for r in rows:
         "x": round(xl, 3), "y": round(yl, 3), "z": round(zl, 3),
         "rgb": rgb,
         "s": r["spect"][:12] or None,
+        "pmra": r["pmra"],
+        "pmdec": r["pmdec"],
     })
 
 # --- susun untuk JS ---
@@ -146,11 +162,15 @@ print(f"  tanpa label : {len(lain_out)}")
 # Data bintang untuk JS (dipadatkan)
 def pack(s):
     rgb = s["rgb"]
+    # Format: [nama, bayer, con, mag, x, y, z, r, g, b, spect, pmra, pmdec]
+    # pmRA/pmDec dalam rad/tahun, dibulatkan ke 12 digit
     return [
         s["n"] or "", s["b"] or "", s["c"] or "",
         s["m"], s["x"], s["y"], s["z"],
         rgb[0], rgb[1], rgb[2],
         s["s"] or "",
+        round(s.get("pmra", 0.0), 12),
+        round(s.get("pmdec", 0.0), 12),
     ]
 
 data = {
