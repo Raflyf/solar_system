@@ -347,7 +347,7 @@ function makeItem(body, num, level) {
     meta.textContent = (body.aKm / AU_KM).toFixed(1) + ' SA';
     d.appendChild(meta);
   }
-  d.addEventListener('click', () => focusBody(body));
+  d.addEventListener('click', () => { focusBody(body); });
   return d;
 }
 

@@ -1118,8 +1118,18 @@ function applyPositions() {
            dekat Bulan meleset ~23 derajat dari Bumi.
            ------------------------------------------------------------------ */
         if (b.name === 'Bulan') {
-          b.group.position.set(dx, dy, dz);
-        } else {
+                  /* moonPlane Bumi dirotasi oleh kuaternion kutub Bumi (23.44°).
+                     dx/dy/dz adalah offset dalam frame SCENE (ekliptika).
+                     Harus dibalik-putar ke frame LOCAL moonPlane agar posisi render
+                     cocok dengan absPos yang dipakai kamera. */
+                  const q = poleQuaternion('earth');
+                  if (q) {
+                    _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
+                    b.group.position.copy(_v1);
+                  } else {
+                    b.group.position.set(dx, dy, dz);
+                  }
+                } else {
           const q = poleQuaternion(b.host.key);
           if (q) {
             _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
