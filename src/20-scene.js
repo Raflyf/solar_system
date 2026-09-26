@@ -194,6 +194,29 @@ function buildSun() {
   sunGlow.add(sp1); sunGlow.add(sp2); sunGlow.add(sp3);
   scene.add(sunGlow);
 
+  /* ======================================================================
+     GLOW DENGAN UKURAN MINIMUM DI LAYAR (perbaikan "Matahari tidak terlihat
+     saat menjauh")
+     ----------------------------------------------------------------------
+     MASALAH: pada skala 1:1, Matahari (radius 696.000 km = 109 unit) berada
+     117.405 unit dari kamera saat kamera 5 SA. Diameter sudutnya hanya
+     0,106° -> radius ~0,8 px di layar. Sprite glow terbesar (46x radius =
+     5.025 unit) juga hanya ~26 px dengan opacity 0,5 — terlalu redup untuk
+     terlihat, dan terbukti dari uji piksel: tengah layar = (0,0,0) hitam
+     total. Padahal di kehidupan nyata Matahari dari Jupiter tetap objek
+     PALING TERANG di langit (magnitudo -21).
+
+     SOLUSI (cara yang dipakai planetarium seperti Stellarium): beri glow
+     UKURAN MINIMUM di layar. Setiap frame, glow dibesarkan otomatis bila
+     Matahari terlalu kecil — bukan agar "lebih besar dari kenyataan",
+     melainkan agar mewakili kecerlangannya yang tetap ekstrem. Sudut nyata
+     dipakai bila kamera dekat; saat jauh, glow minimum yang menjaga
+     keterlihatan. Ukuran planet TIDAK diubah — hanya glow Matahari.
+     ====================================================================== */
+  sunGlow.userData.minPx = 16;      /* radius glow inti minimum (px) */
+  sunGlow.userData.haloPx = 44;     /* radius halo terluar minimum (px) */
+  sunGlow.userData.baseScale = [4.2, 12, 46];
+
   sunRim = new THREE.Mesh(new THREE.SphereGeometry(r * 1.012, 64, 48), new THREE.ShaderMaterial({
     uniforms: { uColor: { value: new THREE.Color(0xffc060) }, uIntensity: { value: 1.0 }, uPower: { value: 1.7 } },
     vertexShader: ATMOS_VERT, fragmentShader: SUN_FRAG,
@@ -731,6 +754,58 @@ function applyRebaseToStatics() {
     starField.group.position.set(nx, ny, nz);
   }
   if (skyMesh) skyMesh.position.set(nx, ny, nz);
+}
+
+/* =======================================================================
+   GLOW MATAHARI: JAGA UKURAN MINIMUM DI LAYAR
+   -----------------------------------------------------------------------
+   Dipanggil setiap frame setelah applyPositions(). Menghitung radius
+   sudut Matahari yang sebenarnya; bila proyeksi ke layar lebih kecil dari
+   ambang minimum, sprite glow diperbesar agar Matahari selalu terlihat —
+   sama seperti planetarium menampilkan Matahari sebagai objek paling
+   terang di langit, dari jarak berapa pun.
+   ======================================================================= */
+const _sunTmp = new THREE.Vector3();
+function updateSunGlowScale() {
+  if (!sunGlow || !sunMesh || typeof camera === 'undefined' || !camera) return;
+  const ud = sunGlow.userData;
+  if (!ud.baseScale) return;
+  const r = sunMesh.geometry.parameters.radius;
+
+  /* jarak kamera ke Matahari (posisi render, karena floating origin) */
+  _sunTmp.copy(sunGlow.position);
+  const dist = _sunTmp.distanceTo(camera.position);
+  if (!(dist > 0)) return;
+
+  /* berapa unit dunia per piksel pada jarak ini? */
+  const H = window.innerHeight || 800;
+  const tanHalf = Math.tan(camera.fov * 0.5 * Math.PI / 180);
+  const unitsPerPx = (2 * dist * tanHalf) / H;
+
+  /* radius sudut nyata dalam piksel */
+  const realPx = r / unitsPerPx;
+
+  /* faktor pembesaran agar glow inti >= minPx dan halo >= haloPx */
+  const kCore = Math.max(1, ud.minPx / Math.max(realPx * ud.baseScale[0], 1e-6));
+  const kHalo = Math.max(1, ud.haloPx / Math.max(realPx * ud.baseScale[2], 1e-6));
+
+  /* sprite 0 = inti (4,2x), sprite 1 = perantara (12x), sprite 2 = halo (46x) */
+  const s1 = r * ud.baseScale[0] * kCore;
+  const s2 = r * ud.baseScale[1] * Math.max(kCore, kHalo * 0.75);
+  const s3 = r * ud.baseScale[2] * kHalo;
+
+  const ch = sunGlow.children;
+  if (ch[0]) ch[0].scale.set(s1, s1, 1);
+  if (ch[1]) ch[1].scale.set(s2, s2, 1);
+  if (ch[2]) ch[2].scale.set(s3, s3, 1);
+
+  /* saat sangat jauh, inti tambah terang supaya tetap jelas */
+  if (ch[0] && ch[0].material) {
+    ch[0].material.opacity = Math.min(1, 0.9 + 0.1 * Math.min(1, kCore - 1));
+  }
+  /* saat sangat dekat (di dalam korona), redupkan halo agar tidak menutupi */
+  const nearSun = dist < r * 6;
+  if (ch[2] && ch[2].material) ch[2].material.opacity = nearSun ? 0.22 : 0.5;
 }
 
 /* ---------- animasi: orbit, rotasi, arah cahaya ---------- */
