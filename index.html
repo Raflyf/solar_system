@@ -2020,11 +2020,10 @@ function moonGeocentric(jd) {
   const lat = sumB / 1000000;                        /* derajat */
   const dist = 385000.56 + sumR / 1000;              /* km */
 
-  /* PENTING: Meeus bab 47 memberi bujur/lintang terhadap EKUINOKS TANGGAL,
-     sedangkan elemen JPL planet memakai kerangka J2000. Kalau keduanya
-     dicampur, ada selisih presesi ~0.33° pada 2024 — cukup untuk membuat
-     gerhana tidak terdeteksi (error posisi ~660 km).
-     Koreksi presesi umum dalam bujur: 5029.0966"/abad = 1.396971°/abad. */
+    /* Meeus bab 47 memberi bujur/lintang terhadap EKUINOKS TANGGAL.
+     Kerangka planet (JPL_ELEMENTS) memakai J2000. Selisih presesi umum:
+     p = 5029.0966"/abad = 1.396971°/abad (Meeus bab 21).
+     Tanpa koreksi ini, error bujur ~0.37° pada 2026 → ~2.500 km. */
   const precess = 1.396971 * T + 0.0003086 * T * T;
   const lonJ2000 = norm360(lon - precess);
 
