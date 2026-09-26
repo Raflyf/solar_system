@@ -17,3 +17,6 @@ _px_*.png
 
 # sumber antara hasil olahan (dibuat ulang oleh tools/)
 assets_src/
+
+# katalog bintang mentah (13 MB, bisa diunduh ulang via tools/process_stars.py)
+assets_raw/hyg_v38.csv.gz

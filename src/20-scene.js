@@ -15,7 +15,7 @@
 let renderer, scene, camera;
 const bodies = [];
 const pickables = [];
-let sunMesh, sunGlow, sunRim, skyMesh, beltPoints, sunLight, starField;
+let sunMesh, sunGlow, sunRim, skyMesh, beltPoints, sunLight, starField_legacy;
 const glowTextures = {};
 
 /* pemetaan nama bulan -> kunci tekstur di TEX */
@@ -378,68 +378,14 @@ function buildBelt() {
   scene.add(beltPoints);
 }
 
-/* ---------- medan bintang (titik tajam di ruang layar) ---------- */
+/* ---------- medan bintang ----------
+   Sebelumnya: 8.000 titik acak (bukan bintang nyata).
+   Sekarang: 8.714 bintang dari katalog HYG dengan posisi RA/Dec nyata,
+   magnitudo nyata, dan warna dari indeks B-V — plus 86 rasi bintang,
+   Bima Sakti, dan 20 galaksi/nebula. Lihat src/18-stars.js */
 function buildStars() {
-  const N = 8000;
-  const positions = new Float32Array(N * 3);
-  const colors = new Float32Array(N * 3);
-  const sizes = new Float32Array(N);
-  const rnd = mulberry32(31415);
-  const tmp = new THREE.Color();
-  for (let i = 0; i < N; i++) {
-    const u = rnd() * 2 - 1;
-    const th = rnd() * Math.PI * 2;
-    const s = Math.sqrt(1 - u * u);
-    const R = 400000;
-    positions[i * 3] = s * Math.cos(th) * R;
-    positions[i * 3 + 1] = u * R;
-    positions[i * 3 + 2] = s * Math.sin(th) * R;
-    const mag = Math.pow(rnd(), 2.6);
-    sizes[i] = 1.0 + mag * 3.2;
-    const warm = rnd();
-    if (warm < 0.12) tmp.setRGB(1.0, 0.88, 0.74);
-    else if (warm < 0.28) tmp.setRGB(0.78, 0.84, 1.0);
-    else if (warm < 0.4) tmp.setRGB(1.0, 0.96, 0.9);
-    else tmp.setRGB(0.92, 0.95, 1.0);
-    const b = 0.5 + mag * 0.5;
-    colors[i * 3] = tmp.r * b; colors[i * 3 + 1] = tmp.g * b; colors[i * 3 + 2] = tmp.b * b;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-  const mat = new THREE.ShaderMaterial({
-    uniforms: {
-      uMap: { value: canvasTexture(makeStarDotCanvas(32), true) },
-      uDpr: { value: renderer.getPixelRatio() },
-    },
-    vertexShader: [
-      'attribute float aSize;',
-      'varying vec3 vColor;',
-      'uniform float uDpr;',
-      'void main() {',
-      '  vColor = color;',
-      '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
-      '  gl_Position = projectionMatrix * mv;',
-      '  gl_PointSize = aSize * uDpr;',
-      '}',
-    ].join('\n'),
-    fragmentShader: [
-      'uniform sampler2D uMap;',
-      'varying vec3 vColor;',
-      'void main() {',
-      '  vec4 t = texture2D(uMap, gl_PointCoord);',
-      '  gl_FragColor = vec4(vColor, t.a);',
-      '}',
-    ].join('\n'),
-    transparent: true, depthTest: false, depthWrite: false,
-    vertexColors: true, blending: THREE.AdditiveBlending,
-  });
-  const pts = new THREE.Points(geo, mat);
-  pts.frustumCulled = false;
-  pts.renderOrder = -100;
-  scene.add(pts);
-  starField = pts;
+  buildStarField();
+  starField_legacy = starField.points;   /* dipakai applyPositions untuk geser */
 }
 
 /* ---------- penanda navigasi ---------- */
@@ -596,7 +542,9 @@ function applyRebaseToStatics() {
   if (sunRim) sunRim.position.set(nx, ny, nz);
   if (sunGlow) sunGlow.position.set(nx, ny, nz);
   if (beltPoints) beltPoints.position.set(nx, ny, nz);
-  if (starField) starField.position.set(nx, ny, nz);
+  if (typeof starField !== 'undefined' && starField.group) {
+    starField.group.position.set(nx, ny, nz);
+  }
   if (skyMesh) skyMesh.position.set(nx, ny, nz);
 }
 
@@ -616,6 +564,11 @@ const _inv = new THREE.Matrix4();
    ======================================================================= */
 
 function computePositions(days, elapsed) {
+  /* waktu absolut: J2000 + jumlah hari simulasi.
+     Posisi benda dihitung dari EPHEMERIS NYATA (JPL + Meeus), bukan lagi
+     orbit lingkaran dengan sudut acak. Ini yang membuat gerhana akurat. */
+  const jd = J2000_JD + days;
+
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     if (b.type === 'star') {
@@ -624,52 +577,70 @@ function computePositions(days, elapsed) {
       }
       b.rotationDays = b.rotationDays || 25.38;
       b.spinAngle = (days / b.rotationDays) * Math.PI * 2 * 0.15;
-      continue;
-    }
-    if (!b.periodDays) continue;
-    const dir = b.periodDays < 0 ? -1 : 1;
-    const th = b.theta0 + dir * (days / Math.abs(b.periodDays)) * Math.PI * 2;
-    if (!isFinite(th)) continue;
-    b._theta = th;
-
-    if (b.isMoon) {
-      const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
-      const e = b.e;
-      const bAxis = a * Math.sqrt(1 - e * e);
-      const c = a * e;
-      /* _localRaw = offset di bidang orbit (dipakai untuk RENDER).
-         Bulan ditempel di dalam moonPlane yang sudah dirotasi axialTilt
-         induknya, jadi nilai ini TIDAK boleh ikut diputar. */
-      b._local = b._local || new THREE.Vector3();
-      b._local.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
-      b._local.applyAxisAngle(AXIS_X, b.incl);
-
-      /* _localWorld = offset yang sudah termasuk kemiringan poros induk
-         (dipakai untuk ABSOLUT: kamera, label, penanda).
-         Dipisah supaya tidak terjadi rotasi ganda. */
-      b._localWorld = b._localWorld || new THREE.Vector3();
-      b._localWorld.copy(b._local);
-      const hostTilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
-      if (hostTilt) b._localWorld.applyAxisAngle(AXIS_Z, hostTilt);
-
-      b._spinAngle = b.tidallyLocked ? (-th - Math.PI / 2) : ((days / b.rotationDays) * Math.PI * 2);
-      /* posisi absolut bulan = posisi induk + offset yang sudah miring */
       b.absPos = b.absPos || new THREE.Vector3();
-      if (b.host && b.host.absPos) b.absPos.copy(b.host.absPos).add(b._localWorld);
+      b.absPos.set(0, 0, 0);
       continue;
     }
 
-    /* planet: elips nyata mengelilingi Matahari (fokus di titik asal) */
-    const a = b.aKm / RAD;
-    const e = b.e;
-    const bAxis = a * Math.sqrt(1 - e * e);
-    const c = a * e;
+    /* --- posisi NYATA dari ephemeris --- */
+    const pos = ephemerisPos(b, jd);
+    if (!pos) continue;
+
     b.absPos = b.absPos || new THREE.Vector3();
-    b.absPos.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
-    b.absPos.applyAxisAngle(AXIS_X, b.incl);
-    b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
+    b.absPos.set(pos.x, pos.y, pos.z);
+
+    /* spin benda: pakai rotasi sideris nyata, dan Bulan terkunci pasang-surut */
+    if (b.isMoon) {
+      /* Bulan selalu menghadap Bumi. Arahnya dihitung dari vektor
+         Bumi→Bulan supaya tetap benar walau orbitnya miring. */
+      if (b.host && b.host.absPos) {
+        const dx = b.absPos.x - b.host.absPos.x;
+        const dz = b.absPos.z - b.host.absPos.z;
+        b._spinAngle = Math.atan2(dx, dz) + Math.PI;
+      } else {
+        b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
+      }
+    } else {
+      b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
+    }
+    b._theta = 0;
   }
 }
+
+/* posisi ephemeris untuk sebuah benda, dalam unit scene (RAD)
+   Bulan memakai posisi GEOSENTRIS presisi dari teori Meeus, bukan
+   orbit lingkaran — inilah kunci akurasi gerhana. */
+function ephemerisPos(b, jd) {
+  if (b.isMoon) {
+    if (!b.host) return null;
+    const hostPos = b.host.absPos;
+    if (!hostPos) return null;
+    /* posisi geosentris Bulan dalam km, kerangka ekliptika J2000 */
+    const mk = moonPositionKm(jd);
+    const k = 1 / RAD;
+    return {
+      x: hostPos.x + mk.x * k,
+      y: hostPos.y + mk.z * k,      /* z ekliptika -> y scene (atas) */
+      z: hostPos.z - mk.y * k,      /* y ekliptika -> -z scene */
+    };
+  }
+  const key = EPHEMERIS_KEY[b.key];
+  if (!key) return null;
+  const p = planetPositionAU(key, jd);
+  if (!p) return null;
+  const k = AU_KM / RAD;
+  return {
+    x: p.x * k,
+    y: p.z * k,                     /* z ekliptika -> y scene (atas) */
+    z: -p.y * k,                    /* y ekliptika -> -z scene */
+  };
+}
+
+/* pemetaan key benda -> key elemen JPL */
+const EPHEMERIS_KEY = {
+  mercury: 'mercury', venus: 'venus', earth: 'earth', mars: 'mars',
+  jupiter: 'jupiter', saturn: 'saturn', uranus: 'uranus', neptune: 'neptune',
+};
 
 const AXIS_X = new THREE.Vector3(1, 0, 0);
 const AXIS_Z = new THREE.Vector3(0, 0, 1);
@@ -719,7 +690,9 @@ function applyPositions() {
   if (sunRim) sunRim.position.set(nx, ny, nz);
   if (sunGlow) sunGlow.position.set(nx, ny, nz);
   if (beltPoints) beltPoints.position.set(nx, ny, nz);
-  if (starField) starField.position.set(nx, ny, nz);
+  if (typeof starField !== 'undefined' && starField.group) {
+    starField.group.position.set(nx, ny, nz);
+  }
   if (skyMesh) skyMesh.position.set(nx, ny, nz);
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];

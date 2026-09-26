@@ -12,11 +12,15 @@
 
     <!-- Tombol kanan atas -->
     <div class="panel top-buttons" id="topButtons">
-      <button class="btn primary" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
+      <button class="btn primary" id="btnDate" title="Pilih tanggal & lihat peristiwa langit (T)">📅 Tanggal</button>
+      <button class="btn" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
     </div>
+
+    <!-- Lencana peristiwa langit -->
+    <div class="event-badge" id="eventBadge">—</div>
 
     <!-- Daftar benda -->
     <div class="panel sidebar" id="sidebar">
@@ -28,10 +32,15 @@
       <div class="sidebar-foot">
         <label class="chk"><input type="checkbox" id="chkOrbits" checked> Tampilkan garis orbit</label>
         <label class="chk"><input type="checkbox" id="chkLabels2" checked> Tampilkan label</label>
+        <div class="sky-toggles">
+          <label class="chk"><input type="checkbox" id="chkStars" checked> Bintang nyata <b id="starCount"></b></label>
+          <label class="chk"><input type="checkbox" id="chkConst" checked> Garis rasi bintang</label>
+          <label class="chk"><input type="checkbox" id="chkStarNames"> Nama bintang &amp; galaksi</label>
+        </div>
       </div>
     </div>
 
-    <!-- Panel info -->
+    <!-- Panel info benda -->
     <div class="panel info-panel" id="infoPanel">
       <div class="info-head">
         <div>

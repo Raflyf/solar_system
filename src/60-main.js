@@ -142,6 +142,7 @@ async function boot() {
   buildUI();
   initControls(canvas);
   buildLabels();
+  buildDatePanel();
 
   setLoading(100, 'Siap!');
   await nextFrame();
@@ -179,6 +180,13 @@ async function boot() {
     updateLabels();
     updateBeacons();
     updateHud();
+    updateStarLabels();
+    if (datePanelState.open) renderDatePanel();
+    if (!window.__skyInfoT || performance.now() - window.__skyInfoT > 900) {
+      window.__skyInfoT = performance.now();
+      updateSkyInfo();
+    }
+    updateEventBadge();
 
     renderer.render(scene, camera);
   }
@@ -213,8 +221,19 @@ function buildUI() {
     else { startTour(); setBtn('btnTour', '■ Hentikan Tur', true); }
   });
   $('btnLabels').addEventListener('click', () => toggleLabels());
+  $('btnDate').addEventListener('click', () => toggleDatePanel());
   $('chkLabels2').addEventListener('change', (e) => setLabels(e.target.checked));
   $('chkOrbits').addEventListener('change', (e) => setOrbits(e.target.checked));
+  /* kontrol langit nyata */
+  $('chkStars').addEventListener('change', (e) => setStarFieldVisible(e.target.checked));
+  $('chkConst').addEventListener('change', (e) => setConstellationLines(e.target.checked));
+  $('chkStarNames').addEventListener('change', (e) => {
+    setStarNames(e.target.checked);
+    buildStarLabels();
+  });
+  if ($('starCount')) {
+    $('starCount').textContent = '(' + (STARS_LABELED.length + STARS_OTHER.length) + ')';
+  }
   $('btnHelp').addEventListener('click', () => $('helpPanel').classList.toggle('show'));
   $('btnHelpClose').addEventListener('click', () => $('helpPanel').classList.remove('show'));
   $('btnSidebar').addEventListener('click', () => $('sidebar').classList.toggle('hidden'));
@@ -270,6 +289,7 @@ function buildUI() {
       if (cameraState.target && !cameraState.target.isMoon) viewMoonSystem(cameraState.target);
       else if (currentInfoBody) viewMoonSystem(currentInfoBody);
     }
+    else if (e.code === 'KeyT') { toggleDatePanel(); }
     else if (/^Digit[1-8]$/.test(e.code)) {
       const idx = parseInt(e.code.slice(5), 10) - 1;
       const p = PLANETS[idx];
@@ -556,6 +576,110 @@ function updateHud() {
 
 /* ---------- jalan ---------- */
 window.addEventListener('DOMContentLoaded', boot);
+
+/* ---------- label bintang & galaksi ---------- */
+/* Menampilkan nama bintang terang yang sedang berada di layar.
+   Dibatasi jumlahnya supaya tidak menumpuk. */
+let starLabelEls = [];
+
+function buildStarLabels() {
+  /* buang label lama */
+  for (const el of starLabelEls) el.remove();
+  starLabelEls = [];
+  if (!starField.showNames) return;
+
+  /* hanya bintang terang (mag < 2.2) dan bernama asli */
+  const kandidat = starField.labeled
+    .filter(s => s.mag < 2.2 && s.nama)
+    .sort((a, b) => a.mag - b.mag)
+    .slice(0, 40);
+
+  for (const s of kandidat) {
+    const el = document.createElement('div');
+    el.className = 'flabel star-label';
+    el.textContent = s.nama;
+    el.style.display = 'none';
+    $('labelLayer').appendChild(el);
+    starLabelEls.push(el);
+  }
+
+  /* galaksi & nebula: 12 terdekat yang paling terkenal */
+  const gal = starField.deepSkySprites.slice(0, 12);
+  for (const sp of gal) {
+    const el = document.createElement('div');
+    el.className = 'flabel galaxy-label';
+    el.textContent = sp.userData.nama;
+    el.style.display = 'none';
+    $('labelLayer').appendChild(el);
+    starLabelEls.push(el);
+  }
+}
+
+const _starTmp = new THREE.Vector3();
+
+function updateStarLabels() {
+  if (!starField.showNames || !starLabelEls.length) return;
+  const W = window.innerWidth, H = window.innerHeight;
+  const kandidat = starField.labeled
+    .filter(s => s.mag < 2.2 && s.nama)
+    .sort((a, b) => a.mag - b.mag)
+    .slice(0, 40);
+
+  let idx = 0;
+  for (const s of kandidat) {
+    const el = starLabelEls[idx++];
+    if (!el) break;
+    /* posisi bintang relatif kamera (dunia sudah tergeser floating origin) */
+    _starTmp.set(s.x, s.y, s.z).add(starField.group.position);
+    const dist = camera.position.distanceTo(_starTmp);
+    _starTmp.project(camera);
+    if (_starTmp.z < -1 || _starTmp.z > 1 ||
+        Math.abs(_starTmp.x) > 1 || Math.abs(_starTmp.y) > 1) {
+      el.style.display = 'none';
+      continue;
+    }
+    el.style.display = '';
+    el.style.left = Math.round((_starTmp.x * 0.5 + 0.5) * W) + 'px';
+    el.style.top = Math.round((-_starTmp.y * 0.5 + 0.5) * H - 10) + 'px';
+  }
+  for (; idx < starLabelEls.length; idx++) {
+    const el = starLabelEls[idx];
+    if (!el) continue;
+    /* galaksi */
+    const gIdx = idx - kandidat.length;
+    const sp = starField.deepSkySprites[gIdx];
+    if (!sp) { el.style.display = 'none'; continue; }
+    _starTmp.copy(sp.position).add(starField.group.position);
+    _starTmp.project(camera);
+    if (_starTmp.z < -1 || _starTmp.z > 1 ||
+        Math.abs(_starTmp.x) > 1 || Math.abs(_starTmp.y) > 1) {
+      el.style.display = 'none';
+      continue;
+    }
+    el.style.display = '';
+    el.style.left = Math.round((_starTmp.x * 0.5 + 0.5) * W) + 'px';
+    el.style.top = Math.round((-_starTmp.y * 0.5 + 0.5) * H - 10) + 'px';
+  }
+}
+
+/* ---------- keterangan langit ---------- */
+function updateSkyInfo() {
+  const el = $('skyInfo');
+  if (!el) return;
+  const jd = J2000_JD + app.days;
+  /* fase Bulan + elongasi planet: info cepat di sidebar */
+  const fase = moonPhase(jd);
+  const lines = [];
+  lines.push(`<div class="sky-line"><b>${fase.nama}</b> · ${(fase.iluminasi * 100).toFixed(0)}%</div>`);
+  for (const key of ['venus', 'mars', 'jupiter', 'saturn']) {
+    const e = planetElongation(key, jd);
+    if (!e) continue;
+    const nama = { venus: 'Venus', mars: 'Mars', jupiter: 'Jupiter', saturn: 'Saturnus' }[key];
+    const tag = e.jenis === 'oposisi' ? ' ✦oposisi' : e.jenis === 'konjungsi' ? ' ⊙konjungsi' : '';
+    lines.push(`<div class="sky-line">${nama} <span>${e.elongasi.toFixed(0)}°${tag}</span></div>`);
+  }
+  el.innerHTML = lines.join('');
+}
 
 /* kait uji otomatis (tidak mengganggu pengguna) */
 window.__SOLAR__ = {
