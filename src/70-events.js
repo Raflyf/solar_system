@@ -131,12 +131,76 @@ function eventsAt(date, windowDays) {
     }
   }
 
+  /* 5. Hujan Meteor Aktif */
+  if (typeof METEOR_SHOWERS !== 'undefined') {
+    const date = jdToDate(jd);
+    const m = date.getUTCMonth() + 1;
+    const d = date.getUTCDate();
+    const curMD = (m < 10 ? '0' + m : '' + m) + '-' + (d < 10 ? '0' + d : '' + d);
+
+    for (const ms of METEOR_SHOWERS) {
+      const start = ms.rentang.mulai;
+      const end = ms.rentang.selesai;
+      let isActive = false;
+
+      if (start <= end) {
+        isActive = (curMD >= start && curMD <= end);
+      } else {
+        // Melintasi pergantian tahun
+        isActive = (curMD >= start || curMD <= end);
+      }
+
+      if (isActive) {
+        const isPeak = (ms.puncak.bulan === m && Math.abs(ms.puncak.hari - d) <= 1);
+        hasil.push({
+          jenis: 'meteor',
+          ikon: '☄️',
+          judul: `Hujan Meteor ${ms.nama} ${isPeak ? '— PUNCAK' : ''}`,
+          detail: `ZHR: ~${ms.zhr}/jam · Sumber: ${ms.induk} · Kecepatan: ${ms.v_kms} km/s`,
+          penting: isPeak,
+          jd,
+        });
+      }
+    }
+  }
+
+  /* 6. Konjungsi Planet-Planet (< 2.5° pemisahan sudut) */
+  for (let i = 0; i < planetKeys.length; i++) {
+    for (let j = i + 1; j < planetKeys.length; j++) {
+      const p1 = planetKeys[i];
+      const p2 = planetKeys[j];
+      const pos1 = bodyPositionKm(p1, jd);
+      const pos2 = bodyPositionKm(p2, jd);
+      if (!pos1 || !pos2) continue;
+
+      // Posisi geosentris (dari Bumi)
+      const e = earthPositionKm(jd);
+      const v1 = { x: pos1.x - e.x, y: pos1.y - e.y, z: pos1.z - e.z };
+      const v2 = { x: pos2.x - e.x, y: pos2.y - e.y, z: pos2.z - e.z };
+
+      const dot = (v1.x * v2.x + v1.y * v2.y + v1.z * v2.z) / 
+                  (Math.sqrt(v1.x*v1.x + v1.y*v1.y + v1.z*v1.z) * 
+                   Math.sqrt(v2.x*v2.x + v2.y*v2.y + v2.z*v2.z));
+      const sepDeg = Math.acos(Math.max(-1, Math.min(1, dot))) / DEG;
+
+      if (sepDeg < 2.5) {
+        hasil.push({
+          jenis: 'konjungsi-planet',
+          ikon: '🪐',
+          judul: `Konjungsi ${p1.toUpperCase()} - ${p2.toUpperCase()}`,
+          detail: `Pemisahan ${sepDeg.toFixed(2)}° — terlihat sangat dekat di langit`,
+          jd,
+        });
+      }
+    }
+  }
+
   /* buang duplikat berdasarkan judul */
   const uniq = [];
-  const seen = {};
+  const seen = Object.create(null);
   for (const e of hasil) {
     if (seen[e.judul]) continue;
-    seen[e.judul] = 1;
+    seen[e.judul] = true;
     uniq.push(e);
   }
   return uniq;

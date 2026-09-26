@@ -17,10 +17,14 @@
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
+      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi (E)">🌍 POV Bumi</button>
     </div>
 
     <!-- Lencana peristiwa langit -->
     <div class="event-badge" id="eventBadge">—</div>
+
+    <!-- Badge Validitas Waktu -->
+    <div class="temporal-badge" id="temporalBadge" style="display:none"></div>
 
     <!-- Daftar benda -->
     <div class="panel sidebar" id="sidebar">
@@ -84,6 +88,37 @@
         </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
+    </div>
+
+    <!-- Modal POV Bumi -->
+    <div class="panel earthview-modal hidden" id="earthviewModal">
+      <div class="evm-head">
+        <span>🌍 POV dari Permukaan Bumi</span>
+        <button class="mini" id="evmClose" title="Tutup">✕</button>
+      </div>
+      <div class="evm-body">
+        <div class="evm-row">
+          <label>Kota</label>
+          <select id="evmCity" class="evm-input"></select>
+        </div>
+        <div class="evm-row">
+          <label>Lintang</label>
+          <input type="number" step="0.01" id="evmLat" class="evm-input" placeholder="Lintang (-90..90)">
+        </div>
+        <div class="evm-row">
+          <label>Bujur</label>
+          <input type="number" step="0.01" id="evmLon" class="evm-input" placeholder="Bujur (-180..180)">
+        </div>
+        <div class="evm-row">
+          <label>Elevasi (m)</label>
+          <input type="number" step="10" id="evmElev" class="evm-input" placeholder="Elevasi meter">
+        </div>
+        <div class="evm-btns">
+          <button class="btn primary" id="evmApply">Terapkan & Masuk POV</button>
+          <button class="btn" id="evmExit" style="display:none" title="Keluar POV Bumi">⬆ Keluar POV</button>
+        </div>
+        <div class="evm-hint">Geser mouse untuk melihat langit 360°. Roda mouse = zoom. E = keluar POV.</div>
+      </div>
     </div>
 
     <!-- Bantuan -->

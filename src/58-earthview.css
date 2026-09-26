@@ -1,0 +1,69 @@
+/* =======================================================================
+   EARTHVIEW MODAL CSS
+   ======================================================================= */
+.earthview-modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 320px;
+  background: rgba(10, 15, 25, 0.95);
+  border: 1px solid rgba(120, 160, 220, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  z-index: 1000;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+  font-family: inherit;
+  color: #dfe7f2;
+}
+
+.earthview-modal.hidden {
+  display: none !important;
+}
+
+.evm-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.evm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+
+.evm-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  width: 140px;
+  font-size: 12px;
+}
+
+.evm-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.evm-btns button {
+  flex: 1;
+}
+
+.evm-hint {
+  font-size: 10px;
+  color: #8fa4bd;
+  margin-top: 10px;
+  line-height: 1.3;
+  text-align: center;
+}
