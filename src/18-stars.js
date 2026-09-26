@@ -474,7 +474,7 @@ function buildStarField() {
   const lgeo = new THREE.BufferGeometry();
   lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lpos), 3));
   const lmat = new THREE.LineBasicMaterial({
-    color: 0x6a94d4, transparent: true, opacity: 0.30,
+    color: 0x6a94d4, transparent: true, opacity: 0.20,
     depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const clines = new THREE.LineSegments(lgeo, lmat);
