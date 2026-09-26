@@ -1,0 +1,481 @@
+/* =======================================================================
+   Aplikasi utama: pemuatan, antarmuka, label, dan gelung render
+   ======================================================================= */
+
+const app = {
+  days: 0,                 /* hari simulasi sejak 2000-01-01 */
+  daysPerSecond: 1,
+  paused: false,
+  labelsOn: true,
+  orbitsOn: true,
+  ready: false,
+  fps: 0,
+};
+
+const J2000 = Date.UTC(2000, 0, 1, 12, 0, 0);
+
+/* ---------- elemen DOM ---------- */
+const $ = (id) => document.getElementById(id);
+
+function setLoading(pct, task) {
+  const f = $('loaderFill'), p = $('loaderPct'), t = $('loaderTask');
+  if (f) f.style.width = pct + '%';
+  if (p) p.textContent = Math.round(pct) + '%';
+  if (t && task) t.textContent = task;
+}
+const nextFrame = () => new Promise((r) => setTimeout(r, 16));
+
+/* =======================================================================
+   Pemuatan
+   ======================================================================= */
+async function boot() {
+  const canvas = $('scene');
+
+  /* uji ketersediaan WebGL */
+  try {
+    const test = document.createElement('canvas');
+    const gl = test.getContext('webgl2') || test.getContext('webgl') || test.getContext('experimental-webgl');
+    if (!gl) throw new Error('no webgl');
+  } catch (err) {
+    $('loader').style.display = 'none';
+    $('errorBox').style.display = 'flex';
+    return;
+  }
+
+  setLoading(4, 'Menyiapkan mesin grafis…');
+  await nextFrame();
+
+  scene = new THREE.Scene();
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 2000000);
+  initRenderer(canvas);
+  window.addEventListener('resize', onResize);
+
+  setLoading(8, 'Menggambar langit berbintang…');
+  await nextFrame();
+
+  /* ---- pembangunan bertahap agar bilah pemuatan terlihat hidup ---- */
+  const steps = [];
+  steps.push(['Membuat permukaan Matahari…', () => { buildSky(); buildSun(); }]);
+  for (let i = 0; i < PLANETS.length; i++) {
+    const p = PLANETS[i];
+    steps.push(['Membuat tekstur ' + p.name + '…', () => {
+      const body = buildBody(p, null, null);
+      bodies.push(body);
+      if (p.moons) {
+        for (let j = 0; j < p.moons.length; j++) {
+          const moon = buildBody(p.moons[j], body.moonPlane, body);
+          bodies.push(moon);
+        }
+      }
+    }]);
+  }
+  steps.push(['Menebar sabuk asteroid…', () => { buildBelt(); }]);
+  steps.push(['Menyalakan bintang-bintang…', () => { buildStars(); buildBeacons(); }]);
+
+  const base = 10, span = 74;
+  for (let i = 0; i < steps.length; i++) {
+    setLoading(base + (i / steps.length) * span, steps[i][0]);
+    await nextFrame();
+    steps[i][1]();
+  }
+
+  setLoading(88, 'Menata orbit…');
+  await nextFrame();
+
+  /* sudut awal acak agar konfigurasi langsung tampak hidup */
+  const rnd = mulberry32(4242);
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (b.type === 'star') continue;
+    b.theta0 = rnd() * Math.PI * 2;
+  }
+
+  /* mulai dari "hari ini" */
+  app.days = (Date.now() - J2000) / 86400000;
+  updateBodies(app.days);
+
+  setLoading(94, 'Menyusun antarmuka…');
+  await nextFrame();
+  buildUI();
+  initControls(canvas);
+  buildLabels();
+
+  setLoading(100, 'Siap!');
+  await nextFrame();
+
+  app.ready = true;
+  $('loader').classList.add('done');
+  setTimeout(() => { const l = $('loader'); if (l) l.style.display = 'none'; }, 800);
+
+  let last = performance.now();
+  let acc = 0, frames = 0;
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    acc += dt; frames++;
+    if (acc > 0.5) { app.fps = frames / acc; acc = 0; frames = 0; }
+
+    if (!app.paused) {
+      /* waktu dibekukan selama transisi kamera agar lompatan mulus */
+      if (!anyTransitionActive()) app.days += dt * app.daysPerSecond;
+    }
+    updateBodies(app.days);
+    updateCamera(dt);
+    updateTour(dt);
+    updateLabels();
+    updateBeacons();
+    updateHud();
+
+    /* langit selalu mengikuti kamera agar tidak pernah terlewati */
+    if (skyMesh) skyMesh.position.copy(camera.position);
+    if (sunGlow) sunGlow.position.set(0, 0, 0);
+
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(loop);
+}
+
+/* =======================================================================
+   Antarmuka
+   ======================================================================= */
+function buildUI() {
+  /* ---- daftar benda di bilah samping ---- */
+  const list = $('bodyList');
+  list.innerHTML = '';
+  list.appendChild(makeGroupLabel('Bintang'));
+  list.appendChild(makeItem(findBody('sun'), null, 0));
+  list.appendChild(makeGroupLabel('Planet'));
+  for (let i = 0; i < PLANETS.length; i++) {
+    const p = PLANETS[i];
+    const b = findBody(p.key);
+    list.appendChild(makeItem(b, (i + 1), 0));
+    if (p.moons) {
+      for (let j = 0; j < p.moons.length; j++) {
+        const m = findBodyByName(p.moons[j].name);
+        if (m) list.appendChild(makeItem(m, null, 1));
+      }
+    }
+  }
+
+  /* ---- tombol ---- */
+  $('btnTour').addEventListener('click', () => {
+    if (tourState.active) { stopTour(); setBtn('btnTour', '▶ Tur Terpandu', false); }
+    else { startTour(); setBtn('btnTour', '■ Hentikan Tur', true); }
+  });
+  $('btnLabels').addEventListener('click', () => toggleLabels());
+  $('chkLabels2').addEventListener('change', (e) => setLabels(e.target.checked));
+  $('chkOrbits').addEventListener('change', (e) => setOrbits(e.target.checked));
+  $('btnHelp').addEventListener('click', () => $('helpPanel').classList.toggle('show'));
+  $('btnHelpClose').addEventListener('click', () => $('helpPanel').classList.remove('show'));
+  $('btnSidebar').addEventListener('click', () => $('sidebar').classList.toggle('hidden'));
+  $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
+
+  $('btnFocus').addEventListener('click', () => {
+    if (currentInfoBody) focusBody(currentInfoBody);
+  });
+  $('btnFree').addEventListener('click', () => focusBody(null));
+
+  $('btnPause').addEventListener('click', () => togglePause());
+  $('btnNow').addEventListener('click', () => {
+    app.days = (Date.now() - J2000) / 86400000;
+  });
+  const slider = $('speedSlider');
+  slider.max = String(TIME_TABLE.length - 1);
+  slider.value = '1';
+  const upd = () => {
+    const i = parseInt(slider.value, 10);
+    app.daysPerSecond = TIME_TABLE[i];
+    const pct = (i / (TIME_TABLE.length - 1)) * 100;
+    slider.style.setProperty('--fill', pct + '%');
+    const d = app.daysPerSecond;
+    $('speedLabel').textContent = d < 1 ? '1 dtk = ' + d + ' hari' :
+      d === 1 ? '1 dtk = 1 hari' :
+      d < 30 ? '1 dtk = ' + d + ' hari' :
+      d < 365 ? '1 dtk = ' + (d / 30.44).toFixed(1) + ' bulan' :
+      '1 dtk = ' + (d / 365.25).toFixed(1) + ' tahun';
+  };
+  slider.addEventListener('input', upd);
+  upd();
+
+  /* ---- pintasan papan tombol ---- */
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyL') toggleLabels();
+    else if (e.code === 'KeyO') { $('chkOrbits').checked = !$('chkOrbits').checked; setOrbits($('chkOrbits').checked); }
+    else if (e.code === 'KeyH') $('helpPanel').classList.toggle('show');
+    else if (e.code === 'KeyP') togglePause();
+    else if (e.code === 'Space') {
+      if (cameraState.target) focusBody(null);
+      else togglePause();
+    } else if (e.code === 'Digit0' || e.code === 'Numpad0') { const b = findBody('sun'); if (b) focusBody(b); }
+    else if (/^Digit[1-8]$/.test(e.code)) {
+      const idx = parseInt(e.code.slice(5), 10) - 1;
+      const p = PLANETS[idx];
+      if (p) { const b = findBody(p.key); if (b) focusBody(b); }
+    }
+  });
+
+  updateBodyListActive();
+}
+
+function moonKeyOf(planetKey, moonName) {
+  return planetKey + ':' + moonName;
+}
+
+function findBodyByName(name) {
+  for (let i = 0; i < bodies.length; i++) if (bodies[i].name === name) return bodies[i];
+  return null;
+}
+
+function makeGroupLabel(txt) {
+  const d = document.createElement('div');
+  d.className = 'grp';
+  d.textContent = txt;
+  return d;
+}
+
+function makeItem(body, num, level) {
+  const d = document.createElement('div');
+  d.className = 'item' + (level ? ' sub' : '');
+  d.dataset.bodyId = body.id;
+  const col = new THREE.Color(body.isMoon ? (body.info ? 0x999999 : 0xaaaaaa) : bodyColorOf(body));
+  const dot = document.createElement('span');
+  dot.className = 'dot';
+  dot.style.background = '#' + col.getHexString();
+  dot.style.color = '#' + col.getHexString();
+  const nm = document.createElement('span');
+  nm.className = 'nm';
+  nm.textContent = (num ? num + '. ' : '') + body.name;
+  d.appendChild(dot);
+  d.appendChild(nm);
+  if (level === 0 && body.type === 'planet') {
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = (body.aKm / AU_KM).toFixed(1) + ' SA';
+    d.appendChild(meta);
+  }
+  d.addEventListener('click', () => focusBody(body));
+  return d;
+}
+
+function bodyColorOf(b) {
+  if (b.type === 'star') return 0xffb44d;
+  const c = { mercury: 0x9c968c, venus: 0xe8d5a8, earth: 0x3d7fd6, mars: 0xc1603a, jupiter: 0xd8b88a, saturn: 0xe8d8b0, uranus: 0xa8e0e4, neptune: 0x4a7ad8 };
+  return c[b.key] || 0xaaaaaa;
+}
+
+function updateBodyListActive() {
+  const items = document.querySelectorAll('#bodyList .item');
+  for (let i = 0; i < items.length; i++) {
+    const id = items[i].dataset.bodyId;
+    items[i].classList.toggle('active', !!(cameraState.target && cameraState.target.id === id));
+  }
+}
+
+function setBtn(id, text, active) {
+  const b = $(id);
+  if (!b) return;
+  b.textContent = text;
+  b.classList.toggle('active', !!active);
+}
+
+function toggleLabels() { setLabels(!app.labelsOn); }
+
+function setLabels(on) {
+  app.labelsOn = on;
+  $('chkLabels2').checked = on;
+  const b = $('btnLabels');
+  b.classList.toggle('active', on);
+  if (!on) {
+    for (let i = 0; i < labelEls.length; i++) labelEls[i].style.display = 'none';
+  }
+}
+
+function setOrbits(on) {
+  app.orbitsOn = on;
+  for (let i = 0; i < bodies.length; i++) {
+    const l = bodies[i].orbitLine;
+    if (l) l.visible = on;
+  }
+}
+
+function togglePause() {
+  app.paused = !app.paused;
+  $('btnPause').textContent = app.paused ? '▶' : '⏸';
+  $('btnPause').classList.toggle('active', app.paused);
+}
+
+/* =======================================================================
+   Panel info
+   ======================================================================= */
+let currentInfoBody = null;
+
+const TYPE_LABEL = {
+  star: 'Bintang — pusat tata surya',
+  planet: 'Planet',
+  moon: 'Satelit alami',
+};
+
+function showInfo(body) {
+  currentInfoBody = body;
+  $('infoName').textContent = body.name;
+  $('infoType').textContent = body.isMoon ? (TYPE_LABEL.moon + ' — ' + body.host.name) : TYPE_LABEL[body.type];
+  const t = $('infoTable');
+  t.innerHTML = '';
+
+  const rows = [];
+  if (body.type === 'planet') {
+    rows.push(['Radius nyata', fmt(body.realRadiusKm) + ' km']);
+    rows.push(['Jarak dari Matahari', fmt(body.aKm) + ' km (' + (body.aKm / AU_KM).toFixed(2) + ' SA)']);
+    rows.push(['Eksentrisitas orbit', body.e.toFixed(4)]);
+    rows.push(['Periode orbit', fmtDays(body.periodDays)]);
+    rows.push(['Periode rotasi', fmtDays(body.rotationDays)]);
+  } else if (body.isMoon) {
+    rows.push(['Radius nyata', fmt(body.realRadiusKm) + ' km']);
+    rows.push(['Jarak dari ' + body.host.name, fmt(body.aKm) + ' km']);
+    rows.push(['Periode orbit', fmtDays(Math.abs(body.periodDays))]);
+    rows.push(['Terkunci pasang-surut', body.tidallyLocked ? 'Ya' : 'Tidak']);
+  }
+  const info = body.info || {};
+  for (const k in info) {
+    /* hindari baris ganda bila datanya sudah ditampilkan di atas */
+    let dup = false;
+    for (let i = 0; i < rows.length; i++) if (rows[i][0] === k) dup = true;
+    if (!dup) rows.push([k, info[k]]);
+  }
+
+  for (let i = 0; i < rows.length; i++) {
+    const d = document.createElement('div');
+    d.className = 'row';
+    const k = document.createElement('span'); k.className = 'k'; k.textContent = rows[i][0];
+    const v = document.createElement('span'); v.className = 'v'; v.textContent = rows[i][1];
+    d.appendChild(k); d.appendChild(v);
+    t.appendChild(d);
+  }
+  $('infoPanel').classList.add('show');
+  updateBodyListActive();
+}
+
+function hideInfo() {
+  $('infoPanel').classList.remove('show');
+  currentInfoBody = null;
+  updateBodyListActive();
+}
+
+function fmt(n) {
+  return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+function fmtDays(d) {
+  const a = Math.abs(d);
+  const sign = d < 0 ? '(retrograde) ' : '';
+  if (a < 1) return sign + (a * 24).toFixed(1) + ' jam';
+  if (a < 400) return sign + a.toFixed(2).replace('.', ',') + ' hari';
+  return sign + (a / 365.25).toFixed(2).replace('.', ',') + ' tahun';
+}
+
+/* =======================================================================
+   Label melayang
+   ======================================================================= */
+const labelEls = [];
+const labelBodies = [];
+
+function buildLabels() {
+  const layer = $('labelLayer');
+  layer.innerHTML = '';
+  labelEls.length = 0;
+  labelBodies.length = 0;
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    const d = document.createElement('div');
+    d.className = 'flabel' + (b.isMoon ? ' moon' : '');
+    d.textContent = b.name;
+    d.addEventListener('click', (ev) => { ev.stopPropagation(); focusBody(b); });
+    layer.appendChild(d);
+    labelEls.push(d);
+    labelBodies.push(b);
+  }
+}
+
+const _proj = new THREE.Vector3();
+
+function updateLabels() {
+  if (!app.labelsOn || !app.ready) return;
+  const W = window.innerWidth, H = window.innerHeight;
+  const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+  const camPos = camera.position;
+
+  for (let i = 0; i < labelBodies.length; i++) {
+    const b = labelBodies[i];
+    const el = labelEls[i];
+    const wp = bodyWorldPos(b, _tmp);
+    const dist = camPos.distanceTo(wp);
+
+    /* label bulan disembunyikan bila induknya sudah jauh */
+    let visible = true;
+    if (b.isMoon) {
+      const hostPos = bodyWorldPos(b.host, _tmp2);
+      const distHost = camPos.distanceTo(hostPos);
+      if (distHost > b.host.radiusKm * 90) visible = false;
+    }
+    /* label planet disembunyikan bila planet belum cukup besar di layar,
+       kecuali benda yang sedang diikuti kamera atau punya penanda aktif */
+    if (visible && !b.isMoon) {
+      const px = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf;
+      const hasBeacon = !!(b.beacon && b.beacon.group.visible);
+      if (px < 2.2 && cameraState.target !== b && !hasBeacon) visible = false;
+    }
+    /* label Matahari disembunyikan saat kamera sangat dekat (di dalam corona) */
+    if (visible && b.type === 'star' && dist < b.radiusKm * 2.4) visible = false;
+
+    _proj.copy(wp).project(camera);
+    if (!isFinite(_proj.x) || !isFinite(_proj.y) || !isFinite(_proj.z)) visible = false;
+    else if (_proj.z < -1 || _proj.z > 1 || Math.abs(_proj.x) > 1.25 || Math.abs(_proj.y) > 1.25) visible = false;
+
+    if (!visible) { if (el.style.display !== 'none') el.style.display = 'none'; continue; }
+    const x = (_proj.x * 0.5 + 0.5) * W;
+    const y = (-_proj.y * 0.5 + 0.5) * H;
+    el.style.display = 'block';
+    /* geser label agar tidak menutupi benda / penanda yang ditunjuk */
+    let offPx = 0;
+    if (cameraState.target === b) {
+      offPx = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf + 22;
+    } else if (b.beacon && b.beacon.group.visible) {
+      offPx = 13;              /* tepat di atas titik penanda */
+    } else if (b.type === 'star') {
+      offPx = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf + 14;
+    }
+    el.style.left = x.toFixed(1) + 'px';
+    el.style.top = (y + offPx).toFixed(1) + 'px';
+    const isTarget = cameraState.target === b;
+    el.classList.toggle('small', !isTarget && !b.isMoon);
+  }
+}
+
+/* =======================================================================
+   HUD sudut
+   ======================================================================= */
+function updateHud() {
+  const hud = $('hudInfo');
+  if (!hud || !app.ready) return;
+  const date = new Date(J2000 + app.days * 86400000);
+  const dstr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  const tstr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  $('dateLabel').textContent = dstr + ' · ' + tstr;
+  const distAU = camera.position.length() / (AU_KM / RAD);
+  const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  hud.textContent = follow + ' · ' + (distAU < 0.01 ? (distAU * 1000).toFixed(1) + ' rb SA' : distAU.toFixed(2) + ' SA') + ' dari Matahari · ' + Math.round(app.fps) + ' fps';
+}
+
+/* ---------- jalan ---------- */
+window.addEventListener('DOMContentLoaded', boot);
+
+/* kait uji otomatis (tidak mengganggu pengguna) */
+window.__SOLAR__ = {
+  get ready() { return app.ready; },
+  get bodies() { return bodies; },
+  get app() { return app; },
+  get renderer() { return renderer; },
+  get camera() { return camera; },
+  focusBody, findBody, cameraState, tourState,
+  startTour, stopTour,
+};

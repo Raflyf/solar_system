@@ -1,0 +1,109 @@
+<div id="app">
+  <canvas id="scene"></canvas>
+
+  <!-- ======================= LAPISAN UI ======================= -->
+  <div class="ui" id="uiRoot">
+
+    <!-- Judul -->
+    <div class="panel title-panel" id="titlePanel">
+      <div class="title-main">TATA SURYA <span>3D</span></div>
+      <div class="title-sub">Jarak & ukuran skala nyata · planet diperbesar 4× agar terlihat</div>
+    </div>
+
+    <!-- Tombol kanan atas -->
+    <div class="panel top-buttons" id="topButtons">
+      <button class="btn primary" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
+      <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
+      <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
+    </div>
+
+    <!-- Daftar benda -->
+    <div class="panel sidebar" id="sidebar">
+      <div class="sidebar-head">
+        <span>Jelajahi</span>
+        <button class="mini" id="btnSidebar" title="Sembunyikan daftar">◀</button>
+      </div>
+      <div class="sidebar-list" id="bodyList"></div>
+      <div class="sidebar-foot">
+        <label class="chk"><input type="checkbox" id="chkOrbits" checked> Tampilkan garis orbit</label>
+        <label class="chk"><input type="checkbox" id="chkLabels2" checked> Tampilkan label</label>
+      </div>
+    </div>
+
+    <!-- Panel info -->
+    <div class="panel info-panel" id="infoPanel">
+      <div class="info-head">
+        <div>
+          <div class="info-name" id="infoName">—</div>
+          <div class="info-type" id="infoType">—</div>
+        </div>
+        <button class="mini" id="btnInfoClose" title="Tutup">✕</button>
+      </div>
+      <div class="info-table" id="infoTable"></div>
+      <div class="info-actions">
+        <button class="btn small" id="btnFocus">🎯 Fokuskan</button>
+        <button class="btn small" id="btnFree">🕊 Terbang Bebas</button>
+      </div>
+    </div>
+
+    <!-- Bilah waktu -->
+    <div class="panel timebar" id="timeBar">
+      <button class="btn small icon" id="btnPause" title="Jeda / lanjut (Spasi)">⏸</button>
+      <div class="time-mid">
+        <div class="time-row">
+          <span class="time-label">Waktu simulasi</span>
+          <span class="time-speed" id="speedLabel">1 dtk = 1 hari</span>
+        </div>
+        <input type="range" id="speedSlider" min="0" max="10" step="1" value="1">
+        <div class="time-date" id="dateLabel">—</div>
+      </div>
+      <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
+    </div>
+
+    <!-- Bantuan -->
+    <div class="panel help-panel" id="helpPanel">
+      <div class="info-head">
+        <div class="info-name">Kontrol Penerbangan</div>
+        <button class="mini" id="btnHelpClose" title="Tutup">✕</button>
+      </div>
+      <table class="help-table">
+        <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Terbang maju / kiri / mundur / kanan</td></tr>
+        <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Turun / naik</td></tr>
+        <tr><td><kbd>Shift</kbd></td><td>Turbo (6× lebih cepat)</td></tr>
+        <tr><td>Seret mouse</td><td>Putar pandangan</td></tr>
+        <tr><td>Roda mouse</td><td>Zoom / atur kecepatan</td></tr>
+        <tr><td>Klik benda</td><td>Fokus &amp; ikuti benda itu</td></tr>
+        <tr><td><kbd>Spasi</kbd></td><td>Lepas fokus (terbang bebas)</td></tr>
+        <tr><td><kbd>1</kbd>…<kbd>8</kbd></td><td>Lompat ke planet ke-1 s/d ke-8</td></tr>
+        <tr><td><kbd>0</kbd></td><td>Lompat ke Matahari</td></tr>
+        <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd></td><td>Label / garis orbit / bantuan</td></tr>
+      </table>
+      <div class="help-note">Petunjuk: klik “Tur Terpandu” untuk keliling otomatis, lalu tekan Spasi kapan saja untuk mengambil alih kemudi.</div>
+    </div>
+
+    <!-- Label benda (diposisikan oleh JS) -->
+    <div id="labelLayer"></div>
+
+    <!-- Indikator sudut layar -->
+    <div class="hud-corner" id="hudInfo">—</div>
+  </div>
+
+  <!-- ======================= LAYAR PEMUATAN ======================= -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="loader-title">TATA SURYA <span>3D</span></div>
+      <div class="loader-sub" id="loaderTask">Menyiapkan mesin grafis…</div>
+      <div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div>
+      <div class="loader-pct" id="loaderPct">0%</div>
+      <div class="loader-hint">Semua tekstur planet dibuat secara prosedural — berkas ini berjalan 100% offline.</div>
+    </div>
+  </div>
+
+  <!-- Pesan galat bila WebGL tidak tersedia -->
+  <div id="errorBox" style="display:none">
+    <div class="loader-inner">
+      <div class="loader-title">Tidak dapat menjalankan WebGL</div>
+      <div class="loader-sub">Peramban ini belum mendukung WebGL atau akselerasi perangkat keras sedang dimatikan. Coba peramban Chrome/Edge/Firefox terbaru dan aktifkan akselerasi perangkat keras.</div>
+    </div>
+  </div>
+</div>
