@@ -182,6 +182,10 @@ async function boot() {
     updateBeacons();
     updateHud();
     updateStarLabels();
+    /* panel pengamat POV: perbarui tiap frame selama POV aktif supaya LST
+       tidak ketinggalan saat waktu simulasi berjalan cepat (1 hari/detik) */
+    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active &&
+        typeof EARTHVIEW_UI !== 'undefined') EARTHVIEW_UI.updateObserverPanel();
     if (datePanelState.open) renderDatePanel();
     if (!window.__skyInfoT || performance.now() - window.__skyInfoT > 900) {
       window.__skyInfoT = performance.now();
