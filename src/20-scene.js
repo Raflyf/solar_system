@@ -667,16 +667,32 @@ function computePositions(days, elapsed) {
        ============================================================== */
     if (b.isMoon) {
       /* Satelit terkunci pasang-surut: sisi dekat selalu menghadap induk.
-         Arah sisi dekat = arah dari satelit ke induk. */
+         ------------------------------------------------------------------
+         Untuk BULAN BUMI, ditambah LIBRASI: goyangan nyata +-8° yang
+         membuat pengamat di Bumi bisa melihat sampai 59% permukaan Bulan
+         (bukan 50%). Ini fakta terukur, bukan efek kosmetik.
+         Lihat moonLibration() di src/15-ephemeris.js.
+         ------------------------------------------------------------------ */
       if (b.host && b.host.absPos) {
         const dx = b.absPos.x - b.host.absPos.x;
         const dz = b.absPos.z - b.host.absPos.z;
         const L = Math.hypot(dx, dz) || 1;
         const phi0 = MOON_NEAR_SIDE_U * Math.PI * 2;
         const v0x = Math.cos(phi0), v0z = Math.sin(phi0);
-        b._spinAngle = Math.atan2(v0z, v0x) - Math.atan2(-dz / L, -dx / L);
+        let sudut = Math.atan2(v0z, v0x) - Math.atan2(-dz / L, -dx / L);
+
+        /* librasi: hanya untuk Bulan Bumi (data Meeus bab 53) */
+        if (b.name === 'Bulan') {
+          const lib = moonLibration(jd);
+          sudut += lib.lonDeg * DEG;   /* librasi bujur */
+          b._libLat = lib.latDeg * DEG; /* librasi lintang, dipakai di bawah */
+        } else {
+          b._libLat = 0;
+        }
+        b._spinAngle = sudut;
       } else {
         b._spinAngle = 0;
+        b._libLat = 0;
       }
     } else if (b.key === 'earth') {
       /* Bumi: GMST lebih presisi daripada W0+Wdot (memperhitungkan
@@ -802,12 +818,21 @@ function moonLocalOffset(b, jd) {
     return { x: mk.x * k, y: mk.z * k, z: -mk.y * k };
   }
 
-  /* satelit lain: orbit Kepler dengan elemen nyata milik satelit itu */
+  /* Satelit lain: orbit Kepler dengan elemen NYATA dari JPL.
+     ------------------------------------------------------------------
+     M0 (anomali rata-rata pada epoch J2000) diambil dari JPL, sehingga
+     fase orbit satelit NYATA — bukan 0 seperti sebelumnya. Tanpa M0,
+     satelit berada di titik sembarang pada orbitnya (error sampai
+     diameter orbit = 843.600 km untuk Io).
+     ------------------------------------------------------------------ */
+  const el = SATELLITE_ELEMENTS[b.name];
   const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
   const e = b.e || 0;
-  const n = (2 * Math.PI) / (b.periodDays * 86400);
-  const T = (jd - J2000_JD) * 86400;
-  const M = (b.theta0 || 0) + n * T;
+  const n = (2 * Math.PI) / (b.periodDays * 86400);   /* rad per detik */
+  const T = (jd - J2000_JD) * 86400;                  /* detik sejak J2000 */
+  /* M0 dari JPL (derajat) -> radian, lalu tambah perjalanan waktu */
+  const M0 = el ? (el.M0 * DEG) : (b.theta0 || 0);
+  const M = M0 + n * T;
 
   let E = M;
   for (let i = 0; i < 6; i++) {
@@ -817,11 +842,16 @@ function moonLocalOffset(b, jd) {
   const xp = a * (Math.cos(E) - e);
   const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
 
-  /* bidang orbit dimiringkan oleh inklinasi orbit satelit terhadap
-     ekuator induknya */
+  /* argumen periapsis (omega) dari JPL, supaya orientasi elipsnya benar */
+  const omega = el ? (el.omega * DEG) : 0;
+  const co = Math.cos(omega), so = Math.sin(omega);
+  const xr = xp * co - yp * so;
+  const yr = xp * so + yp * co;
+
+  /* bidang orbit dimiringkan oleh inklinasi terhadap ekuator induk */
   const incl = b.incl || 0;
   const ci = Math.cos(incl), si = Math.sin(incl);
-  return { x: xp, y: yp * si, z: yp * ci };
+  return { x: xr, y: yr * si, z: yr * ci };
 }
 
 /* Offset satelit dalam kerangka SCENE (setelah kemiringan poros induk).
@@ -945,6 +975,10 @@ function applyPositions() {
         b.group.position.set(lx, ly, dz);
       }
       if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
+      /* LIBRASI LINTANG: goyangan naik-turun Bulan (+-6,7°). Diterapkan
+         pada sumbu X supaya kutub Bulan tampak bergoyang dari pengamat —
+         inilah yang membuat 59% permukaan Bulan bisa terlihat dari Bumi. */
+      if (b._libLat) b.spin.rotation.x = b._libLat;
       continue;
     }
     if (!b.absPos) continue;

@@ -498,8 +498,77 @@ function refineEclipse(jdGuess, tipe) {
 }
 
 /* =======================================================================
-   6. FASE BULAN & PERISTIWA LAIN
+   LIBRASI BULAN
+   ----------------------------------------------------------------------
+   Bulan TIDAK terkunci sempurna. Karena orbitnya elips (libration in
+   longitude) dan miring 6,7° terhadap ekliptika (libration in latitude),
+   plus rotasi Bumi (diurnal libration), pengamat di Bumi bisa melihat
+   sampai 59% permukaan Bulan — bukan 50%.
+
+   Data (Meeus, "Astronomical Algorithms" bab 53):
+     - Libration in longitude  : +-7,9 derajat (karena eksentrisitas orbit)
+     - Libration in latitude   : +-6,7 derajat (karena kemiringan orbit)
+     - Libration diurnal       : +-1,0 derajat (karena rotasi Bumi)
+
+   Rumus ringkas untuk libration total (Meeus bab 53, disederhanakan):
+
+     l' (libration in longitude) = -6,289 sin(M') + 1,274 sin(2D - M')
+                                   + 0,658 sin(2D) + 0,214 sin(2M')
+                                   - 0,186 sin(M) - 0,114 sin(2F)
+                                   + 0,059 sin(2D - 2M') + 0,057 sin(2D - M - M')
+                                   + 0,053 sin(2D + M' - 2F) - 0,046 sin(M - M')
+
+     b' (libration in latitude)  = 5,128 sin(F) + 0,281 sin(M' + F)
+                                   - 0,278 sin(F - M') + 0,173 sin(2D - F)
+                                   + 0,055 sin(2D - M' + F) + 0,046 sin(2D - M' - F)
+                                   + 0,033 sin(2D + F) - 0,027 sin(M' + 2F)
+
+   dengan D, M, M', F sudut dasar Bulan (sama seperti di moonGeocentric).
+
+   LIBRASI DIURNAL: pengamat di Bumi melihat Bulan dari arah sedikit
+   berbeda saat Bumi berotasi. Efeknya +-1° dan bergantung pada posisi
+   pengamat, jadi tidak dimodelkan di sini (aplikasi bukan pengamat
+   tunggal, melainkan pandangan dari luar).
    ======================================================================= */
+
+function moonLibration(jd) {
+  const T = jdToT(jd);
+
+  const D  = norm360(297.8501921 + 445267.1114034 * T - 0.0018819 * T * T +
+                     T * T * T / 545868) * DEG;
+  const M  = norm360(357.5291092 + 35999.0502909 * T - 0.0001536 * T * T) * DEG;
+  const Mp = norm360(134.9633964 + 477198.8675055 * T + 0.0087414 * T * T +
+                     T * T * T / 69699) * DEG;
+  const F  = norm360(93.2720950 + 483202.0175233 * T - 0.0036539 * T * T) * DEG;
+
+  const sin = Math.sin, cos = Math.cos;
+
+  /* libration in longitude (derajat) */
+  const lp =
+    -6.289 * sin(Mp)
+    + 1.274 * sin(2 * D - Mp)
+    + 0.658 * sin(2 * D)
+    + 0.214 * sin(2 * Mp)
+    - 0.186 * sin(M)
+    - 0.114 * sin(2 * F)
+    + 0.059 * sin(2 * D - 2 * Mp)
+    + 0.057 * sin(2 * D - M - Mp)
+    + 0.053 * sin(2 * D + Mp - 2 * F)
+    - 0.046 * sin(M - Mp);
+
+  /* libration in latitude (derajat) */
+  const bp =
+    5.128 * sin(F)
+    + 0.281 * sin(Mp + F)
+    - 0.278 * sin(F - Mp)
+    + 0.173 * sin(2 * D - F)
+    + 0.055 * sin(2 * D - Mp + F)
+    + 0.046 * sin(2 * D - Mp - F)
+    + 0.033 * sin(2 * D + F)
+    - 0.027 * sin(Mp + 2 * F);
+
+  return { lonDeg: lp, latDeg: bp };
+}
 
 /* iluminasi Bulan (0 = baru, 1 = purnama) dan fase */
 function moonPhase(jd) {

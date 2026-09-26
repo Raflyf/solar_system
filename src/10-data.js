@@ -133,16 +133,16 @@ const PLANETS = [
     moons: [
       {
         name: 'Phobos', radiusKm: 11.3,
-        aKm: 9376, aScale: 1,
-        periodDays: 0.3189, e: 0.0151, incl: 1.08,
+        aKm: 9375, aScale: 1,
+        periodDays: 0.31870, e: 0.015000, incl: 1.08,
         color: 0x8a8078, tidallyLocked: true, lumpy: 0.16,
         texture: { w: 512, h: 256, seed: 79, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 90, seed + 2, 4, 30, 1.2) },
       },
       {
         name: 'Deimos', radiusKm: 6.2,
-        aKm: 23463, aScale: 1,
-        periodDays: 1.263, e: 0.0002, incl: 1.79,
+        aKm: 23457, aScale: 1,
+        periodDays: 1.26250, e: 0.000000, incl: 1.79,
         color: 0x9a9088, tidallyLocked: true, lumpy: 0.14,
         texture: { w: 512, h: 256, seed: 83, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 60, seed + 5, 3, 24, 1.1) },
@@ -189,7 +189,7 @@ const PLANETS = [
       {
         name: 'Io', radiusKm: 1821.6,
         aKm: 421800, aScale: 1,
-        periodDays: 1.769, e: 0.0041, incl: 0.05,
+        periodDays: 1.76273, e: 0.004000, incl: 0.05,
         color: 0xe8d36a, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 91, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
@@ -205,7 +205,7 @@ const PLANETS = [
       {
         name: 'Europa', radiusKm: 1560.8,
         aKm: 671100, aScale: 1,
-        periodDays: 3.551, e: 0.009, incl: 0.47,
+        periodDays: 3.52546, e: 0.009000, incl: 0.47,
         color: 0xd8cbb4, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 97, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
@@ -221,7 +221,7 @@ const PLANETS = [
       {
         name: 'Ganymede', radiusKm: 2634.1,
         aKm: 1070400, aScale: 1,
-        periodDays: 7.155, e: 0.0013, incl: 0.2,
+        periodDays: 7.15559, e: 0.001000, incl: 0.20,
         color: 0x9a9086, tidallyLocked: true,
         texture: { w: 1024, h: 512, seed: 101, period: 12, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 260, seed + 4, 3, 34, 0.9) },
@@ -229,7 +229,7 @@ const PLANETS = [
       {
         name: 'Callisto', radiusKm: 2410.3,
         aKm: 1882700, aScale: 1,
-        periodDays: 16.689, e: 0.0074, incl: 0.192,
+        periodDays: 16.69044, e: 0.007000, incl: 0.19,
         color: 0x847a70, tidallyLocked: true,
         texture: { w: 1024, h: 512, seed: 103, period: 12, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 420, seed + 7, 2.5, 40, 1.0) },
@@ -263,8 +263,8 @@ const PLANETS = [
     moons: [
       {
         name: 'Titan', radiusKm: 2574.7,
-        aKm: 1221870, aScale: 1,
-        periodDays: 15.945, e: 0.0288, incl: 0.35,
+        aKm: 1221900, aScale: 1,
+        periodDays: 15.94545, e: 0.029000, incl: 0.35,
         color: 0xd89a4a, tidallyLocked: true,
         texture: { w: 1024, h: 512, seed: 107, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
@@ -278,16 +278,16 @@ const PLANETS = [
       },
       {
         name: 'Rhea', radiusKm: 763.8,
-        aKm: 527040, aScale: 1,
-        periodDays: 4.518, e: 0.001, incl: 0.345,
+        aKm: 527200, aScale: 1,
+        periodDays: 4.51750, e: 0.001000, incl: 0.34,
         color: 0xc8c4bc, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 109, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 200, seed + 3, 2.5, 26, 1.0) },
       },
       {
         name: 'Iapetus', radiusKm: 734.5,
-        aKm: 3560820, aScale: 1,
-        periodDays: 79.33, e: 0.0286, incl: 15.47,
+        aKm: 3561700, aScale: 1,
+        periodDays: 79.33100, e: 0.028000, incl: 15.47,
         color: 0xa89c88, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 113, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => {
@@ -331,8 +331,8 @@ const PLANETS = [
     moons: [
       {
         name: 'Titania', radiusKm: 788.9,
-        aKm: 435910, aScale: 1,
-        periodDays: 8.706, e: 0.0011, incl: 0.34,
+        aKm: 436298, aScale: 1,
+        periodDays: 8.70587, e: 0.002000, incl: 0.34,
         color: 0xb8b0a8, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 127, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 220, seed + 5, 2.5, 30, 1.0) },
@@ -366,8 +366,8 @@ const PLANETS = [
     moons: [
       {
         name: 'Triton', radiusKm: 1353.4,
-        aKm: 354759, aScale: 1,
-        periodDays: -5.877, e: 0.000016, incl: 156.9,
+        aKm: 354800, aScale: 1,
+        periodDays: -5.87699, e: 0.000000, incl: 156.90,
         color: 0xc8ccc8, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 131, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {

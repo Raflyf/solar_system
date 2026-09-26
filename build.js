@@ -22,6 +22,7 @@ const assets = read(path.join(SRC, '05-assets.js'));
 const data = read(path.join(SRC, '10-data.js'));
 const ephemeris = read(path.join(SRC, '15-ephemeris.js'));
 const rotation = read(path.join(SRC, '16-rotation.js'));
+const satElements = read(path.join(SRC, '17-satellite-elements.js'));
 const starsData = read(path.join(SRC, '12-stars-data.js'));
 const constData = read(path.join(SRC, '13-constellations-data.js'));
 const stars = read(path.join(SRC, '18-stars.js'));
@@ -83,6 +84,11 @@ ${safe(ephemeris)}
 <script>
 "use strict";
 ${safe(rotation)}
+</script>
+
+<script>
+"use strict";
+${safe(satElements)}
 </script>
 
 <script>
