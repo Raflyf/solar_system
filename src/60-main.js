@@ -223,6 +223,9 @@ function buildUI() {
   $('btnFocus').addEventListener('click', () => {
     if (currentInfoBody) focusBody(currentInfoBody);
   });
+  $('btnMoons').addEventListener('click', () => {
+    if (currentInfoBody) viewMoonSystem(currentInfoBody);
+  });
   $('btnFree').addEventListener('click', () => focusBody(null));
 
   $('btnPause').addEventListener('click', () => togglePause());
@@ -262,6 +265,11 @@ function buildUI() {
       if (cameraState.target) focusBody(null);
       else togglePause();
     } else if (e.code === 'Digit0' || e.code === 'Numpad0') { const b = findBody('sun'); if (b) focusBody(b); }
+    else if (e.code === 'KeyM') {
+      /* M = tampilkan sistem satelit planet yang sedang difokuskan */
+      if (cameraState.target && !cameraState.target.isMoon) viewMoonSystem(cameraState.target);
+      else if (currentInfoBody) viewMoonSystem(currentInfoBody);
+    }
     else if (/^Digit[1-8]$/.test(e.code)) {
       const idx = parseInt(e.code.slice(5), 10) - 1;
       const p = PLANETS[idx];
@@ -460,12 +468,16 @@ function updateLabels() {
     const wp = bodyScreenPos(b, _tmp);   /* relatif kamera */
     const dist = camPos.distanceTo(wp);
 
-    /* label bulan disembunyikan bila induknya sudah jauh */
+    /* label satelit disembunyikan bila induknya sudah jauh */
     let visible = true;
     if (b.isMoon) {
       const hostPos = bodyScreenPos(b.host, _tmp2);
       const distHost = camPos.distanceTo(hostPos);
-      if (distHost > b.host.radiusKm * 90) visible = false;
+      /* batas harus jauh lebih longgar daripada radius induk — lihat
+         penjelasan di updateBeacons(): memakai radius induk membuat
+         label satelit tidak pernah muncul saat kamera menjauh */
+      const batas = Math.max(b.host.radiusKm * 12, 2500);
+      if (distHost > batas) visible = false;
     }
     /* label planet disembunyikan bila planet belum cukup besar di layar,
        kecuali benda yang sedang diikuti kamera atau punya penanda aktif */
@@ -473,6 +485,11 @@ function updateLabels() {
       const px = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf;
       const hasBeacon = !!(b.beacon && b.beacon.group.visible);
       if (px < 2.2 && cameraState.target !== b && !hasBeacon) visible = false;
+    }
+    /* label satelit ikut penandanya: muncul saat penanda satelit aktif */
+    if (visible && b.isMoon) {
+      const hasBeacon = !!(b.beacon && b.beacon.group.visible);
+      if (!hasBeacon && cameraState.target !== b) visible = false;
     }
     /* label Matahari disembunyikan saat kamera sangat dekat (di dalam corona) */
     if (visible && b.type === 'star' && dist < b.radiusKm * 2.4) visible = false;
@@ -511,7 +528,7 @@ function updateLabels() {
     if (cameraState.target === b) {
       offPx = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf + 22;
     } else if (b.beacon && b.beacon.group.visible) {
-      offPx = 13;              /* tepat di atas titik penanda */
+      offPx = b.isMoon ? 10 : 13;      /* satelit: lebih rapat */
     } else if (b.type === 'star') {
       offPx = (b.radiusKm / Math.max(dist, 1e-6)) * (H * 0.5) / tanHalf + 14;
     }
@@ -547,6 +564,6 @@ window.__SOLAR__ = {
   get app() { return app; },
   get renderer() { return renderer; },
   get camera() { return camera; },
-  focusBody, findBody, cameraState, tourState,
-  startTour, stopTour,
+  focusBody, findBody, findBodyByName, cameraState, tourState,
+  startTour, stopTour, viewMoonSystem,
 };

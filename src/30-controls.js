@@ -66,12 +66,24 @@ function initControls(canvas) {
     e.preventDefault();
     const k = Math.exp(-e.deltaY * 0.0013);
     if (cameraState.target) {
+      /* zoom manual mematikan auto-fit supaya pengguna punya kendali penuh */
+      cameraState.followAutoFit = false;
       const body = cameraState.target;
       const rU = body.radiusKm;
       /* bisa zoom sampai nyaris menyentuh permukaan (mode Google Earth),
-         dan menjauh sampai seluruh orbit terlihat */
+         dan menjauh sampai sistem satelitnya ikut terlihat */
       const minD = rU * 1.008;
-      const maxD = Math.max(rU * 4000, body.orbitRadiusUnits * 1.5);
+      let maxD = Math.max(rU * 4000, body.orbitRadiusUnits * 1.5);
+      /* pastikan bisa menjangkau orbit satelit terjauh */
+      let farthest = 0;
+      for (let i = 0; i < bodies.length; i++) {
+        const m = bodies[i];
+        if (m.isMoon && m.host === body) {
+          const d = (m.aKm / RAD) * MOON_ORBIT_FACTOR;
+          if (d > farthest) farthest = d;
+        }
+      }
+      if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
       cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
     } else {
       cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 0.05, 3000000);
@@ -181,6 +193,7 @@ function focusBody(body) {
   const cs = cameraState;
   if (!body) {
     cs.target = null;
+    cs.followAutoFit = false;
     if (cs.vel.length() < 1) {
       cs.vel.copy(dirFromAngles(cs.yaw, cs.pitch)).multiplyScalar(cs.baseSpeed * 0.4);
     }
@@ -189,15 +202,42 @@ function focusBody(body) {
   }
   cs.target = body;
   const rU = body.radiusKm;
-  /* mulai dari jarak yang enak dilihat, lalu pengguna bisa zoom masuk
-     sampai permukaan atau keluar sampai orbit penuh */
-  cs.followDist = Math.max(rU * 3.2, rU * 1.35);
+  /* Jarak awal saat fokus.
+     Untuk planet yang punya satelit, jarak harus cukup memuat orbit
+     terjauhnya — kalau tidak, satelitnya berada di luar layar dan
+     seolah-olah "tidak ada" (Io saja sudah 5,9× radius Jupiter).
+     Pengguna tetap bisa zoom masuk sampai permukaan setelahnya. */
+  let initial = rU * 3.2;
+  if (!body.isMoon) {
+    let farthest = 0;
+    for (let i = 0; i < bodies.length; i++) {
+      const m = bodies[i];
+      if (m.isMoon && m.host === body) {
+        const d = (m.aKm / RAD) * MOON_ORBIT_FACTOR;
+        if (d > farthest) farthest = d;
+      }
+    }
+    if (farthest > 0) initial = Math.max(initial, farthest * 1.45);
+  }
+  cs.followDist = initial;
   cs.followYaw = 0.7;
   cs.followPitch = 0.28;
+  /* auto-fit aktif bila planet ini punya satelit, supaya satelitnya tidak
+     keluar layar saat terus bergerak; mati bila tidak ada satelit */
+  cs.followAutoFit = !body.isMoon && hasMoons(body);
   const bp = bodyWorldPos(body, new THREE.Vector3());
   const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
   startTransition(_tmp3.copy(bp).add(off), cs.followYaw, cs.followPitch, 1.6);
   showInfo(body);
+}
+
+/* apakah benda ini punya satelit? */
+function hasMoons(body) {
+  for (let i = 0; i < bodies.length; i++) {
+    const m = bodies[i];
+    if (m.isMoon && m.host === body) return true;
+  }
+  return false;
 }
 /* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
    penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
@@ -208,6 +248,59 @@ function autoSpeedFor(pos) {
   if (r < 20000) return 120;
   if (r < 200000) return 1500;
   return 12000;                     /* antarplanet */
+}
+
+/* Tampilkan SELURUH sistem satelit sebuah planet: kamera ditarik ke jarak
+   yang memuat orbit terjauh, jadi semua satelit terlihat sekaligus.
+   Ini menjawab masalah "satelit tidak muncul" — pada skala 1:1 orbit
+   satelit jauh lebih besar daripada planetnya (Io saja 5,9× radius Jupiter),
+   jadi pada zoom dekat satelit memang berada di luar layar. */
+function viewMoonSystem(body) {
+  if (!body || body.isMoon) return;
+  const cs = cameraState;
+  cs.target = body;
+
+  /* Hitung jarak terjauh yang perlu terlihat dengan MENGHITUNG POSISI
+     SEBENARNYA tiap satelit, bukan memakai rumus perkiraan.
+     Alasan: kemiringan poros planet ikut memiringkan bidang orbit satelit
+     (Uranus 97,8° — orbit satelitnya nyaris tegak lurus ekliptika), jadi
+     perkiraan sederhana menghasilkan jarak yang salah. */
+  let farthest = 0;
+  for (let i = 0; i < bodies.length; i++) {
+    const m = bodies[i];
+    if (!m.isMoon || m.host !== body) continue;
+    const a = (m.aKm / RAD) * MOON_ORBIT_FACTOR;
+    /* ambil beberapa titik pada orbit, terapkan kemiringan bidang induk,
+       lalu ukur jarak terbesar dari planet */
+    const tilt = THREE.MathUtils.degToRad(body.axialTiltDeg || 0);
+    for (let k = 0; k < 24; k++) {
+      const th = (k / 24) * Math.PI * 2;
+      const v = new THREE.Vector3(Math.cos(th) * a, 0, Math.sin(th) * a);
+      v.applyAxisAngle(new THREE.Vector3(1, 0, 0), m.incl);   /* inklinasi orbit */
+      if (tilt) v.applyAxisAngle(new THREE.Vector3(0, 0, 1), tilt);  /* poros induk */
+      const d = Math.max(Math.abs(v.x), Math.abs(v.y), Math.abs(v.z));
+      if (d > farthest) farthest = d;
+    }
+  }
+
+  /* Batas 90× radius planet: cukup untuk Iapetus sekaligus planetnya masih
+     terlihat sebagai bola kecil, bukan titik.
+     Margin 1.9 (bukan 1.75) memberi ruang untuk orbit yang tegak —
+     Uranus berporos 97,8° sehingga satelitnya naik-turun jauh dari
+     bidang pandang, dan tanpa margin lebih mereka terpotong di tepi layar. */
+  const minUseful = Math.max(body.radiusKm * 6, body.radiusKm + 0.5);
+  const maxUseful = body.radiusKm * 90;
+  cs.followDist = farthest > 0
+    ? clampf(farthest * 1.9, minUseful, maxUseful)
+    : Math.max(body.radiusKm * 4.5, body.radiusKm + 0.5);
+  cs.followYaw = 0.55;
+  cs.followPitch = 0.42;            /* agak dari atas agar orbit terlihat bidang */
+  cs.followAutoFit = true;          /* kamera menjaga satelit tetap di layar */
+
+  const bp = bodyWorldPos(body, new THREE.Vector3());
+  const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
+  startTransition(_tmp3.copy(bp).add(off), cs.followYaw, cs.followPitch, 1.8);
+  showInfo(body);
 }
 
 function dirFromAngles(yaw, pitch) {
@@ -228,8 +321,35 @@ function updateCamera(dt) {
 
   if (cs.target) {
     const body = cs.target;
-    /* posisi absolut benda (bukan world, karena world sudah tergeser) */
-    const bp = _tmp2.copy(body.type === 'star' ? ZERO3 : (body.absPos || ZERO3));
+    const bp = bodyWorldPos(body, _tmp2);
+
+    /* Jaga agar satelit tetap dalam pandangan.
+       Satelit bergerak mengelilingi induknya, jadi jarak yang pas saat
+       kamera berhenti bisa jadi tidak pas beberapa detik kemudian.
+       Karena itu jarak minimum disesuaikan terus-menerus: kalau ada satelit
+       yang berada di luar 92% tepi layar, kamera menjauh sedikit. */
+    if (cs.followAutoFit && !body.isMoon && cs.followDist > body.radiusKm * 1.2) {
+      let need = 0;
+      const tanHalfF = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+      const aspectF = window.innerWidth / Math.max(1, window.innerHeight);
+      for (let i = 0; i < bodies.length; i++) {
+        const m = bodies[i];
+        if (!m.isMoon || m.host !== body) continue;
+        const mp = bodyWorldPos(m, _tmp3);
+        const rel = mp.sub(bp);
+        const distAlong = rel.length();
+        /* sudut maksimum yang dibutuhkan agar satelit ini masuk layar */
+        const needV = distAlong / (tanHalfF * 0.92);
+        const needH = distAlong / (tanHalfF * aspectF * 0.92);
+        const n = Math.max(needV, needH);
+        if (n > need) need = n;
+      }
+      if (need > cs.followDist) {
+        /* mundur perlahan, jangan melompat */
+        cs.followDist += (need - cs.followDist) * Math.min(1, dt * 1.2);
+      }
+    }
+
     const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
     const desiredAbs = _tmp3.copy(bp).add(off);
 

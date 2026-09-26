@@ -291,6 +291,7 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     host: hostBody || null, isMoon: isMoon,
     aKm: cfg.aKm, e: cfg.e || 0,
     incl: THREE.MathUtils.degToRad(cfg.incl !== undefined ? cfg.incl : (ORBIT_INCLINATION[cfg.name] || 0)),
+    axialTiltDeg: cfg.axialTilt || 0,
     rotationDays: (cfg.rotationHours || 24) / 24,
     periodDays: cfg.periodDays !== undefined ? cfg.periodDays : 0,
     tidallyLocked: !!cfg.tidallyLocked,
@@ -320,6 +321,26 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     line.rotation.x = body.incl;
     scene.add(line);
     body.orbitLine = line;
+  } else {
+    /* orbit satelit: lingkaran di sekitar induknya. Ini yang membuat satelit
+       terlihat "ada" walaupun bodinya sendiri cuma sub-piksel pada skala 1:1.
+       Opacity dinaikkan + segmen ditambah karena lingkaran ini besar. */
+    const a = (cfg.aKm / RAD) * MOON_ORBIT_FACTOR;
+    const pts = [];
+    for (let i = 0; i <= 256; i++) {
+      const th = (i / 256) * Math.PI * 2;
+      pts.push(new THREE.Vector3(Math.cos(th) * a, 0, Math.sin(th) * a));
+    }
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({
+        color: 0x8fb0d8, transparent: true, opacity: 0.42, depthWrite: false,
+      })
+    );
+    line.rotation.x = body.incl;
+    parentMoonPlane.add(line);
+    body.orbitLine = line;
+    body.orbitLineIsMoon = true;
   }
   return body;
 }
@@ -422,6 +443,10 @@ function buildStars() {
 }
 
 /* ---------- penanda navigasi ---------- */
+/* Pada skala 1:1 planet hanya beberapa piksel dari jauh, dan satelit bisa
+   jauh lebih kecil lagi (Phobos 0.0018 unit = sub-piksel). Tanpa penanda,
+   satelit mustahil ditemukan. Karena itu SETIAP benda (planet DAN satelit)
+   mendapat penanda: inti tajam berwarna + halo lembut. */
 function buildBeacons() {
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
   if (!glowTextures.core) glowTextures.core = makeDiscCanvas(64);
@@ -431,8 +456,8 @@ function buildBeacons() {
 
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
-    if (b.isMoon || b.type === 'star') continue;
-    const col = bodyColorHex(b);
+    if (b.type === 'star') continue;      /* Matahari sudah terang sendiri */
+    const col = b.isMoon ? moonColorHex(b) : bodyColorHex(b);
     const group = new THREE.Group();
     const core = new THREE.Sprite(new THREE.SpriteMaterial({
       map: coreTex, color: col, transparent: true,
@@ -452,27 +477,73 @@ function buildBeacons() {
   }
 }
 
+/* warna penanda satelit */
+function moonColorHex(b) {
+  const c = {
+    'Bulan': 0xd8d4cc, 'Phobos': 0xa89888, 'Deimos': 0xb8a898,
+    'Io': 0xf0d84a, 'Europa': 0xe8e0d0, 'Ganymede': 0xb0a898, 'Callisto': 0x9a9088,
+    'Titan': 0xe8a850, 'Rhea': 0xd0ccc4, 'Iapetus': 0xb0a490,
+    'Titania': 0xc0b8b0, 'Triton': 0xd0d4d0,
+  };
+  return c[b.name] !== undefined ? c[b.name] : 0xcccccc;
+}
+
 const _bp = new THREE.Vector3();
+const _hostP = new THREE.Vector3();
+
 function updateBeacons() {
   const H = window.innerHeight;
   const tanHalf = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+  const now = performance.now();
+
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     if (!b.beacon) continue;
     bodyScreenPos(b, _bp);   /* relatif kamera: dunia sudah tergeser */
     const dist = Math.max(camera.position.distanceTo(_bp), 1e-6);
-    const px = (b.radiusKm / dist) * (H * 0.5) / tanHalf;
-    let show = px < 5.5;
+    const px = (b.radiusKm / dist) * (H * 0.5) / tanHalf;   /* radius di layar (piksel) */
+
+    /* --- kapan penanda ditampilkan --- */
+    let show;
+    if (b.isMoon) {
+      /* Satelit: tampil bila ia sendiri masih kecil di layar, DAN induknya
+         masih dalam pandangan.
+         PENTING: batas "induk terlihat" harus dibandingkan dengan JARAK
+         KAMERA, bukan radius induk. Memakai radius induk × 140 membuat
+         penanda mustahil muncul saat kamera menjauh untuk memuat orbit
+         (jarak kamera 143 unit vs batas 140 unit) — inilah bug yang
+         membuat semua satelit tampak "tidak ada". */
+      bodyScreenPos(b.host, _hostP);
+      const distHost = camera.position.distanceTo(_hostP);
+      const batas = Math.max(b.host.radiusKm * 12, 2500);
+      const hostVisible = distHost < batas;
+      show = hostVisible && px < 8.0;
+    } else {
+      show = px < 5.5;
+    }
+
+    /* sembunyikan penanda benda yang sedang diikuti kamera */
     if (cameraState.target === b) show = false;
-    if (cameraState.target && cameraState.target !== b && dist < b.radiusKm * 25) show = false;
+    /* sembunyikan penanda yang sudah sangat dekat dengan kamera — kita sudah
+       berada di dekatnya, jadi tidak perlu penunjuk.
+       Ambang memakai ukuran di layar (px), bukan jarak absolut: satelit
+       kecil seperti Phobos tetap butuh penanda walau jaraknya dekat. */
+    if (show && px > 60) show = false;
+
     b.beacon.group.visible = show;
     if (!show) continue;
+
+    /* ukuran tetap di layar: hitung berapa satuan dunia untuk 1 piksel */
     const unit = (2 * dist * tanHalf) / H;
-    const corePx = 5.4 + Math.min(3.0, Math.max(0, 1 - px / 5.5) * 3.0);
-    const haloPx = corePx * 3.2;
+    /* satelit dapat inti sedikit lebih kecil agar tidak menutupi induknya,
+       tapi tidak boleh terlalu kecil — pada skala 1:1 satelit nyaris tak
+       terlihat, jadi penanda harus tegas */
+    const basePx = b.isMoon ? 5.6 : 6.0;
+    const corePx = basePx + Math.min(3.5, Math.max(0, 1 - px / 6.0) * 3.5);
+    const haloPx = corePx * (b.isMoon ? 3.0 : 3.4);
     b.beacon.core.scale.set(corePx * unit, corePx * unit, 1);
     b.beacon.halo.scale.set(haloPx * unit, haloPx * unit, 1);
-    b.beacon.halo.material.opacity = 0.22 + 0.10 * Math.sin(performance.now() * 0.0022 + i * 1.7);
+    b.beacon.halo.material.opacity = 0.26 + 0.12 * Math.sin(now * 0.0022 + i * 1.7);
     b.beacon.group.position.copy(_bp);
   }
 }
@@ -639,7 +710,10 @@ function applyPositions() {
   if (skyMesh) skyMesh.position.set(nx, ny, nz);
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
-    if (b.orbitLine) b.orbitLine.position.set(nx, ny, nz);
+    /* garis orbit PLANET berada di scene (perlu digeser).
+       Garis orbit SATELIT adalah anak dari grup induknya, jadi sudah ikut
+       bergerak bersama induk — kalau digeser lagi posisinya akan salah. */
+    if (b.orbitLine && !b.orbitLineIsMoon) b.orbitLine.position.set(nx, ny, nz);
   }
 }
 

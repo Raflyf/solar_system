@@ -39,10 +39,24 @@ Lihat bagian **Deploy** di bawah.
 | Seret mouse | Putar pandangan |
 | **Roda mouse** | **Zoom sampai menyentuh permukaan planet** |
 | Klik benda | Fokus & ikuti benda itu |
+| **`M`** | **Tampilkan seluruh sistem satelit** planet itu |
 | `Spasi` | Lepas fokus (terbang bebas) |
 | `1`–`8` | Lompat ke planet ke-1 s/d ke-8 |
 | `0` | Lompat ke Matahari |
 | `L` `O` `H` `P` | Label / garis orbit / bantuan / jeda |
+
+### Cara melihat satelit
+
+Pada skala 1:1 satelit **selalu** sub-piksel saat zoom normal — Bulan cuma
+0,01 px, Io 0,000 px. Jadi ada tiga cara menemukannya:
+
+1. **Klik benda di daftar "Jelajahi"** (panel kiri) — mis. Bulan di bawah Bumi
+2. **Tekan `M`** — kamera menarik ke jarak yang memuat seluruh orbit satelit
+3. **Klik tombol "🛰 Satelit"** di panel info
+
+Saat kamera menjauh untuk memuat orbit, kamera **menyesuaikan sendiri**
+(auto-fit) sehingga satelit yang terus bergerak tidak keluar layar.
+Setiap satelit punya penanda berwarna + label + cincin orbit.
 
 ---
 
