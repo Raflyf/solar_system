@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#05070d">
-<title>Tata Surya 3D — Jelajah Interaktif</title>
-<meta name="description" content="Tata Surya 3D skala nyata dalam satu berkas HTML. Terbang bebas, zoom, dan jelajahi planet-planet.">
+<title>Tata Surya 3D — Skala 1:1 dengan Tekstur Asli NASA</title>
+<meta name="description" content="Tata surya 3D skala 1:1 dengan tekstur permukaan asli NASA/USGS. Zoom sampai permukaan planet, simulasi waktu dari detik hingga abad.">
 <style>
 /* =======================================================================
    Gaya tampilan — layar penuh, kaca gelap, aksen hangat
@@ -287,13 +287,14 @@ kbd {
     <!-- Judul -->
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
-      <div class="title-sub">Jarak & ukuran skala nyata · planet diperbesar 4× agar terlihat</div>
+      <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
     </div>
 
     <!-- Tombol kanan atas -->
     <div class="panel top-buttons" id="topButtons">
       <button class="btn primary" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
+      <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
     </div>
 
@@ -328,13 +329,13 @@ kbd {
 
     <!-- Bilah waktu -->
     <div class="panel timebar" id="timeBar">
-      <button class="btn small icon" id="btnPause" title="Jeda / lanjut (Spasi)">⏸</button>
+      <button class="btn small icon" id="btnPause" title="Jeda / lanjut (P)">⏸</button>
       <div class="time-mid">
         <div class="time-row">
           <span class="time-label">Waktu simulasi</span>
           <span class="time-speed" id="speedLabel">1 dtk = 1 hari</span>
         </div>
-        <input type="range" id="speedSlider" min="0" max="10" step="1" value="1">
+        <input type="range" id="speedSlider" min="0" max="11" step="1" value="5">
         <div class="time-date" id="dateLabel">—</div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
@@ -351,14 +352,19 @@ kbd {
         <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Turun / naik</td></tr>
         <tr><td><kbd>Shift</kbd></td><td>Turbo (6× lebih cepat)</td></tr>
         <tr><td>Seret mouse</td><td>Putar pandangan</td></tr>
-        <tr><td>Roda mouse</td><td>Zoom / atur kecepatan</td></tr>
+        <tr><td>Roda mouse</td><td><b>Zoom sampai permukaan planet</b></td></tr>
         <tr><td>Klik benda</td><td>Fokus &amp; ikuti benda itu</td></tr>
         <tr><td><kbd>Spasi</kbd></td><td>Lepas fokus (terbang bebas)</td></tr>
         <tr><td><kbd>1</kbd>…<kbd>8</kbd></td><td>Lompat ke planet ke-1 s/d ke-8</td></tr>
         <tr><td><kbd>0</kbd></td><td>Lompat ke Matahari</td></tr>
-        <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd></td><td>Label / garis orbit / bantuan</td></tr>
+        <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd> <kbd>P</kbd></td><td>Label / orbit / bantuan / jeda</td></tr>
       </table>
-      <div class="help-note">Petunjuk: klik “Tur Terpandu” untuk keliling otomatis, lalu tekan Spasi kapan saja untuk mengambil alih kemudi.</div>
+      <div class="help-note">
+        Semua jarak & ukuran memakai <b>skala 1 : 1</b> — jarak antar planet nyata,
+        radius nyata. Karena itu planet tampak kecil dari jauh: itu memang
+        keadaan sebenarnya. Zoom masuk untuk melihat permukaan, dan pakai slider
+        waktu di bawah untuk mengamati rotasi serta revolusi.
+      </div>
     </div>
 
     <!-- Label benda (diposisikan oleh JS) -->
@@ -375,7 +381,7 @@ kbd {
       <div class="loader-sub" id="loaderTask">Menyiapkan mesin grafis…</div>
       <div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div>
       <div class="loader-pct" id="loaderPct">0%</div>
-      <div class="loader-hint">Semua tekstur planet dibuat secara prosedural — berkas ini berjalan 100% offline.</div>
+      <div class="loader-hint" id="loaderHint">Memuat tekstur planet asli (NASA / USGS / Solar System Scope)…</div>
     </div>
   </div>
 
@@ -390,8 +396,8 @@ kbd {
 
 
 <!-- =====================================================================
-     Mesin 3D: three.js r149 (MIT License, © 2010-2023 three.js authors)
-     Disematkan agar berkas ini berjalan 100% offline tanpa internet.
+     three.js r149 (MIT License, (c) 2010-2023 three.js authors)
+     Disematkan agar tidak bergantung pada CDN.
      ===================================================================== -->
 <script>
 /**
@@ -883,6 +889,114 @@ function makeGlowCanvas(size, inner, outer, power) {
 <script>
 "use strict";
 /* =======================================================================
+   Pemuat aset tekstur nyata (NASA / Solar System Scope, domain publik CC BY 4.0)
+   ----------------------------------------------------------------------
+   Berkas besar, jadi dimuat bertahap dengan bilah kemajuan nyata.
+   Setiap benda punya: peta warna (wajib), normal map (relief), dan
+   peta malam (lampu kota) untuk Bumi.
+   ======================================================================= */
+
+const ASSET_BASE_DEFAULT = 'assets/';
+let ASSET_BASE = 'assets/hi/';
+
+/* manifest: kunci -> daftar berkas */
+const ASSET_MANIFEST = {
+  sun:        { map: 'sun.jpg' },
+  mercury:    { map: 'mercury.jpg',   normal: 'mercury_normal.jpg' },
+  venus:      { map: 'venus.jpg' },
+  earth:      { map: 'earth_day.jpg', clouds: 'earth_clouds.jpg', night: 'earth_night.jpg' },
+  moon:       { map: 'moon.jpg',      normal: 'moon_normal.jpg' },
+  mars:       { map: 'mars.jpg',      normal: 'mars_normal.jpg' },
+  jupiter:    { map: 'jupiter.jpg' },
+  saturn:     { map: 'saturn.jpg',    ring: 'saturn_ring.png' },
+  uranus:     { map: 'uranus.jpg' },
+  neptune:    { map: 'neptune.jpg' },
+  milkyway:   { map: 'milkyway.jpg' },
+  /* bulan-bulan: peta permukaan asli NASA/USGS */
+  phobos:     { map: 'phobos.png' },
+  deimos:     { map: 'deimos.jpg' },
+  io:         { map: 'io.jpg' },
+  europa:     { map: 'europa.jpg' },
+  ganymede:   { map: 'ganymede.jpg' },
+  callisto:   { map: 'callisto.jpg' },
+  titan:      { map: 'titan.jpg' },
+  rhea:       { map: 'rhea.jpg' },
+  iapetus:    { map: 'iapetus.jpg' },
+  titania:    { map: 'titania.jpg' },
+  triton:     { map: 'triton.jpg' },
+};
+
+/* cache tekstur yang sudah dimuat */
+const TEX = {};
+
+/* berapa berkas total (untuk bilah kemajuan) */
+function countAssets() {
+  let n = 0;
+  for (const k in ASSET_MANIFEST) {
+    const m = ASSET_MANIFEST[k];
+    for (const slot in m) if (m[slot]) n++;
+  }
+  return n;
+}
+
+/* pemuat satu tekstur dengan janji */
+function loadTexture(url, srgb, onDone) {
+  return new Promise((resolve) => {
+    new THREE.TextureLoader().load(
+      url,
+      (tex) => {
+        if (srgb) tex.encoding = THREE.sRGBEncoding;
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.ClampToEdgeWrapping;
+        tex.anisotropy = Math.min(16, renderer.capabilities.getMaxAnisotropy());
+        tex.minFilter = THREE.LinearMipmapLinearFilter;
+        tex.magFilter = THREE.LinearFilter;
+        tex.generateMipmaps = true;
+        if (onDone) onDone();
+        resolve(tex);
+      },
+      undefined,
+      (err) => {
+        console.warn('gagal memuat ' + url, err);
+        if (onDone) onDone();
+        resolve(null);
+      }
+    );
+  });
+}
+
+/* muat seluruh aset; onProgress(dimuat, total, namaBerkas) */
+async function loadAllAssets(onProgress) {
+  const total = countAssets();
+  let done = 0;
+  const jobs = [];
+
+  for (const key in ASSET_MANIFEST) {
+    const m = ASSET_MANIFEST[key];
+    TEX[key] = {};
+    for (const slot in m) {
+      const file = m[slot];
+      if (!file) continue;
+      const srgb = true;   /* semua peta warna & cincin dalam ruang sRGB */
+      jobs.push(
+        loadTexture(ASSET_BASE + file, srgb, () => {
+          done++;
+          if (onProgress) onProgress(done, total, file);
+        }).then((tex) => {
+          if (tex) TEX[key][slot] = tex;
+        })
+      );
+    }
+  }
+  await Promise.all(jobs);
+  return TEX;
+}
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
    Data Tata Surya — SEMUA dalam skala nyata & satuan yang konsisten
    ----------------------------------------------------------------------
    Satuan dasar : 1 unit tampilan = 1.000 km  (RAD = 6371 km = jari-jari Bumi)
@@ -898,16 +1012,19 @@ const RAD = 6371;                       /* 1 unit tampilan = 1.000 km */
 const AU_KM = 149597870.7;
 
 /* ----------------------------------------------------------------------
-   Skema skala (satu faktor, konsisten di seluruh scene):
-   • Jarak antar planet  : NYATA (aKm / RAD)
-   • Radius semua benda  : NYATA × SIZE_FACTOR
-   • Jarak planet–bulan  : NYATA × SIZE_FACTOR  → proporsi sistem tetap nyata
-   Jadi seluruh tata surya adalah model skala nyata dengan benda langit
-   diperbesar seragam 4× agar terlihat jelas saat terbang.
+   SKALA 1 : 1 (sebenarnya)
+   • Jarak antar planet : NYATA (aKm / RAD)
+   • Radius semua benda : NYATA — tanpa pembesaran sama sekali
+   • Jarak planet–bulan : NYATA
+   Satu-satunya hal yang tidak bisa 1:1 adalah jarak kamera saat melihat
+   seluruh tata surya; itu urusan zoom, bukan skala model.
    ---------------------------------------------------------------------- */
-const SIZE_FACTOR = 4.0;
-const MOON_ORBIT_FACTOR = 4.0;
-const MIN_MOON_RADIUS_UNITS = 0.30;     /* bulan kecil tetap terlihat & bisa diklik */
+const SIZE_FACTOR = 1.0;
+const MOON_ORBIT_FACTOR = 1.0;
+
+/* radius terkecil yang masih boleh ada di scene (unit) — mencegah
+   benda mikroskopis seperti Deimos (0,001 unit) hilang karena presisi float */
+const MIN_RENDER_RADIUS_UNITS = 0.0;   /* benar-benar 1:1, tanpa pembesaran */
 
 /* Kemiringan bidang orbit terhadap ekliptika (derajat) */
 const ORBIT_INCLINATION = {
@@ -1288,8 +1405,28 @@ const SUN = {
   },
 };
 
-/* Tabel waktu (dipakai slider kecepatan) */
-const TIME_TABLE = [0.5, 1, 3, 7, 14, 30, 60, 120, 240, 480, 1000];
+/* Tabel waktu simulasi: nilai = berapa HARI berlalu per 1 detik nyata.
+   Mencakup mode lambat (mengamati rotasi) sampai sangat cepat (abad). */
+const TIME_TABLE = [
+  1 / 86400,        /* 1 dtk = 1 detik */
+  1 / 1440,         /* 1 dtk = 1 menit */
+  1 / 96,           /* 1 dtk = 15 menit */
+  1 / 24,           /* 1 dtk = 1 jam */
+  0.25,             /* 1 dtk = 6 jam */
+  1,                /* 1 dtk = 1 hari */
+  7,                /* 1 dtk = 1 minggu */
+  30.44,            /* 1 dtk = 1 bulan */
+  91.31,            /* 1 dtk = 1 musim (3 bulan) */
+  365.25,           /* 1 dtk = 1 tahun */
+  3652.5,           /* 1 dtk = 10 tahun */
+  36525,            /* 1 dtk = 1 abad */
+];
+
+/* label untuk tiap entri tabel waktu */
+const TIME_LABELS = [
+  '1 detik', '1 menit', '15 menit', '1 jam', '6 jam', '1 hari',
+  '1 minggu', '1 bulan', '3 bulan', '1 tahun', '10 tahun', '1 abad',
+];
 
 /* Daftar tur terpandu */
 const TOUR = ['sun', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'mercury', 'venus', 'belt', 'system'];
@@ -1298,18 +1435,247 @@ const TOUR = ['sun', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'ne
 <script>
 "use strict";
 /* =======================================================================
-   Pembangunan scene 3D — Tata Surya skala nyata
-   Struktur hierarki (penting!):
+   Material planet realistik
+   ----------------------------------------------------------------------
+   Menggunakan tekstur nyata (NASA/USGS/Solar System Scope) + normal map
+   untuk relief, peta malam untuk lampu kota, dan shader khusus untuk
+   cincin Saturnus yang punya ketebalan & bayangan.
+   ======================================================================= */
+
+/* ---------- Bumi: siang + malam + awan + atmosfer ---------- */
+/* Shader ini mencampur peta siang dan peta lampu kota berdasarkan
+   arah datang cahaya Matahari, lalu menambahkan awan dan semburat atmosfer. */
+const EARTH_VERT = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_vertex>',
+  'varying vec2 vUv;',
+  'varying vec3 vNormalW;',
+  'varying vec3 vPosW;',
+  'void main() {',
+  '  vUv = uv;',
+  '  vNormalW = normalize(mat3(modelMatrix) * normal);',
+  '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+  '  vPosW = wp.xyz;',
+  '  gl_Position = projectionMatrix * viewMatrix * wp;',
+  '  #include <logdepthbuf_vertex>',
+  '}',
+].join('\n');
+
+const EARTH_FRAG = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_fragment>',
+  'uniform sampler2D uDay;',
+  'uniform sampler2D uNight;',
+  'uniform sampler2D uClouds;',
+  'uniform vec3 uSunDir;',
+  'uniform vec3 uAtmoColor;',
+  'uniform float uCloudOffset;',
+  'uniform float uHasNight;',
+  'varying vec2 vUv;',
+  'varying vec3 vNormalW;',
+  'varying vec3 vPosW;',
+  'void main() {',
+  '  #include <logdepthbuf_fragment>',
+  '  vec3 N = normalize(vNormalW);',
+  '  vec3 L = normalize(uSunDir);',
+  '  vec3 V = normalize(cameraPosition - vPosW);',
+  '',
+  '  vec3 day = texture2D(uDay, vUv).rgb;',
+  '  float cloudA = texture2D(uClouds, vec2(vUv.x + uCloudOffset, vUv.y)).r;',
+  '',
+  '  // pencahayaan: lambert penuh + sedikit ambient agar sisi gelap tetap terbaca',
+  '  float lambert = max(dot(N, L), 0.0);',
+  '  float lit = 0.035 + 0.965 * pow(lambert, 0.85);',
+  '',
+  '  // sisi siang: permukaan + awan',
+  '  vec3 surface = day * lit;',
+  '  vec3 cloudLit = vec3(1.0) * lit * 1.05;',
+  '  vec3 dayCol = mix(surface, cloudLit, cloudA * 0.88);',
+  '',
+  '  // sisi malam: lampu kota (peta malam NASA)',
+  '  vec3 night = vec3(0.0);',
+  '  if (uHasNight > 0.5) {',
+  '    vec3 ntex = texture2D(uNight, vUv).rgb;',
+  '    float cityGlow = pow(max(ntex.r - 0.015, 0.0) * 2.4, 1.15);',
+  '    night = vec3(1.00, 0.85, 0.58) * cityGlow * 1.5;',
+  '  }',
+  '',
+  '  // transisi siang→malam yang halus (terminator)',
+  '  float terminator = smoothstep(-0.10, 0.22, dot(N, L));',
+  '  vec3 col = mix(night, dayCol, terminator);',
+  '',
+  '  // semburat atmosfer di tepi: kuat, terutama di sisi terang',
+  '  float rim = pow(1.0 - max(dot(N, V), 0.0), 2.6);',
+  '  vec3 atmo = uAtmoColor * rim * (0.15 + 1.25 * lit);',
+  '  col += atmo;',
+  '',
+  '  // pendar biru tipis di seluruh sisi terang (hamburan atmosfer)',
+  '  col += uAtmoColor * 0.06 * lit;',
+  '',
+  '  gl_FragColor = vec4(col, 1.0);',
+  '}',
+].join('\n');
+
+function makeEarthMaterial() {
+  const t = TEX.earth || {};
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uDay:      { value: t.map || null },
+      uNight:    { value: t.night || null },
+      uClouds:   { value: t.clouds || null },
+      uSunDir:   { value: new THREE.Vector3(1, 0, 0) },
+      uAtmoColor:{ value: new THREE.Color(0x3a7bd5) },
+      uCloudOffset: { value: 0.0 },
+      uHasNight: { value: t.night ? 1.0 : 0.0 },
+    },
+    vertexShader: EARTH_VERT,
+    fragmentShader: EARTH_FRAG,
+  });
+}
+
+/* ---------- material planet standar (tekstur + normal map) ---------- */
+function makePlanetMaterial(key, opt) {
+  opt = opt || {};
+  const t = TEX[key] || {};
+  const params = {
+    map: t.map || null,
+    roughness: opt.roughness !== undefined ? opt.roughness : 0.92,
+    metalness: 0.0,
+  };
+  if (t.normal) {
+    params.normalMap = t.normal;
+    params.normalScale = new THREE.Vector2(
+      opt.normalStrength || 1.0, opt.normalStrength || 1.0);
+  }
+  /* emissive tipis dari peta yang sama: menjaga detail tetap terbaca di
+     bagian yang kurang terkena cahaya, tanpa membuat warna pudar.
+     Nilai besar (>0.4) justru mencuci warna seperti terlihat pada uji. */
+  if (t.map && opt.emissive) {
+    params.emissiveMap = t.map;
+    params.emissive = new THREE.Color(0xffffff);
+    params.emissiveIntensity = opt.emissive;
+  }
+  return new THREE.MeshStandardMaterial(params);
+}
+
+/* ---------- cincin Saturnus: 3D dengan ketebalan & bayangan ---------- */
+/* Dibuat dari cakram tipis (bukan bidang datar) supaya punya sisi,
+   dan shader-nya menghitung: terang sesuai sudut cahaya, bayangan planet
+   yang jatuh ke cincin, serta bagian cincin yang berada di belakang planet. */
+const RING_VERT = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_vertex>',
+  'varying vec2 vUv;',
+  'varying vec3 vNormalW;',
+  'varying vec3 vPosW;',
+  'void main() {',
+  '  vUv = uv;',
+  '  vNormalW = normalize(mat3(modelMatrix) * normal);',
+  '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+  '  vPosW = wp.xyz;',
+  '  gl_Position = projectionMatrix * viewMatrix * wp;',
+  '  #include <logdepthbuf_vertex>',
+  '}',
+].join('\n');
+
+const RING_FRAG = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_fragment>',
+  'uniform sampler2D uMap;',
+  'uniform vec3 uSunDir;',
+  'uniform vec3 uPlanetCenter;',
+  'uniform float uPlanetRadius;',
+  'uniform float uRingInner;',
+  'uniform float uRingOuter;',
+  'varying vec2 vUv;',
+  'varying vec3 vNormalW;',
+  'varying vec3 vPosW;',
+  'void main() {',
+  '  #include <logdepthbuf_fragment>',
+  '  vec4 tex = texture2D(uMap, vec2(vUv.x, 0.5));',
+  '  if (tex.a < 0.02) discard;',
+  '',
+  '  vec3 L = normalize(uSunDir);',
+  '  // cincin = partikel tipis; cahaya datang dari dua sisi',
+  '  float ndl = abs(dot(normalize(vNormalW), L));',
+  '  float lit = 0.25 + 0.75 * ndl;',
+  '',
+  '  // bayangan planet pada cincin: titik di cincin yang berada di belakang',
+  '  // planet terhadap arah Matahari akan gelap',
+  '  vec3 toPlanet = uPlanetCenter - vPosW;',
+  '  float distToAxis = length(toPlanet - L * dot(toPlanet, L));',
+  '  float behind = step(0.0, dot(toPlanet, L));',
+  '  float shadow = 1.0 - behind * (1.0 - smoothstep(uPlanetRadius * 0.92, uPlanetRadius * 1.35, distToAxis));',
+  '',
+  '  // cincin juga menerima bayangan dari dirinya sendiri di sisi luar',
+  '  vec3 col = tex.rgb * lit * shadow;',
+  '  gl_FragColor = vec4(col, tex.a * 0.96);',
+  '}',
+].join('\n');
+
+function makeRingMaterial() {
+  const t = TEX.saturn || {};
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: t.ring || null },
+      uSunDir: { value: new THREE.Vector3(1, 0, 0) },
+      uPlanetCenter: { value: new THREE.Vector3() },
+      uPlanetRadius: { value: 1 },
+      uRingInner: { value: 1 },
+      uRingOuter: { value: 2 },
+    },
+    vertexShader: RING_VERT,
+    fragmentShader: RING_FRAG,
+    transparent: true,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+}
+
+/* ---------- Matahari: permukaan menyala + korona ---------- */
+const SUNSURF_FRAG = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_fragment>',
+  'uniform sampler2D uMap;',
+  'uniform float uTime;',
+  'varying vec2 vUv;',
+  'void main() {',
+  '  #include <logdepthbuf_fragment>',
+  '  vec3 base = texture2D(uMap, vUv).rgb;',
+  '  // denyut halus meniru granulasi & flare',
+  '  float pulse = 0.94 + 0.06 * sin(uTime * 0.7 + vUv.x * 22.0) * sin(uTime * 0.43 + vUv.y * 15.0);',
+  '  vec3 col = base * pulse * 1.45;',
+  '  gl_FragColor = vec4(col, 1.0);',
+  '}',
+].join('\n');
+
+const SUNSURF_VERT = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_vertex>',
+  'varying vec2 vUv;',
+  'void main() {',
+  '  vUv = uv;',
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
+  '  #include <logdepthbuf_vertex>',
+  '}',
+].join('\n');
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   Pembangunan scene 3D — memakai tekstur NYATA (NASA / USGS / SSS)
+   ----------------------------------------------------------------------
+   Hierarki:
      scene
-      ├─ body.group      → posisi orbit planet (tanpa kemiringan)
+      ├─ body.group      → posisi orbit planet
       │   ├─ body.spin   → kemiringan poros + rotasi harian
-      │   │    ├─ mesh planet, awan, atmosfer, cincin
-      │   │    └─ moonOrbit[i] → posisi orbit bulan
-      │   │          └─ moonSpin → rotasi bulan
-      ├─ orbitLine (elips nyata, di scene agar tidak ikut berputar)
-      └─ belt, sky, sun
-   Bulan mengorbit di bidang ekuator induk (di dalam grup spin), sehingga
-   kemiringan poros induk otomatis berlaku untuk bidang orbit bulan.
+      │   │    ├─ mesh planet (material nyata)
+      │   │    ├─ atmosfer (cangkang fresnel, ikut arah Matahari)
+      │   │    └─ moonPlane[i] → orbit bulan → spin → mesh bulan
+      ├─ orbitLine (elips nyata, fokus di Matahari)
+      └─ sabuk asteroid, bintang, langit Bima Sakti
    ======================================================================= */
 
 let renderer, scene, camera;
@@ -1318,16 +1684,24 @@ const pickables = [];
 let sunMesh, sunGlow, sunRim, skyMesh, beltPoints, sunLight, starField;
 const glowTextures = {};
 
+/* pemetaan nama bulan -> kunci tekstur di TEX */
+const MOON_TEX_KEY = {
+  'Bulan': 'moon', 'Phobos': 'phobos', 'Deimos': 'deimos',
+  'Io': 'io', 'Europa': 'europa', 'Ganymede': 'ganymede', 'Callisto': 'callisto',
+  'Titan': 'titan', 'Rhea': 'rhea', 'Iapetus': 'iapetus',
+  'Titania': 'titania', 'Triton': 'triton',
+};
+
 function initRenderer(canvas) {
   renderer = new THREE.WebGLRenderer({
     canvas: canvas, antialias: true, powerPreference: 'high-performance',
-    logarithmicDepthBuffer: true,          /* penting: rentang dekat–jauh sangat besar */
+    logarithmicDepthBuffer: true,
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.0;
 }
 
 function onResize() {
@@ -1362,8 +1736,7 @@ function buildSphere(radiusUnits, flat, wSeg, hSeg) {
 }
 
 /* ---------- atmosfer: cangkang fresnel ---------- */
-/* Catatan: chunk logdepthbuf wajib ada karena renderer memakai
-   logarithmicDepthBuffer — tanpa itu kedalaman shader kustom salah. */
+/* Chunk logdepthbuf wajib karena renderer memakai logarithmicDepthBuffer. */
 const ATMOS_VERT = [
   '#include <common>',
   '#include <logdepthbuf_pars_vertex>',
@@ -1385,13 +1758,17 @@ const ATMOS_FRAG = [
   'uniform float uOpacity;',
   'uniform float uFresnel;',
   'uniform float uPower;',
+  'uniform vec3 uSunDirLocal;',
   'varying vec3 vNormal;',
   'varying vec3 vPos;',
   'void main() {',
   '  #include <logdepthbuf_fragment>',
   '  vec3 viewDir = normalize(-vPos);',
-  '  float rim = pow(1.0 - abs(dot(normalize(vNormal), viewDir)), uFresnel);',
-  '  float a = clamp(rim * uOpacity, 0.0, 1.0);',
+  '  vec3 N = normalize(vNormal);',
+  '  float rim = pow(1.0 - abs(dot(N, viewDir)), uFresnel);',
+  '  /* atmosfer hanya bersinar di sisi yang kena Matahari */',
+  '  float sunSide = 0.12 + 0.88 * max(dot(N, normalize(uSunDirLocal)), 0.0);',
+  '  float a = clamp(rim * uOpacity * sunSide, 0.0, 1.0);',
   '  gl_FragColor = vec4(uColor, pow(a, uPower));',
   '}',
 ].join('\n');
@@ -1403,6 +1780,7 @@ function makeAtmosphere(radiusUnits, cfg) {
       uOpacity: { value: cfg.opacity },
       uFresnel: { value: cfg.fresnel },
       uPower: { value: cfg.power || 1.3 },
+      uSunDirLocal: { value: new THREE.Vector3(1, 0, 0) },
     },
     vertexShader: ATMOS_VERT,
     fragmentShader: ATMOS_FRAG,
@@ -1414,7 +1792,7 @@ function makeAtmosphere(radiusUnits, cfg) {
   return new THREE.Mesh(new THREE.SphereGeometry(radiusUnits, 48, 32), mat);
 }
 
-/* ---------- matahari ---------- */
+/* ---------- kilau tepi Matahari ---------- */
 const SUN_FRAG = [
   '#include <common>',
   '#include <logdepthbuf_pars_fragment>',
@@ -1431,10 +1809,19 @@ const SUN_FRAG = [
   '}',
 ].join('\n');
 
+/* ---------- Matahari ---------- */
 function buildSun() {
   const r = (SUN.radiusKm / RAD) * SIZE_FACTOR;
-  const tex = canvasTexture(buildSurfaceTexture(SUN.texture), true);
-  sunMesh = new THREE.Mesh(new THREE.SphereGeometry(r, 96, 64), new THREE.MeshBasicMaterial({ map: tex }));
+  const t = TEX.sun || {};
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: t.map || null },
+      uTime: { value: 0 },
+    },
+    vertexShader: SUNSURF_VERT,
+    fragmentShader: SUNSURF_FRAG,
+  });
+  sunMesh = new THREE.Mesh(new THREE.SphereGeometry(r, 96, 64), mat);
   scene.add(sunMesh);
 
   if (!glowTextures.sun) glowTextures.sun = makeGlowCanvas(512, [255, 246, 220], [255, 140, 30], 2.4);
@@ -1450,16 +1837,12 @@ function buildSun() {
     blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
   }));
   sp2.scale.set(r * 12, r * 12, 1);
-  sunGlow.add(sp1); sunGlow.add(sp2);
-
-  /* halo tambahan berskala besar: menjaga Matahari tetap terlihat terang
-     bahkan dari jarak antarplanet */
   const sp3 = new THREE.Sprite(new THREE.SpriteMaterial({
     map: canvasTexture(glowTextures.halo, true), transparent: true, opacity: 0.5,
     blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
   }));
   sp3.scale.set(r * 46, r * 46, 1);
-  sunGlow.add(sp3);
+  sunGlow.add(sp1); sunGlow.add(sp2); sunGlow.add(sp3);
   scene.add(sunGlow);
 
   sunRim = new THREE.Mesh(new THREE.SphereGeometry(r * 1.012, 64, 48), new THREE.ShaderMaterial({
@@ -1469,15 +1852,15 @@ function buildSun() {
   }));
   scene.add(sunRim);
 
-  sunLight = new THREE.PointLight(0xfff4e2, 3.0, 0, 0);
-  sunLight.decay = 0;                       /* tanpa peredupan jarak: terang merata */
+  sunLight = new THREE.PointLight(0xfff4e2, 1.25, 0, 0);
+  /* intensity ~1.25 penting: dengan decay=0 nilai ini berperan sebagai
+     pengali langsung albedo. Nilai 3.2 membuat seluruh permukaan planet
+     terbakar menjadi putih (Bintik Merah Besar hilang). */
+  sunLight.decay = 0;
   sunLight.distance = 0;
   scene.add(sunLight);
-
-  /* cahaya lemah pengisi (ambient) agar sisi malam tidak sepenuhnya hitam —
-     tetap sangat gelap sehingga bayangan tetap dramatis */
-  const ambient = new THREE.AmbientLight(0x2a3550, 0.35);
-  scene.add(ambient);
+  /* cahaya pengisi sangat lemah agar sisi malam tidak hitam total */
+  scene.add(new THREE.AmbientLight(0x1a2338, 0.35));
 
   const body = {
     id: 'sun', key: 'sun', name: 'Matahari', type: 'star',
@@ -1492,34 +1875,45 @@ function buildSun() {
 /* ---------- planet & bulan ---------- */
 function buildBody(cfg, parentMoonPlane, hostBody) {
   const isMoon = !!hostBody;
-  const radiusUnits = Math.max((cfg.radiusKm / RAD) * SIZE_FACTOR, isMoon ? MIN_MOON_RADIUS_UNITS : 0.05);
+  const radiusUnits = Math.max((cfg.radiusKm / RAD) * SIZE_FACTOR, MIN_RENDER_RADIUS_UNITS);
 
-  const group = new THREE.Group();      /* posisi orbit (relatif induk) */
-  const spin = new THREE.Group();       /* kemiringan poros + rotasi harian */
+  const group = new THREE.Group();
+  const spin = new THREE.Group();
   group.add(spin);
   (parentMoonPlane || scene).add(group);
 
-  /* bidang orbit bulan: miring mengikuti poros induk, TIDAK ikut rotasi harian */
+  /* bidang orbit bulan: miring mengikuti poros induk, tidak ikut rotasi harian */
   const moonPlane = new THREE.Group();
   if (cfg.axialTilt) moonPlane.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
   group.add(moonPlane);
 
-  const tex = canvasTexture(buildSurfaceTexture(cfg.texture), true);
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0.0 });
-  const mesh = new THREE.Mesh(buildSphere(radiusUnits, cfg.flat || 0, isMoon ? 40 : 72, isMoon ? 28 : 48), mat);
+  /* ----- material: tekstur nyata ----- */
+  const isEarth = (cfg.key === 'earth');
+  let mat;
+  if (isEarth) {
+    mat = makeEarthMaterial();
+  } else if (isMoon) {
+    mat = makePlanetMaterial(MOON_TEX_KEY[cfg.name], {
+      roughness: 0.96, normalStrength: 1.15,
+      /* bulan berbatu: emissive sangat kecil — hanya supaya kawah di sisi
+         gelap tidak hilang total, tanpa menghapus bayangan terminator */
+      emissive: 0.035,
+    });
+  } else {
+    const gasGiants = { jupiter: 1, saturn: 1, uranus: 1, neptune: 1 };
+    mat = makePlanetMaterial(cfg.key, {
+      roughness: gasGiants[cfg.key] ? 0.80 : 0.94,
+      normalStrength: 1.0,
+      /* gas raksasa: awan tebal memantulkan cahaya kuat, jadi sedikit lebih
+         terang; planet batuan tetap gelap di sisi malam */
+      emissive: gasGiants[cfg.key] ? 0.10 : 0.035,
+    });
+  }
+
+  const mesh = new THREE.Mesh(
+    buildSphere(radiusUnits, cfg.flat || 0, isMoon ? 48 : 80, isMoon ? 32 : 56), mat);
   spin.add(mesh);
   pickables.push(mesh);
-
-  let cloudMesh = null;
-  if (cfg.cloudTexture) {
-    const cTex = canvasTexture(buildSurfaceTexture(cfg.cloudTexture), true);
-    cloudMesh = new THREE.Mesh(buildSphere(radiusUnits * 1.014, 0, 56, 40),
-      new THREE.MeshStandardMaterial({
-        map: cTex, transparent: true, roughness: 1, metalness: 0,
-        depthWrite: false, alphaTest: 0.015,
-      }));
-    spin.add(cloudMesh);
-  }
 
   let atmoMesh = null;
   if (cfg.atmosphere) {
@@ -1529,16 +1923,12 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
 
   if (cfg.axialTilt) spin.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
 
-  /* ----- cincin ----- */
+  /* ----- cincin Saturnus (shader: ketebalan + bayangan planet) ----- */
   let ringMesh = null;
-  if (cfg.ring) {
-    const rc = makeRingTexture(cfg.ring.texture.w, cfg.ring.texture.h, cfg.ring.texture.seed, cfg.ring.texture);
-    const rTex = canvasTexture(rc, true);
+  if (cfg.ring && TEX.saturn && TEX.saturn.ring) {
     const innerU = (cfg.ring.inner / RAD) * SIZE_FACTOR;
     const outerU = (cfg.ring.outer / RAD) * SIZE_FACTOR;
-    /* phiSegments = jumlah pembagian RADIAL. Harus banyak (64) agar profil
-       tekstur cincin tergambar mulus, bukan menjadi beberapa garis saja. */
-    const rGeo = new THREE.RingGeometry(innerU, outerU, 256, 64);
+    const rGeo = new THREE.RingGeometry(innerU, outerU, 512, 1);
     const pos = rGeo.attributes.position;
     const uv = rGeo.attributes.uv;
     const v3 = new THREE.Vector3();
@@ -1547,10 +1937,9 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
       const t = (v3.length() - innerU) / (outerU - innerU);
       uv.setXY(i, t, 0.5);
     }
-    const rMat = new THREE.MeshStandardMaterial({
-      map: rTex, transparent: true, side: THREE.DoubleSide,
-      roughness: 0.9, metalness: 0.0, depthWrite: false, alphaTest: 0.01,
-    });
+    const rMat = makeRingMaterial();
+    rMat.uniforms.uRingInner.value = innerU;
+    rMat.uniforms.uRingOuter.value = outerU;
     ringMesh = new THREE.Mesh(rGeo, rMat);
     ringMesh.rotation.x = Math.PI / 2;
     spin.add(ringMesh);
@@ -1561,8 +1950,9 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     key: cfg.key || (isMoon ? (hostBody.key + ':' + cfg.name) : cfg.name),
     name: cfg.name,
     type: isMoon ? 'moon' : 'planet',
-    group: group, spin: spin, moonPlane: moonPlane, mesh: mesh, cloudMesh: cloudMesh,
+    group: group, spin: spin, moonPlane: moonPlane, mesh: mesh,
     atmoMesh: atmoMesh, ringMesh: ringMesh,
+    isEarth: isEarth,
     radiusKm: radiusUnits, realRadiusKm: cfg.radiusKm,
     host: hostBody || null, isMoon: isMoon,
     aKm: cfg.aKm, e: cfg.e || 0,
@@ -1572,13 +1962,11 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     tidallyLocked: !!cfg.tidallyLocked,
     orbitRadiusUnits: cfg.aKm / RAD,
     info: cfg.info || null,
-    theta0: 0, moonTheta0: 0,
-    orbitLine: null,
+    theta0: 0, orbitLine: null,
   };
   group.userData.body = body;
   spin.userData.body = body;
   mesh.userData.bodyId = body.id;
-  if (cloudMesh) cloudMesh.userData.bodyId = body.id;
   if (ringMesh) ringMesh.userData.bodyId = body.id;
 
   /* garis orbit planet: elips nyata (fokus = Matahari) */
@@ -1593,7 +1981,7 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     }
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: 0xa8c4e8, transparent: true, opacity: 0.42, depthWrite: false })
+      new THREE.LineBasicMaterial({ color: 0xa8c4e8, transparent: true, opacity: 0.30, depthWrite: false })
     );
     line.rotation.x = body.incl;
     scene.add(line);
@@ -1635,16 +2023,15 @@ function buildBelt() {
   scene.add(beltPoints);
 }
 
-/* ---------- medan bintang (titik tajam, selalu di belakang) ---------- */
+/* ---------- medan bintang (titik tajam di ruang layar) ---------- */
 function buildStars() {
-  const N = 6000;
+  const N = 8000;
   const positions = new Float32Array(N * 3);
   const colors = new Float32Array(N * 3);
   const sizes = new Float32Array(N);
   const rnd = mulberry32(31415);
   const tmp = new THREE.Color();
   for (let i = 0; i < N; i++) {
-    /* sebaran merata di bola */
     const u = rnd() * 2 - 1;
     const th = rnd() * Math.PI * 2;
     const s = Math.sqrt(1 - u * u);
@@ -1653,24 +2040,24 @@ function buildStars() {
     positions[i * 3 + 1] = u * R;
     positions[i * 3 + 2] = s * Math.sin(th) * R;
     const mag = Math.pow(rnd(), 2.6);
-    sizes[i] = 1.1 + mag * 3.4;
+    sizes[i] = 1.0 + mag * 3.2;
     const warm = rnd();
     if (warm < 0.12) tmp.setRGB(1.0, 0.88, 0.74);
     else if (warm < 0.28) tmp.setRGB(0.78, 0.84, 1.0);
     else if (warm < 0.4) tmp.setRGB(1.0, 0.96, 0.9);
     else tmp.setRGB(0.92, 0.95, 1.0);
-    const b = 0.55 + mag * 0.45;
+    const b = 0.5 + mag * 0.5;
     colors[i * 3] = tmp.r * b; colors[i * 3 + 1] = tmp.g * b; colors[i * 3 + 2] = tmp.b * b;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-  /* titik bintang digambar di ruang layar: selalu tajam, tidak pernah buram,
-     dan selalu berada di belakang seluruh isi tata surya */
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: canvasTexture(makeStarDotCanvas(32), true) }, uDpr: { value: renderer.getPixelRatio() } },
+    uniforms: {
+      uMap: { value: canvasTexture(makeStarDotCanvas(32), true) },
+      uDpr: { value: renderer.getPixelRatio() },
+    },
     vertexShader: [
       'attribute float aSize;',
       'varying vec3 vColor;',
@@ -1690,24 +2077,17 @@ function buildStars() {
       '  gl_FragColor = vec4(vColor, t.a);',
       '}',
     ].join('\n'),
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
+    transparent: true, depthTest: false, depthWrite: false,
+    vertexColors: true, blending: THREE.AdditiveBlending,
   });
   const pts = new THREE.Points(geo, mat);
   pts.frustumCulled = false;
   pts.renderOrder = -100;
-  pts.position.set(0, 0, 0);
   scene.add(pts);
   starField = pts;
 }
 
-/* ---------- penanda navigasi (bintang penunjuk) ---------- */
-/* Pada skala nyata planet hanya beberapa piksel dari jauh, jadi setiap planet
-   mendapat penanda: inti tajam berwarna (normal blending) + halo lembut
-   (additive). Ini yang membuat planet bisa ditemukan saat terbang. */
+/* ---------- penanda navigasi ---------- */
 function buildBeacons() {
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
   if (!glowTextures.core) glowTextures.core = makeDiscCanvas(64);
@@ -1720,24 +2100,18 @@ function buildBeacons() {
     if (b.isMoon || b.type === 'star') continue;
     const col = bodyColorHex(b);
     const group = new THREE.Group();
-
-    /* inti: titik kecil tajam, warna planet, tidak tembus cahaya.
-       toneMapped:false agar warna tetap pekat (tidak pudar karena ACES) */
     const core = new THREE.Sprite(new THREE.SpriteMaterial({
       map: coreTex, color: col, transparent: true,
-      blending: THREE.NormalBlending, depthWrite: false, depthTest: false, opacity: 1.0,
-      toneMapped: false,
+      blending: THREE.NormalBlending, depthWrite: false, depthTest: false,
+      opacity: 1.0, toneMapped: false,
     }));
     group.add(core);
-
-    /* halo: cincin cahaya lembut di sekeliling inti */
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({
       map: dotTex, color: col, transparent: true,
-      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, opacity: 0.22,
-      toneMapped: false,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      opacity: 0.22, toneMapped: false,
     }));
     group.add(halo);
-
     group.renderOrder = 100;
     scene.add(group);
     b.beacon = { group: group, core: core, halo: halo };
@@ -1751,20 +2125,14 @@ function updateBeacons() {
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     if (!b.beacon) continue;
-    bodyWorldPos(b, _bp);
+    bodyScreenPos(b, _bp);   /* relatif kamera: dunia sudah tergeser */
     const dist = Math.max(camera.position.distanceTo(_bp), 1e-6);
-    const px = (b.radiusKm / dist) * (H * 0.5) / tanHalf;   /* radius planet di layar (piksel) */
-
-    /* penanda tampil selama planet masih kecil di layar */
+    const px = (b.radiusKm / dist) * (H * 0.5) / tanHalf;
     let show = px < 5.5;
     if (cameraState.target === b) show = false;
     if (cameraState.target && cameraState.target !== b && dist < b.radiusKm * 25) show = false;
-
     b.beacon.group.visible = show;
-    b.beacon.showLabel = show;
     if (!show) continue;
-
-    /* berapa satuan dunia untuk 1 piksel pada jarak ini */
     const unit = (2 * dist * tanHalf) / H;
     const corePx = 5.4 + Math.min(3.0, Math.max(0, 1 - px / 5.5) * 3.0);
     const haloPx = corePx * 3.2;
@@ -1776,7 +2144,6 @@ function updateBeacons() {
 }
 
 function bodyColorHex(b) {
-  /* warna pekat untuk penanda navigasi */
   const c = {
     sun: 0xffb44d, mercury: 0xb8a894, venus: 0xf5d98a, earth: 0x2f7fe8, mars: 0xe8622a,
     jupiter: 0xe8b06a, saturn: 0xf2e0a8, uranus: 0x6fe0e8, neptune: 0x3f6fe8,
@@ -1784,78 +2151,193 @@ function bodyColorHex(b) {
   return c[b.key] !== undefined ? c[b.key] : 0xbbbbbb;
 }
 
-/* ---------- langit berbintang ---------- */
+/* ---------- langit: Bima Sakti nyata ---------- */
 function buildSky() {
-  const canvas = makeSkyCanvas(2048, 1024, 909);
-  const tex = canvasTexture(canvas, true);
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  /* sphere langit diberi segmen lebih halus agar tekstur tidak bergaris */
-  const geo = new THREE.SphereGeometry(600000, 64, 48);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false, fog: false });
-  skyMesh = new THREE.Mesh(geo, mat);
+  let mat;
+  const t = TEX.milkyway || {};
+  if (t.map) {
+    t.map.mapping = THREE.EquirectangularReflectionMapping;
+    mat = new THREE.MeshBasicMaterial({ map: t.map, side: THREE.BackSide, depthWrite: false, fog: false });
+  } else {
+    const canvas = makeSkyCanvas(2048, 1024, 909);
+    mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
+  }
+  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 64, 48), mat);
   skyMesh.frustumCulled = false;
+  skyMesh.renderOrder = -200;
   scene.add(skyMesh);
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
 }
 
-/* ---------- animasi: posisi orbit & rotasi ---------- */
-const _v1 = new THREE.Vector3();
+/* =======================================================================
+   FLOATING ORIGIN (titik asal mengambang)
+   ----------------------------------------------------------------------
+   Masalah nyata pada skala 1:1: saat kamera menempel di permukaan Bumi,
+   koordinat dunia mencapai 23.000 unit sementara jarak kamera 0,02 unit.
+   Rasio ~1.000.000 : 1 melampaui presisi float32 → geometri hancur dan
+   planet tidak terlihat (inilah bug "Bumi hilang" yang ditemukan lewat uji).
 
-function updateBodies(days) {
+   Solusi standar industri: kamera SELALU di titik asal (0,0,0), dan
+   seluruh tata surya digeser relatif terhadap kamera. Presisi float
+   selalu penuh karena semua koordinat yang dirender bernilai kecil.
+   ======================================================================= */
+let rebaseOffset = new THREE.Vector3();
+const _absPos = new THREE.Vector3();
+
+/* geser benda-benda tunggal (Matahari, sabuk, bintang, langit) */
+function applyRebaseToStatics() {
+  const nx = -rebaseOffset.x, ny = -rebaseOffset.y, nz = -rebaseOffset.z;
+  if (sunMesh) sunMesh.position.set(nx, ny, nz);
+  if (sunRim) sunRim.position.set(nx, ny, nz);
+  if (sunGlow) sunGlow.position.set(nx, ny, nz);
+  if (beltPoints) beltPoints.position.set(nx, ny, nz);
+  if (starField) starField.position.set(nx, ny, nz);
+  if (skyMesh) skyMesh.position.set(nx, ny, nz);
+}
+
+/* ---------- animasi: orbit, rotasi, arah cahaya ---------- */
+const _v1 = new THREE.Vector3();
+const _sunDir = new THREE.Vector3();
+const _bodyPos = new THREE.Vector3();
+const _inv = new THREE.Matrix4();
+
+/* =======================================================================
+   Animasi dibagi DUA TAHAP supaya konsisten dengan floating origin:
+     1. computePositions(days)  → hitung posisi ABSOLUT semua benda
+     2. applyPositions()        → geser ke posisi render memakai rebaseOffset
+   Urutan di gelung render: computePositions → updateCamera (menetapkan
+   rebaseOffset) → applyPositions → render. Dengan begitu benda dan kamera
+   selalu memakai offset yang SAMA (tidak ada keterlambatan satu frame).
+   ======================================================================= */
+
+function computePositions(days, elapsed) {
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     if (b.type === 'star') {
-      sunMesh.rotation.y = (days / b.rotationDays) * Math.PI * 2 * 0.15;
+      if (sunMesh.material.uniforms && sunMesh.material.uniforms.uTime) {
+        sunMesh.material.uniforms.uTime.value = elapsed || 0;
+      }
+      b.rotationDays = b.rotationDays || 25.38;
+      b.spinAngle = (days / b.rotationDays) * Math.PI * 2 * 0.15;
       continue;
     }
+    if (!b.periodDays) continue;
     const dir = b.periodDays < 0 ? -1 : 1;
-    if (!b.periodDays) continue;            /* pengaman: jangan pernah bagi dengan nol */
     const th = b.theta0 + dir * (days / Math.abs(b.periodDays)) * Math.PI * 2;
     if (!isFinite(th)) continue;
+    b._theta = th;
 
     if (b.isMoon) {
-      /* bulan: orbit nyata × MOON_ORBIT_FACTOR di bidang ekuator induk */
       const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
       const e = b.e;
       const bAxis = a * Math.sqrt(1 - e * e);
       const c = a * e;
-      _v1.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
-      _v1.applyAxisAngle(new THREE.Vector3(1, 0, 0), b.incl);
-      b.group.position.copy(_v1);
-      if (b.tidallyLocked) {
-        /* permukaan yang sama selalu menghadap induk */
-        b.spin.rotation.y = -th - Math.PI / 2;
-      } else {
-        b.spin.rotation.y = (days / b.rotationDays) * Math.PI * 2;
-      }
+      b._local = b._local || new THREE.Vector3();
+      b._local.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
+      b._local.applyAxisAngle(AXIS_X, b.incl);
+      b._spinAngle = b.tidallyLocked ? (-th - Math.PI / 2) : ((days / b.rotationDays) * Math.PI * 2);
+      /* posisi absolut bulan = posisi induk + offset lokal */
+      b.absPos = b.absPos || new THREE.Vector3();
+      if (b.host && b.host.absPos) b.absPos.copy(b.host.absPos).add(b._local);
       continue;
     }
 
-    /* planet: orbit nyata mengelilingi Matahari */
+    /* planet: elips nyata mengelilingi Matahari (fokus di titik asal) */
     const a = b.aKm / RAD;
     const e = b.e;
     const bAxis = a * Math.sqrt(1 - e * e);
     const c = a * e;
-    _v1.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
-    _v1.applyAxisAngle(new THREE.Vector3(1, 0, 0), b.incl);
-    b.group.position.copy(_v1);
-
-    b.spin.rotation.y = (days / b.rotationDays) * Math.PI * 2;
-    if (b.cloudMesh) {
-      b.cloudMesh.rotation.y = (days / b.rotationDays) * Math.PI * 2 * 1.06 + 0.4;
-    }
+    b.absPos = b.absPos || new THREE.Vector3();
+    b.absPos.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
+    b.absPos.applyAxisAngle(AXIS_X, b.incl);
+    b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
   }
 }
 
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+
+function applyPositions() {
+  const nx = -rebaseOffset.x, ny = -rebaseOffset.y, nz = -rebaseOffset.z;
+
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (b.type === 'star') {
+      if (b.spinAngle !== undefined) sunMesh.rotation.y = b.spinAngle;
+      continue;
+    }
+    if (b.isMoon) {
+      if (b._local) b.group.position.copy(b._local);
+      if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
+      continue;
+    }
+    if (!b.absPos) continue;
+    /* posisi render = posisi absolut − offset kamera */
+    b.group.position.set(b.absPos.x + nx, b.absPos.y + ny, b.absPos.z + nz);
+    if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
+
+    /* arah cahaya Matahari (Matahari di titik asal absolut) */
+    _sunDir.copy(b.absPos).negate().normalize();
+
+    if (b.isEarth && b.mesh.material.uniforms) {
+      b.mesh.material.uniforms.uSunDir.value.copy(_sunDir);
+      b.mesh.material.uniforms.uCloudOffset.value = ((app.days || 0) / 0.9 % 1 + 1) % 1;
+    }
+    if (b.atmoMesh) {
+      b.mesh.updateWorldMatrix(true, false);
+      _inv.copy(b.mesh.matrixWorld).invert();
+      b.atmoMesh.material.uniforms.uSunDirLocal.value
+        .copy(_sunDir).transformDirection(_inv);
+    }
+    if (b.ringMesh) {
+      const u = b.ringMesh.material.uniforms;
+      u.uSunDir.value.copy(_sunDir);
+      u.uPlanetCenter.value.set(0, 0, 0);
+      u.uPlanetRadius.value = b.radiusKm;
+    }
+  }
+
+  /* elemen tunggal ikut tergeser */
+  if (sunMesh) sunMesh.position.set(nx, ny, nz);
+  if (sunRim) sunRim.position.set(nx, ny, nz);
+  if (sunGlow) sunGlow.position.set(nx, ny, nz);
+  if (beltPoints) beltPoints.position.set(nx, ny, nz);
+  if (starField) starField.position.set(nx, ny, nz);
+  if (skyMesh) skyMesh.position.set(nx, ny, nz);
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (b.orbitLine) b.orbitLine.position.set(nx, ny, nz);
+  }
+}
+
+/* Posisi ABSOLUT benda (Matahari di titik asal, tanpa pengaruh floating
+   origin). Dipakai untuk fisika, kamera, label, dan penanda. */
 function bodyWorldPos(b, out) {
   out = out || new THREE.Vector3();
   if (b.type === 'star') { out.set(0, 0, 0); return out; }
+  if (b.absPos) { out.copy(b.absPos); return out; }
+  /* bulan: posisi absolut = posisi induk + posisi lokal */
   b.group.getWorldPosition(out);
+  return out;
+}
+
+/* Posisi RELATIF terhadap kamera — inilah yang dipakai untuk merender
+   label & penanda, karena dunia sudah tergeser oleh floating origin. */
+function bodyScreenPos(b, out) {
+  out = out || new THREE.Vector3();
+  bodyWorldPos(b, out);
+  out.sub(rebaseOffset);
   return out;
 }
 
 function findBody(key) {
   for (let i = 0; i < bodies.length; i++) if (bodies[i].key === key) return bodies[i];
+  return null;
+}
+
+/* cari benda berdasarkan nama (bulan punya key gabungan seperti 'mars:Phobos',
+   jadi pencarian lewat nama lebih andal untuk dipakai UI/uji) */
+function findBodyByName(name) {
+  for (let i = 0; i < bodies.length; i++) if (bodies[i].name === name) return bodies[i];
   return null;
 }
 
@@ -1888,6 +2370,7 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _tmp = new THREE.Vector3();
 const _tmp2 = new THREE.Vector3();
 const _tmp3 = new THREE.Vector3();
+const _look = new THREE.Vector3();
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
 function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -1932,9 +2415,13 @@ function initControls(canvas) {
     if (cameraState.target) {
       const body = cameraState.target;
       const rU = body.radiusKm;
-      cameraState.followDist = clampf(cameraState.followDist * k, rU * 1.30 + 0.2, rU * 900);
+      /* bisa zoom sampai nyaris menyentuh permukaan (mode Google Earth),
+         dan menjauh sampai seluruh orbit terlihat */
+      const minD = rU * 1.008;
+      const maxD = Math.max(rU * 4000, body.orbitRadiusUnits * 1.5);
+      cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
     } else {
-      cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 2.0, 3000000);
+      cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 0.05, 3000000);
     }
   }, { passive: false });
 
@@ -2049,14 +2536,25 @@ function focusBody(body) {
   }
   cs.target = body;
   const rU = body.radiusKm;
-  cs.followDist = Math.max(rU * 4.2, rU + 0.6);
+  /* mulai dari jarak yang enak dilihat, lalu pengguna bisa zoom masuk
+     sampai permukaan atau keluar sampai orbit penuh */
+  cs.followDist = Math.max(rU * 3.2, rU * 1.35);
   cs.followYaw = 0.7;
-  cs.followPitch = 0.30;
-  /* hitung posisi tujuan sekarang (benda "dibekukan" selama transisi) */
+  cs.followPitch = 0.28;
   const bp = bodyWorldPos(body, new THREE.Vector3());
   const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
   startTransition(_tmp3.copy(bp).add(off), cs.followYaw, cs.followPitch, 1.6);
   showInfo(body);
+}
+/* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
+   penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
+function autoSpeedFor(pos) {
+  const r = pos.length();
+  if (r < 200) return 0.6;          /* dekat permukaan planet */
+  if (r < 2000) return 6;
+  if (r < 20000) return 120;
+  if (r < 200000) return 1500;
+  return 12000;                     /* antarplanet */
 }
 
 function dirFromAngles(yaw, pitch) {
@@ -2068,29 +2566,44 @@ function dirFromAngles(yaw, pitch) {
 }
 
 /* ---------- update kamera ---------- */
+/* Kamera SELALU berada di titik asal (floating origin). Yang bergerak
+   adalah rebaseOffset, yaitu seberapa jauh tata surya digeser. Semua
+   posisi kamera yang dipakai untuk perhitungan disimpan di cameraState.pos
+   dalam koordinat ABSOLUT, lalu dikonversi ke relatif saat dipakai. */
 function updateCamera(dt) {
   const cs = cameraState;
 
   if (cs.target) {
     const body = cs.target;
-    const bp = bodyWorldPos(body, _tmp2);
+    /* posisi absolut benda (bukan world, karena world sudah tergeser) */
+    const bp = _tmp2.copy(body.type === 'star' ? ZERO3 : (body.absPos || ZERO3));
     const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
-    const desired = _tmp3.copy(bp).add(off);
+    const desiredAbs = _tmp3.copy(bp).add(off);
 
     if (cs.transition) {
       cs.transition.t += dt;
       const k = clampf(cs.transition.t / cs.transition.dur, 0, 1);
       const s = k * k * (3 - 2 * k);
-      cs.pos.lerpVectors(cs.transition.fromPos, desired, s);
+      cs.pos.lerpVectors(cs.transition.fromPos, desiredAbs, s);
       if (k >= 1) cs.transition = null;
     } else {
-      cs.pos.lerp(desired, Math.min(1, dt * 5.5));
+      /* kamera menempel persis: benda bergerak cepat (Bumi ~400 unit/detik),
+         kalau hanya di-lerp kamera akan selalu tertinggal */
+      cs.pos.copy(desiredAbs);
     }
-    camera.position.copy(cs.pos);
+
+    /* floating origin: kamera selalu di (0,0,0), dunia yang bergeser */
+    rebaseOffset.copy(cs.pos);
+    camera.position.set(0, 0, 0);
+
+    /* Benda berada di posisi relatif `-off` dari kamera. Arahkan pandangan
+       TEPAT ke titik itu supaya benda selalu di tengah layar. */
+    _look.copy(off).negate();
     camera.up.set(0, 1, 0);
-    camera.lookAt(bp);
-    cs.yaw = Math.atan2(cs.pos.x - bp.x, cs.pos.z - bp.z);
-    cs.pitch = Math.asin(clampf((cs.pos.y - bp.y) / Math.max(cs.pos.distanceTo(bp), 1e-6), -1, 1));
+    camera.lookAt(_look);
+
+    cs.yaw = Math.atan2(off.x, off.z);
+    cs.pitch = -Math.asin(clampf(off.y / Math.max(off.length(), 1e-6), -1, 1));
     return;
   }
 
@@ -2105,41 +2618,48 @@ function updateCamera(dt) {
       cs.pitch = cs.transition.toPitch;
       cs.transition = null;
     }
-    camera.position.copy(cs.pos);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(_tmp2.copy(cs.pos).add(dirFromAngles(cs.yaw, cs.pitch)));
-    return;
+  } else {
+    const fwd = dirFromAngles(cs.yaw, cs.pitch);
+    _right.crossVectors(fwd, _up).normalize();
+    const upLocal = _tmp.crossVectors(_right, fwd).normalize().clone();
+
+    /* kecepatan menyesuaikan jarak: lambat saat menjelajah permukaan,
+       cepat saat menyeberangi tata surya */
+    const auto = autoSpeedFor(cs.pos);
+    if (cs.baseSpeed < auto * 0.5 || cs.baseSpeed > auto * 2) {
+      cs.baseSpeed += (auto - cs.baseSpeed) * Math.min(1, dt * 0.7);
+    }
+    const speed = cs.baseSpeed * (cs.boosting ? 6 : 1);
+    let ax = 0, ay = 0, az = 0;
+    if (keys['KeyW'] || keys['ArrowUp']) az += 1;
+    if (keys['KeyS'] || keys['ArrowDown']) az -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) ax += 1;
+    if (keys['KeyA'] || keys['ArrowLeft']) ax -= 1;
+    if (keys['KeyE']) ay += 1;
+    if (keys['KeyQ']) ay -= 1;
+
+    const accel = new THREE.Vector3();
+    accel.addScaledVector(fwd, az);
+    accel.addScaledVector(_right, ax);
+    accel.addScaledVector(upLocal, ay);
+    if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 5.0);
+
+    cs.vel.addScaledVector(accel, dt);
+    cs.vel.multiplyScalar(Math.exp(-dt * 3.0));
+    const vmax = speed * 10;
+    if (cs.vel.length() > vmax) cs.vel.setLength(vmax);
+    cs.pos.addScaledVector(cs.vel, dt);
   }
 
-  const fwd = dirFromAngles(cs.yaw, cs.pitch);
-  _right.crossVectors(fwd, _up).normalize();
-  const upLocal = _tmp.crossVectors(_right, fwd).normalize().clone();
-
-  const speed = cs.baseSpeed * (cs.boosting ? 6 : 1);
-  let ax = 0, ay = 0, az = 0;
-  if (keys['KeyW'] || keys['ArrowUp']) az += 1;
-  if (keys['KeyS'] || keys['ArrowDown']) az -= 1;
-  if (keys['KeyD'] || keys['ArrowRight']) ax += 1;
-  if (keys['KeyA'] || keys['ArrowLeft']) ax -= 1;
-  if (keys['KeyE']) ay += 1;
-  if (keys['KeyQ']) ay -= 1;
-
-  const accel = new THREE.Vector3();
-  accel.addScaledVector(fwd, az);
-  accel.addScaledVector(_right, ax);
-  accel.addScaledVector(upLocal, ay);
-  if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 5.0);
-
-  cs.vel.addScaledVector(accel, dt);
-  cs.vel.multiplyScalar(Math.exp(-dt * 3.0));
-  const vmax = speed * 10;
-  if (cs.vel.length() > vmax) cs.vel.setLength(vmax);
-  cs.pos.addScaledVector(cs.vel, dt);
-
-  camera.position.copy(cs.pos);
-  camera.up.copy(upLocal);
-  camera.lookAt(_tmp2.copy(cs.pos).add(fwd));
+  /* floating origin */
+  rebaseOffset.copy(cs.pos);
+  camera.position.set(0, 0, 0);
+  const fwd2 = dirFromAngles(cs.yaw, cs.pitch);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(fwd2);
 }
+
+const ZERO3 = new THREE.Vector3(0, 0, 0);
 
 /* ---------- tur terpandu ---------- */
 const tourState = { active: false, index: -1, timer: 0, dwell: 10.0 };
@@ -2186,6 +2706,18 @@ function nextTourStop() {
   }
 }
 
+/* saat kamera sangat dekat permukaan, waktu diperlambat otomatis agar
+   permukaan tidak berputar terlalu cepat untuk diamati */
+function effectiveTimeScale() {
+  const cs = cameraState;
+  if (!cs.target) return 1;
+  const b = cs.target;
+  const alt = cs.followDist - b.radiusKm;
+  if (alt < b.radiusKm * 0.35) return 0.004;
+  if (alt < b.radiusKm * 1.5) return 0.05;
+  return 1;
+}
+
 function updateTour(dt) {
   if (!tourState.active) return;
   tourState.timer += dt;
@@ -2208,9 +2740,41 @@ const app = {
   orbitsOn: true,
   ready: false,
   fps: 0,
+  qualityTier: 'hi',
 };
 
 const J2000 = Date.UTC(2000, 0, 1, 12, 0, 0);
+
+/* ---------- tingkat kualitas tekstur ---------- */
+/* Tekstur 8K RGBA memakai 134 MB VRAM masing-masing; delapan di antaranya
+   akan menghabiskan memori GPU. Jadi kita pilih tingkat berdasarkan
+   kemampuan perangkat, dan pengguna bisa mengubahnya. */
+function detectQualityTier() {
+  try {
+    const test = document.createElement('canvas');
+    const gl = test.getContext('webgl2') || test.getContext('webgl');
+    if (!gl) return 'lo';
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const rend = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    const mem = navigator.deviceMemory || 8;
+    const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048;
+    const lowGPU = /Intel|HD Graphics|UHD Graphics|Mali|Adreno|PowerVR|SwiftShader|llvmpipe|Software/i.test(rend);
+    if (lowGPU || mem <= 4 || maxTex < 4096) return 'lo';
+    return 'hi';
+  } catch (e) { return 'lo'; }
+}
+
+function pickQualityTier() {
+  const url = new URLSearchParams(location.search).get('q');
+  if (url === 'hi' || url === 'lo') return url;
+  return detectQualityTier();
+}
+
+function setQualityTier(tier) {
+  app.qualityTier = tier;
+  ASSET_BASE = 'assets/' + tier + '/';
+  try { localStorage.setItem('solarQuality', tier); } catch (e) {}
+}
 
 /* ---------- elemen DOM ---------- */
 const $ = (id) => document.getElementById(id);
@@ -2244,19 +2808,29 @@ async function boot() {
   await nextFrame();
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 2000000);
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.0005, 2000000);
   initRenderer(canvas);
   window.addEventListener('resize', onResize);
 
-  setLoading(8, 'Menggambar langit berbintang…');
-  await nextFrame();
+  /* ---- pilih tingkat kualitas tekstur ---- */
+  const tier = pickQualityTier();
+  setQualityTier(tier);
 
-  /* ---- pembangunan bertahap agar bilah pemuatan terlihat hidup ---- */
+  /* ---- muat tekstur asli, dengan bilah kemajuan nyata ---- */
+  setLoading(6, 'Memuat tekstur planet asli…');
+  await nextFrame();
+  await loadAllAssets((done, total, file) => {
+    const pct = 6 + (done / total) * 62;
+    setLoading(pct, 'Mengunduh tekstur ' + done + '/' + total + ' — ' + file);
+  });
+
+  /* ---- pembangunan bertahap ---- */
   const steps = [];
-  steps.push(['Membuat permukaan Matahari…', () => { buildSky(); buildSun(); }]);
+  steps.push(['Menyusun langit Bima Sakti…', () => { buildSky(); }]);
+  steps.push(['Menyalakan Matahari…', () => { buildSun(); }]);
   for (let i = 0; i < PLANETS.length; i++) {
     const p = PLANETS[i];
-    steps.push(['Membuat tekstur ' + p.name + '…', () => {
+    steps.push(['Menata ' + p.name + '…', () => {
       const body = buildBody(p, null, null);
       bodies.push(body);
       if (p.moons) {
@@ -2270,7 +2844,7 @@ async function boot() {
   steps.push(['Menebar sabuk asteroid…', () => { buildBelt(); }]);
   steps.push(['Menyalakan bintang-bintang…', () => { buildStars(); buildBeacons(); }]);
 
-  const base = 10, span = 74;
+  const base = 70, span = 20;
   for (let i = 0; i < steps.length; i++) {
     setLoading(base + (i / steps.length) * span, steps[i][0]);
     await nextFrame();
@@ -2290,7 +2864,8 @@ async function boot() {
 
   /* mulai dari "hari ini" */
   app.days = (Date.now() - J2000) / 86400000;
-  updateBodies(app.days);
+  computePositions(app.days, 0);
+  applyPositions();
 
   setLoading(94, 'Menyusun antarmuka…');
   await nextFrame();
@@ -2315,19 +2890,25 @@ async function boot() {
     if (acc > 0.5) { app.fps = frames / acc; acc = 0; frames = 0; }
 
     if (!app.paused) {
-      /* waktu dibekukan selama transisi kamera agar lompatan mulus */
-      if (!anyTransitionActive()) app.days += dt * app.daysPerSecond;
+      /* waktu dibekukan selama transisi kamera agar lompatan mulus;
+         diperlambat otomatis saat kamera sangat dekat permukaan */
+      if (!anyTransitionActive()) app.days += dt * app.daysPerSecond * effectiveTimeScale();
     }
-    updateBodies(app.days);
+
+    /* --- urutan penting untuk floating origin ---
+       1. hitung posisi absolut semua benda
+       2. perbarui kamera (menetapkan rebaseOffset untuk frame ini)
+       3. geser benda ke posisi render memakai offset yang SAMA
+       Dengan urutan ini tidak ada keterlambatan satu frame antara
+       benda dan kamera — inilah yang membuat zoom presisi mungkin. */
+    computePositions(app.days, now * 0.001);
     updateCamera(dt);
+    applyPositions();
+
     updateTour(dt);
     updateLabels();
     updateBeacons();
     updateHud();
-
-    /* langit selalu mengikuti kamera agar tidak pernah terlewati */
-    if (skyMesh) skyMesh.position.copy(camera.position);
-    if (sunGlow) sunGlow.position.set(0, 0, 0);
 
     renderer.render(scene, camera);
   }
@@ -2380,21 +2961,26 @@ function buildUI() {
   });
   const slider = $('speedSlider');
   slider.max = String(TIME_TABLE.length - 1);
-  slider.value = '1';
+  slider.value = '5';                       /* default: 1 hari per detik */
   const upd = () => {
     const i = parseInt(slider.value, 10);
     app.daysPerSecond = TIME_TABLE[i];
     const pct = (i / (TIME_TABLE.length - 1)) * 100;
     slider.style.setProperty('--fill', pct + '%');
-    const d = app.daysPerSecond;
-    $('speedLabel').textContent = d < 1 ? '1 dtk = ' + d + ' hari' :
-      d === 1 ? '1 dtk = 1 hari' :
-      d < 30 ? '1 dtk = ' + d + ' hari' :
-      d < 365 ? '1 dtk = ' + (d / 30.44).toFixed(1) + ' bulan' :
-      '1 dtk = ' + (d / 365.25).toFixed(1) + ' tahun';
+    $('speedLabel').textContent = '1 dtk = ' + TIME_LABELS[i];
   };
   slider.addEventListener('input', upd);
   upd();
+
+  /* tombol kualitas tekstur */
+  $('btnQuality').addEventListener('click', () => {
+    const next = app.qualityTier === 'hi' ? 'lo' : 'hi';
+    const url = new URL(location.href);
+    url.searchParams.set('q', next);
+    location.href = url.toString();
+  });
+  $('btnQuality').textContent = '◈ Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
+  $('btnQuality').classList.toggle('active', app.qualityTier === 'hi');
 
   /* ---- pintasan papan tombol ---- */
   window.addEventListener('keydown', (e) => {
@@ -2420,10 +3006,6 @@ function moonKeyOf(planetKey, moonName) {
   return planetKey + ':' + moonName;
 }
 
-function findBodyByName(name) {
-  for (let i = 0; i < bodies.length; i++) if (bodies[i].name === name) return bodies[i];
-  return null;
-}
 
 function makeGroupLabel(txt) {
   const d = document.createElement('div');
@@ -2605,13 +3187,13 @@ function updateLabels() {
   for (let i = 0; i < labelBodies.length; i++) {
     const b = labelBodies[i];
     const el = labelEls[i];
-    const wp = bodyWorldPos(b, _tmp);
+    const wp = bodyScreenPos(b, _tmp);   /* relatif kamera */
     const dist = camPos.distanceTo(wp);
 
     /* label bulan disembunyikan bila induknya sudah jauh */
     let visible = true;
     if (b.isMoon) {
-      const hostPos = bodyWorldPos(b.host, _tmp2);
+      const hostPos = bodyScreenPos(b.host, _tmp2);
       const distHost = camPos.distanceTo(hostPos);
       if (distHost > b.host.radiusKm * 90) visible = false;
     }
@@ -2628,6 +3210,27 @@ function updateLabels() {
     _proj.copy(wp).project(camera);
     if (!isFinite(_proj.x) || !isFinite(_proj.y) || !isFinite(_proj.z)) visible = false;
     else if (_proj.z < -1 || _proj.z > 1 || Math.abs(_proj.x) > 1.25 || Math.abs(_proj.y) > 1.25) visible = false;
+
+    /* sembunyikan label yang berada DI BELAKANG benda besar lain
+       (mis. label Jupiter tidak boleh menembus permukaan Bumi) */
+    if (visible && !b.isMoon && cameraState.target) {
+      const t = cameraState.target;
+      if (t !== b && t.radiusKm > 0) {
+        const tPos = bodyScreenPos(t, _tmp3);
+        const tDist = tPos.length();
+        /* vektor dari kamera ke benda ini */
+        const d2 = wp.length();
+        if (d2 > tDist) {
+          /* apakah garis pandang ke benda ini melewati benda target? */
+          const dir = wp.clone().normalize();
+          const along = tPos.dot(dir);
+          if (along > 0) {
+            const perp = tPos.clone().sub(dir.multiplyScalar(along)).length();
+            if (perp < t.radiusKm * 0.98) visible = false;
+          }
+        }
+      }
+    }
 
     if (!visible) { if (el.style.display !== 'none') el.style.display = 'none'; continue; }
     const x = (_proj.x * 0.5 + 0.5) * W;

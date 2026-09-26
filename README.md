@@ -1,14 +1,33 @@
-# Tata Surya 3D — Jelajah Interaktif
+# Tata Surya 3D — Simulasi Skala 1:1 dengan Tekstur Asli NASA
 
-Satu berkas HTML mandiri berisi tata surya 3D skala nyata yang bisa diterbangi dan di-zoom.
+Simulasi tata surya 3D dengan **skala 1:1 sebenarnya** dan **tekstur permukaan
+asli** dari NASA / USGS / Hubble. Bisa diterbangi, dan setiap planet dapat
+di-zoom sampai permukaan seperti Google Earth.
 
-**Demo:** buka `index.html` (atau deploy — lihat bagian Deploy di bawah).
+**Demo:** `index.html` (butuh server — lihat Cara pakai di bawah)
+
+---
 
 ## Cara pakai
 
-Buka `index.html` dengan klik dua kali (Chrome / Edge / Firefox terbaru).
-Tidak perlu server, tidak perlu internet — three.js dan semua tekstur planet
-sudah disematkan / dibuat secara prosedural di dalam berkas.
+### Lokal
+
+Tekstur dimuat sebagai berkas terpisah, jadi halaman harus disajikan lewat
+HTTP (bukan dibuka langsung dari `file://`). Cara termudah:
+
+```bash
+cd solarsistem
+python -m http.server 8000
+# lalu buka http://localhost:8000
+```
+
+Atau pakai ekstensi "Live Server" di VS Code.
+
+### Online
+
+Lihat bagian **Deploy** di bawah.
+
+---
 
 ## Kontrol
 
@@ -18,80 +37,215 @@ sudah disematkan / dibuat secara prosedural di dalam berkas.
 | `Q` `E` | Turun / naik |
 | `Shift` | Turbo (6× lebih cepat) |
 | Seret mouse | Putar pandangan |
-| Roda mouse | Zoom — atau atur kecepatan terbang saat tidak mengikuti benda |
+| **Roda mouse** | **Zoom sampai menyentuh permukaan planet** |
 | Klik benda | Fokus & ikuti benda itu |
 | `Spasi` | Lepas fokus (terbang bebas) |
 | `1`–`8` | Lompat ke planet ke-1 s/d ke-8 |
 | `0` | Lompat ke Matahari |
 | `L` `O` `H` `P` | Label / garis orbit / bantuan / jeda |
 
+---
+
+## Skala 1 : 1
+
+Ini yang membedakan proyek ini: **tidak ada pembesaran sama sekali.**
+
+| | Nilai |
+|---|---|
+| Jarak antar planet | Nyata (1 unit = 1 jari-jari Bumi = 6.371 km) |
+| Radius semua benda | Nyata, **tanpa faktor pembesaran** |
+| Jarak planet–bulan | Nyata |
+
+Verifikasi terukur di aplikasi:
+
+| Benda | Radius di aplikasi | Radius nyata | Cocok? |
+|---|---|---|---|
+| Bumi | 1,0000 | 1,0000 | ✓ |
+| Bulan | 0,2727 | 0,2727 | ✓ |
+| Phobos | 0,00177 | 0,00177 | ✓ |
+
+Konsekuensinya: dari jauh planet memang **tampak seperti titik kecil** — itu
+memang keadaan sebenarnya di alam. Karena itulah ada **penanda navigasi**
+(titik berwarna) agar planet tetap bisa ditemukan, dan penanda itu otomatis
+menghilang saat kamera sudah dekat.
+
+**Kalau ingin planet terlihat lebih besar dari kenyataan**, ubah satu baris di
+`src/10-data.js`:
+
+```js
+const SIZE_FACTOR = 4.0;        // planet diperbesar 4× (jarak tetap nyata)
+```
+
+---
+
 ## Isi
 
-- **Matahari** + **8 planet** + **10 satelit alami** (Bulan, Phobos, Deimos,
-  Io, Europa, Ganymede, Callisto, Titan, Rhea, Iapetus, Titania, Triton)
-- **Cincin Saturnus** (dengan Divisi Cassini), cincin tipis Uranus & Neptunus
-- **Sabuk asteroid** 2.400 batuan antara Mars dan Jupiter
+- **Matahari** + **8 planet** + **12 satelit alami**
+- **Cincin Saturnus** dengan Divisi Cassini (shader khusus: ketebalan,
+  pencahayaan, dan bayangan planet pada cincin)
+- **Sabuk asteroid** 2.400 batuan
+- **Bima Sakti** nyata sebagai latar (peta 8K)
 - **Tur terpandu** otomatis keliling tata surya
-- Panel data nyata untuk setiap benda (radius, jarak, periode, suhu, dll.)
+- Panel data nyata per benda (radius, jarak, periode, suhu, jumlah satelit)
 
-## Skala
+### Fitur realisme
 
-Seluruh model memakai **satu skema skala yang konsisten**:
+| Fitur | Keterangan |
+|---|---|
+| **Zoom ke permukaan** | Sampai ~50 km di atas permukaan Bumi |
+| **Siang/malam Bumi** | Shader khusus: peta hari + **lampu kota** dari peta malam NASA |
+| **Awan Bumi** | Lapisan awan 8K terpisah, bergerak relatif terhadap permukaan |
+| **Kilau atmosfer** | Semburat biru di tepi, mengikuti arah Matahari |
+| **Relief batuan** | Normal map untuk Merkurius, Bulan, dan Mars (kawah terlihat) |
+| **Bintik Merah Besar** | Ada di tekstur Jupiter (dari peta Hubble) |
+| **Terminator** | Garis siang/malam nyata di semua planet |
 
-- Jarak antar planet: **nyata** (1 unit = 1 jari-jari Bumi = 6.371 km)
-- Radius semua benda: nyata **× 4**
-- Jarak planet–bulan: nyata **× 4**
+---
 
-Jadi proporsi sistem tetap nyata, hanya ukuran benda yang diperbesar 4× agar
-terlihat jelas saat diterbangi. Tanpa pembesaran itu, Bumi hanya 0,00004 piksel
-pada jarak antarplanet.
+## Simulasi waktu
+
+Slider waktu punya **12 tingkat**, dari sangat lambat sampai sangat cepat:
+
+| Tingkat | Keterangan |
+|---|---|
+| 1 dtk = 1 detik | mengamati rotasi secara nyata |
+| 1 dtk = 1 menit | |
+| 1 dtk = 15 menit | |
+| 1 dtk = 1 jam | |
+| 1 dtk = 6 jam | |
+| **1 dtk = 1 hari** | *default* |
+| 1 dtk = 1 minggu | |
+| 1 dtk = 1 bulan | |
+| 1 dtk = 3 bulan | |
+| 1 dtk = 1 tahun | |
+| 1 dtk = 10 tahun | |
+| 1 dtk = 1 abad | melihat revolusi planet luar |
+
+Waktu juga **diperlambat otomatis** saat kamera sangat dekat permukaan
+(0,4% kecepatan normal), supaya permukaan tidak berputar terlalu cepat
+untuk diamati.
+
+---
+
+## Sumber aset
+
+Semua tekstur permukaan berasal dari citra nyata:
+
+| Sumber | Dipakai untuk |
+|---|---|
+| [Solar System Scope](https://www.solarsystemscope.com/textures/) (CC BY 4.0) | Matahari, Merkurius, Venus, Bumi (hari/awan/malam), Bulan, Mars, Jupiter, Saturnus, Uranus, Neptunus, cincin, Bima Sakti |
+| [NASA / Hubble OPAL](https://commons.wikimedia.org/wiki/Category:Maps_of_Jupiter) | Peta Jupiter dengan Bintik Merah Besar |
+| [NASA / USGS](https://astrogeology.usgs.gov/) via Wikimedia Commons | Io, Europa, Ganymede, Callisto, Titan, Rhea, Iapetus, Titania, Triton, Phobos, Deimos |
+
+Aset mentah disimpan di `assets_raw/`, hasil olahan di `assets/hi/` dan
+`assets/lo/`.
+
+### Tingkat kualitas
+
+Tersedia dua tingkat, dipilih otomatis berdasarkan kemampuan GPU
+(deteksi lewat `WEBGL_debug_renderer_info`):
+
+| Tingkat | Ukuran | Untuk |
+|---|---|---|
+| `assets/hi/` | 12 MB | GPU diskrit / perangkat kuat |
+| `assets/lo/` | 3 MB | GPU terintegrasi / seluler |
+
+Paksa manual dengan URL: `index.html?q=hi` atau `index.html?q=lo`.
+Tombol **◈ Kualitas** di UI juga bisa mengalihkan.
+
+> **Kenapa dua tingkat?** Tekstur 8K RGBA memakai 134 MB VRAM masing-masing.
+> Delapan di antaranya akan memakai >1 GB dan membuat GPU kelas menengah
+> kehabisan memori. Karena itu resolusi diturunkan sekali saat build.
+
+---
 
 ## Struktur proyek
 
 ```
 solarsistem/
-├── index.html          ← hasil akhir (berkas tunggal, inilah yang dibuka)
-├── build.js            ← penggabung: node build.js
+├── index.html            ← hasil akhir (buka ini)
+├── build.js              ← penggabung: node build.js
+├── assets/
+│   ├── hi/               ← tekstur resolusi tinggi
+│   └── lo/               ← tekstur ringan
+├── assets_raw/           ← sumber mentah (tidak dipakai saat runtime)
+├── tools/                ← skrip olah aset (Python)
+│   ├── process_assets.py       ← normal map + kompresi
+│   ├── fetch_moon_textures.py  ← unduh peta bulan dari Commons
+│   ├── make_tiers.py           ← hasilkan hi/ dan lo/
+│   ├── make_jupiter.py         ← Jupiter dari peta Hubble
+│   └── enhance_grs.py          ← perkuat Bintik Merah Besar
 └── src/
-    ├── 00-textures.js  ← mesin tekstur prosedural (noise, fbm, palet, kawah)
-    ├── 10-data.js      ← data astronomi (radius, orbit, rotasi, info)
-    ├── 20-scene.js     ← pembangunan scene three.js
-    ├── 30-controls.js  ← kamera, penerbangan, tur
-    ├── 40-ui.html      ← struktur antarmuka
-    ├── 50-style.css    ← gaya tampilan
-    ├── 60-main.js      ← pemuatan, UI, gelung render
+    ├── 00-textures.js    ← tekstur prosedural (cadangan bila aset gagal)
+    ├── 05-assets.js      ← pemuat aset + bilah kemajuan
+    ├── 10-data.js        ← data astronomi & skala
+    ├── 20-scene.js       ← pembangunan scene + floating origin
+    ├── 25-materials.js   ← shader Bumi, cincin, Matahari
+    ├── 30-controls.js    ← kamera, penerbangan, tur
+    ├── 40-ui.html        ← struktur antarmuka
+    ├── 50-style.css      ← gaya tampilan
+    ├── 60-main.js        ← pemuatan, UI, gelung render
     └── vendor/three.min.js
 ```
 
-Untuk mengubah apa pun: sunting berkas di `src/`, lalu jalankan `node build.js`
-untuk menyusun ulang `index.html`.
+Untuk mengubah apa pun: sunting berkas di `src/`, lalu `node build.js`.
+
+---
 
 ## Catatan teknis
 
-- three.js r149 (MIT) disematkan agar berjalan offline.
-- `logarithmicDepthBuffer` aktif — wajib, karena rentang pandang membentang dari
-  permukaan bulan (± 0,3 unit) hingga Neptunus (700.000 unit).
-- Tekstur planet dibuat saat runtime di canvas: noise nilai periodik + fbm,
-  termasuk benua & tudung es Bumi, pita awan Jupiter/Saturnus, kawah Merkurius
-  dan Bulan, serta Bintik Merah Besar.
-- Penanda navigasi (titik berwarna) membuat planet tetap bisa ditemukan pada
-  skala nyata, dan otomatis menghilang saat kamera sudah dekat.
+### Floating origin (titik asal mengambang)
+
+Ini bagian tersulit dari skala 1:1. Saat kamera menempel di permukaan Bumi,
+koordinat dunia mencapai 23.000 unit sementara jarak kamera hanya 0,02 unit.
+Rasio ~1.000.000 : 1 melampaui presisi `float32`, sehingga geometri hancur dan
+planet tidak terlihat.
+
+Solusinya: **kamera selalu berada di titik asal (0,0,0)**, dan seluruh tata
+surya digeser relatif terhadap kamera. Semua koordinat yang dirender bernilai
+kecil, jadi presisi float selalu penuh.
+
+Urutan di gelung render (penting, tidak boleh ditukar):
+
+```
+1. computePositions()   → hitung posisi ABSOLUT semua benda
+2. updateCamera()       → tetapkan rebaseOffset untuk frame ini
+3. applyPositions()     → geser benda memakai offset yang SAMA
+4. render
+```
+
+Kalau urutannya salah, benda dan kamera memakai offset berbeda frame dan
+planet akan tampak melompat.
+
+### Pencahayaan
+
+`PointLight` Matahari memakai `decay = 0` dengan intensity **1,25**. Nilai ini
+berperan sebagai pengali langsung albedo. Sempat dipakai 3,2 — akibatnya
+seluruh permukaan planet terbakar menjadi putih dan Bintik Merah Besar hilang.
+Emissive dipertahankan sangat kecil (0,035–0,10) hanya agar detail sisi gelap
+tidak hilang total.
+
+### `logarithmicDepthBuffer`
+
+Wajib aktif: rentang pandang membentang dari 50 km di atas permukaan Bumi
+hingga Neptunus (700.000 unit). Semua shader kustom menyertakan chunk
+`logdepthbuf_pars_vertex/fragment`, kalau tidak kedalamannya salah dan benda
+tidak muncul.
+
+---
 
 ## Deploy
 
-Proyek ini **situs statis murni** — tidak ada build step, tidak ada dependensi
-runtime, tidak ada server. `index.html` sudah berisi segalanya.
+Situs statis murni — tidak ada build step saat deploy, `index.html` sudah jadi.
 
-### Vercel (disarankan, 1 menit)
-
-Lewat dashboard:
+### Vercel
 
 1. <https://vercel.com/new> → **Import Git Repository** → pilih `solar_system`
 2. Framework Preset: **Other**
 3. Build Command: **kosongkan** · Output Directory: **kosongkan**
 4. **Deploy**
 
-Lewat CLI:
+Atau lewat CLI:
 
 ```bash
 npm i -g vercel
@@ -113,8 +267,15 @@ akan otomatis deploy ulang.
 
 - `vercel.json` hanya mengatur `cleanUrls` dan header cache. Boleh dihapus —
   tanpa itu pun deploy tetap berhasil.
-- Berkasnya 694 KB. Gzip ± 180 KB karena three.js memampatkan sangat baik.
+- `index.html` 717 KB, ditambah tekstur 12 MB (hi) atau 3 MB (lo).
 - WebGL wajib aktif. Di peramban tanpa WebGL, aplikasi menampilkan pesan galat
   yang jelas alih-alih layar kosong.
-- Berjalan penuh di HTTPS — tidak ada permintaan jaringan sama sekali setelah
-  halaman dimuat (tidak ada CDN, tidak ada API, tidak ada font eksternal).
+- Tidak ada permintaan ke pihak ketiga — semua aset dari domain sendiri.
+
+---
+
+## Lisensi aset
+
+- **three.js** — MIT (header lisensi dipertahankan di `index.html`)
+- **Tekstur Solar System Scope** — CC BY 4.0 (atribusi: solarsystemscope.com)
+- **Peta NASA / USGS / Hubble** — domain publik

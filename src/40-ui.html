@@ -7,13 +7,14 @@
     <!-- Judul -->
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
-      <div class="title-sub">Jarak & ukuran skala nyata · planet diperbesar 4× agar terlihat</div>
+      <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
     </div>
 
     <!-- Tombol kanan atas -->
     <div class="panel top-buttons" id="topButtons">
       <button class="btn primary" id="btnTour" title="Tur otomatis mengelilingi tata surya">▶ Tur Terpandu</button>
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)">🏷 Label</button>
+      <button class="btn" id="btnQuality" title="Ubah kualitas tekstur">◈ Kualitas</button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)">? Bantuan</button>
     </div>
 
@@ -48,13 +49,13 @@
 
     <!-- Bilah waktu -->
     <div class="panel timebar" id="timeBar">
-      <button class="btn small icon" id="btnPause" title="Jeda / lanjut (Spasi)">⏸</button>
+      <button class="btn small icon" id="btnPause" title="Jeda / lanjut (P)">⏸</button>
       <div class="time-mid">
         <div class="time-row">
           <span class="time-label">Waktu simulasi</span>
           <span class="time-speed" id="speedLabel">1 dtk = 1 hari</span>
         </div>
-        <input type="range" id="speedSlider" min="0" max="10" step="1" value="1">
+        <input type="range" id="speedSlider" min="0" max="11" step="1" value="5">
         <div class="time-date" id="dateLabel">—</div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
@@ -71,14 +72,19 @@
         <tr><td><kbd>Q</kbd> <kbd>E</kbd></td><td>Turun / naik</td></tr>
         <tr><td><kbd>Shift</kbd></td><td>Turbo (6× lebih cepat)</td></tr>
         <tr><td>Seret mouse</td><td>Putar pandangan</td></tr>
-        <tr><td>Roda mouse</td><td>Zoom / atur kecepatan</td></tr>
+        <tr><td>Roda mouse</td><td><b>Zoom sampai permukaan planet</b></td></tr>
         <tr><td>Klik benda</td><td>Fokus &amp; ikuti benda itu</td></tr>
         <tr><td><kbd>Spasi</kbd></td><td>Lepas fokus (terbang bebas)</td></tr>
         <tr><td><kbd>1</kbd>…<kbd>8</kbd></td><td>Lompat ke planet ke-1 s/d ke-8</td></tr>
         <tr><td><kbd>0</kbd></td><td>Lompat ke Matahari</td></tr>
-        <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd></td><td>Label / garis orbit / bantuan</td></tr>
+        <tr><td><kbd>L</kbd> <kbd>O</kbd> <kbd>H</kbd> <kbd>P</kbd></td><td>Label / orbit / bantuan / jeda</td></tr>
       </table>
-      <div class="help-note">Petunjuk: klik “Tur Terpandu” untuk keliling otomatis, lalu tekan Spasi kapan saja untuk mengambil alih kemudi.</div>
+      <div class="help-note">
+        Semua jarak & ukuran memakai <b>skala 1 : 1</b> — jarak antar planet nyata,
+        radius nyata. Karena itu planet tampak kecil dari jauh: itu memang
+        keadaan sebenarnya. Zoom masuk untuk melihat permukaan, dan pakai slider
+        waktu di bawah untuk mengamati rotasi serta revolusi.
+      </div>
     </div>
 
     <!-- Label benda (diposisikan oleh JS) -->
@@ -95,7 +101,7 @@
       <div class="loader-sub" id="loaderTask">Menyiapkan mesin grafis…</div>
       <div class="loader-bar"><div class="loader-fill" id="loaderFill"></div></div>
       <div class="loader-pct" id="loaderPct">0%</div>
-      <div class="loader-hint">Semua tekstur planet dibuat secara prosedural — berkas ini berjalan 100% offline.</div>
+      <div class="loader-hint" id="loaderHint">Memuat tekstur planet asli (NASA / USGS / Solar System Scope)…</div>
     </div>
   </div>
 

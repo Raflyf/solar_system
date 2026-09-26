@@ -23,6 +23,7 @@ const _up = new THREE.Vector3(0, 1, 0);
 const _tmp = new THREE.Vector3();
 const _tmp2 = new THREE.Vector3();
 const _tmp3 = new THREE.Vector3();
+const _look = new THREE.Vector3();
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
 function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -67,9 +68,13 @@ function initControls(canvas) {
     if (cameraState.target) {
       const body = cameraState.target;
       const rU = body.radiusKm;
-      cameraState.followDist = clampf(cameraState.followDist * k, rU * 1.30 + 0.2, rU * 900);
+      /* bisa zoom sampai nyaris menyentuh permukaan (mode Google Earth),
+         dan menjauh sampai seluruh orbit terlihat */
+      const minD = rU * 1.008;
+      const maxD = Math.max(rU * 4000, body.orbitRadiusUnits * 1.5);
+      cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
     } else {
-      cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 2.0, 3000000);
+      cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 0.05, 3000000);
     }
   }, { passive: false });
 
@@ -184,14 +189,25 @@ function focusBody(body) {
   }
   cs.target = body;
   const rU = body.radiusKm;
-  cs.followDist = Math.max(rU * 4.2, rU + 0.6);
+  /* mulai dari jarak yang enak dilihat, lalu pengguna bisa zoom masuk
+     sampai permukaan atau keluar sampai orbit penuh */
+  cs.followDist = Math.max(rU * 3.2, rU * 1.35);
   cs.followYaw = 0.7;
-  cs.followPitch = 0.30;
-  /* hitung posisi tujuan sekarang (benda "dibekukan" selama transisi) */
+  cs.followPitch = 0.28;
   const bp = bodyWorldPos(body, new THREE.Vector3());
   const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
   startTransition(_tmp3.copy(bp).add(off), cs.followYaw, cs.followPitch, 1.6);
   showInfo(body);
+}
+/* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
+   penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
+function autoSpeedFor(pos) {
+  const r = pos.length();
+  if (r < 200) return 0.6;          /* dekat permukaan planet */
+  if (r < 2000) return 6;
+  if (r < 20000) return 120;
+  if (r < 200000) return 1500;
+  return 12000;                     /* antarplanet */
 }
 
 function dirFromAngles(yaw, pitch) {
@@ -203,29 +219,44 @@ function dirFromAngles(yaw, pitch) {
 }
 
 /* ---------- update kamera ---------- */
+/* Kamera SELALU berada di titik asal (floating origin). Yang bergerak
+   adalah rebaseOffset, yaitu seberapa jauh tata surya digeser. Semua
+   posisi kamera yang dipakai untuk perhitungan disimpan di cameraState.pos
+   dalam koordinat ABSOLUT, lalu dikonversi ke relatif saat dipakai. */
 function updateCamera(dt) {
   const cs = cameraState;
 
   if (cs.target) {
     const body = cs.target;
-    const bp = bodyWorldPos(body, _tmp2);
+    /* posisi absolut benda (bukan world, karena world sudah tergeser) */
+    const bp = _tmp2.copy(body.type === 'star' ? ZERO3 : (body.absPos || ZERO3));
     const off = dirFromAngles(cs.followYaw, cs.followPitch).multiplyScalar(cs.followDist);
-    const desired = _tmp3.copy(bp).add(off);
+    const desiredAbs = _tmp3.copy(bp).add(off);
 
     if (cs.transition) {
       cs.transition.t += dt;
       const k = clampf(cs.transition.t / cs.transition.dur, 0, 1);
       const s = k * k * (3 - 2 * k);
-      cs.pos.lerpVectors(cs.transition.fromPos, desired, s);
+      cs.pos.lerpVectors(cs.transition.fromPos, desiredAbs, s);
       if (k >= 1) cs.transition = null;
     } else {
-      cs.pos.lerp(desired, Math.min(1, dt * 5.5));
+      /* kamera menempel persis: benda bergerak cepat (Bumi ~400 unit/detik),
+         kalau hanya di-lerp kamera akan selalu tertinggal */
+      cs.pos.copy(desiredAbs);
     }
-    camera.position.copy(cs.pos);
+
+    /* floating origin: kamera selalu di (0,0,0), dunia yang bergeser */
+    rebaseOffset.copy(cs.pos);
+    camera.position.set(0, 0, 0);
+
+    /* Benda berada di posisi relatif `-off` dari kamera. Arahkan pandangan
+       TEPAT ke titik itu supaya benda selalu di tengah layar. */
+    _look.copy(off).negate();
     camera.up.set(0, 1, 0);
-    camera.lookAt(bp);
-    cs.yaw = Math.atan2(cs.pos.x - bp.x, cs.pos.z - bp.z);
-    cs.pitch = Math.asin(clampf((cs.pos.y - bp.y) / Math.max(cs.pos.distanceTo(bp), 1e-6), -1, 1));
+    camera.lookAt(_look);
+
+    cs.yaw = Math.atan2(off.x, off.z);
+    cs.pitch = -Math.asin(clampf(off.y / Math.max(off.length(), 1e-6), -1, 1));
     return;
   }
 
@@ -240,41 +271,48 @@ function updateCamera(dt) {
       cs.pitch = cs.transition.toPitch;
       cs.transition = null;
     }
-    camera.position.copy(cs.pos);
-    camera.up.set(0, 1, 0);
-    camera.lookAt(_tmp2.copy(cs.pos).add(dirFromAngles(cs.yaw, cs.pitch)));
-    return;
+  } else {
+    const fwd = dirFromAngles(cs.yaw, cs.pitch);
+    _right.crossVectors(fwd, _up).normalize();
+    const upLocal = _tmp.crossVectors(_right, fwd).normalize().clone();
+
+    /* kecepatan menyesuaikan jarak: lambat saat menjelajah permukaan,
+       cepat saat menyeberangi tata surya */
+    const auto = autoSpeedFor(cs.pos);
+    if (cs.baseSpeed < auto * 0.5 || cs.baseSpeed > auto * 2) {
+      cs.baseSpeed += (auto - cs.baseSpeed) * Math.min(1, dt * 0.7);
+    }
+    const speed = cs.baseSpeed * (cs.boosting ? 6 : 1);
+    let ax = 0, ay = 0, az = 0;
+    if (keys['KeyW'] || keys['ArrowUp']) az += 1;
+    if (keys['KeyS'] || keys['ArrowDown']) az -= 1;
+    if (keys['KeyD'] || keys['ArrowRight']) ax += 1;
+    if (keys['KeyA'] || keys['ArrowLeft']) ax -= 1;
+    if (keys['KeyE']) ay += 1;
+    if (keys['KeyQ']) ay -= 1;
+
+    const accel = new THREE.Vector3();
+    accel.addScaledVector(fwd, az);
+    accel.addScaledVector(_right, ax);
+    accel.addScaledVector(upLocal, ay);
+    if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 5.0);
+
+    cs.vel.addScaledVector(accel, dt);
+    cs.vel.multiplyScalar(Math.exp(-dt * 3.0));
+    const vmax = speed * 10;
+    if (cs.vel.length() > vmax) cs.vel.setLength(vmax);
+    cs.pos.addScaledVector(cs.vel, dt);
   }
 
-  const fwd = dirFromAngles(cs.yaw, cs.pitch);
-  _right.crossVectors(fwd, _up).normalize();
-  const upLocal = _tmp.crossVectors(_right, fwd).normalize().clone();
-
-  const speed = cs.baseSpeed * (cs.boosting ? 6 : 1);
-  let ax = 0, ay = 0, az = 0;
-  if (keys['KeyW'] || keys['ArrowUp']) az += 1;
-  if (keys['KeyS'] || keys['ArrowDown']) az -= 1;
-  if (keys['KeyD'] || keys['ArrowRight']) ax += 1;
-  if (keys['KeyA'] || keys['ArrowLeft']) ax -= 1;
-  if (keys['KeyE']) ay += 1;
-  if (keys['KeyQ']) ay -= 1;
-
-  const accel = new THREE.Vector3();
-  accel.addScaledVector(fwd, az);
-  accel.addScaledVector(_right, ax);
-  accel.addScaledVector(upLocal, ay);
-  if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 5.0);
-
-  cs.vel.addScaledVector(accel, dt);
-  cs.vel.multiplyScalar(Math.exp(-dt * 3.0));
-  const vmax = speed * 10;
-  if (cs.vel.length() > vmax) cs.vel.setLength(vmax);
-  cs.pos.addScaledVector(cs.vel, dt);
-
-  camera.position.copy(cs.pos);
-  camera.up.copy(upLocal);
-  camera.lookAt(_tmp2.copy(cs.pos).add(fwd));
+  /* floating origin */
+  rebaseOffset.copy(cs.pos);
+  camera.position.set(0, 0, 0);
+  const fwd2 = dirFromAngles(cs.yaw, cs.pitch);
+  camera.up.set(0, 1, 0);
+  camera.lookAt(fwd2);
 }
+
+const ZERO3 = new THREE.Vector3(0, 0, 0);
 
 /* ---------- tur terpandu ---------- */
 const tourState = { active: false, index: -1, timer: 0, dwell: 10.0 };
@@ -319,6 +357,18 @@ function nextTourStop() {
       startTransition(bp.add(off), cameraState.followYaw, cameraState.followPitch, 1.6);
     }
   }
+}
+
+/* saat kamera sangat dekat permukaan, waktu diperlambat otomatis agar
+   permukaan tidak berputar terlalu cepat untuk diamati */
+function effectiveTimeScale() {
+  const cs = cameraState;
+  if (!cs.target) return 1;
+  const b = cs.target;
+  const alt = cs.followDist - b.radiusKm;
+  if (alt < b.radiusKm * 0.35) return 0.004;
+  if (alt < b.radiusKm * 1.5) return 0.05;
+  return 1;
 }
 
 function updateTour(dt) {

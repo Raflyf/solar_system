@@ -1,16 +1,15 @@
 /* =======================================================================
-   Pembangunan scene 3D — Tata Surya skala nyata
-   Struktur hierarki (penting!):
+   Pembangunan scene 3D — memakai tekstur NYATA (NASA / USGS / SSS)
+   ----------------------------------------------------------------------
+   Hierarki:
      scene
-      ├─ body.group      → posisi orbit planet (tanpa kemiringan)
+      ├─ body.group      → posisi orbit planet
       │   ├─ body.spin   → kemiringan poros + rotasi harian
-      │   │    ├─ mesh planet, awan, atmosfer, cincin
-      │   │    └─ moonOrbit[i] → posisi orbit bulan
-      │   │          └─ moonSpin → rotasi bulan
-      ├─ orbitLine (elips nyata, di scene agar tidak ikut berputar)
-      └─ belt, sky, sun
-   Bulan mengorbit di bidang ekuator induk (di dalam grup spin), sehingga
-   kemiringan poros induk otomatis berlaku untuk bidang orbit bulan.
+      │   │    ├─ mesh planet (material nyata)
+      │   │    ├─ atmosfer (cangkang fresnel, ikut arah Matahari)
+      │   │    └─ moonPlane[i] → orbit bulan → spin → mesh bulan
+      ├─ orbitLine (elips nyata, fokus di Matahari)
+      └─ sabuk asteroid, bintang, langit Bima Sakti
    ======================================================================= */
 
 let renderer, scene, camera;
@@ -19,16 +18,24 @@ const pickables = [];
 let sunMesh, sunGlow, sunRim, skyMesh, beltPoints, sunLight, starField;
 const glowTextures = {};
 
+/* pemetaan nama bulan -> kunci tekstur di TEX */
+const MOON_TEX_KEY = {
+  'Bulan': 'moon', 'Phobos': 'phobos', 'Deimos': 'deimos',
+  'Io': 'io', 'Europa': 'europa', 'Ganymede': 'ganymede', 'Callisto': 'callisto',
+  'Titan': 'titan', 'Rhea': 'rhea', 'Iapetus': 'iapetus',
+  'Titania': 'titania', 'Triton': 'triton',
+};
+
 function initRenderer(canvas) {
   renderer = new THREE.WebGLRenderer({
     canvas: canvas, antialias: true, powerPreference: 'high-performance',
-    logarithmicDepthBuffer: true,          /* penting: rentang dekat–jauh sangat besar */
+    logarithmicDepthBuffer: true,
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.outputEncoding = THREE.sRGBEncoding;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.25;
+  renderer.toneMappingExposure = 1.0;
 }
 
 function onResize() {
@@ -63,8 +70,7 @@ function buildSphere(radiusUnits, flat, wSeg, hSeg) {
 }
 
 /* ---------- atmosfer: cangkang fresnel ---------- */
-/* Catatan: chunk logdepthbuf wajib ada karena renderer memakai
-   logarithmicDepthBuffer — tanpa itu kedalaman shader kustom salah. */
+/* Chunk logdepthbuf wajib karena renderer memakai logarithmicDepthBuffer. */
 const ATMOS_VERT = [
   '#include <common>',
   '#include <logdepthbuf_pars_vertex>',
@@ -86,13 +92,17 @@ const ATMOS_FRAG = [
   'uniform float uOpacity;',
   'uniform float uFresnel;',
   'uniform float uPower;',
+  'uniform vec3 uSunDirLocal;',
   'varying vec3 vNormal;',
   'varying vec3 vPos;',
   'void main() {',
   '  #include <logdepthbuf_fragment>',
   '  vec3 viewDir = normalize(-vPos);',
-  '  float rim = pow(1.0 - abs(dot(normalize(vNormal), viewDir)), uFresnel);',
-  '  float a = clamp(rim * uOpacity, 0.0, 1.0);',
+  '  vec3 N = normalize(vNormal);',
+  '  float rim = pow(1.0 - abs(dot(N, viewDir)), uFresnel);',
+  '  /* atmosfer hanya bersinar di sisi yang kena Matahari */',
+  '  float sunSide = 0.12 + 0.88 * max(dot(N, normalize(uSunDirLocal)), 0.0);',
+  '  float a = clamp(rim * uOpacity * sunSide, 0.0, 1.0);',
   '  gl_FragColor = vec4(uColor, pow(a, uPower));',
   '}',
 ].join('\n');
@@ -104,6 +114,7 @@ function makeAtmosphere(radiusUnits, cfg) {
       uOpacity: { value: cfg.opacity },
       uFresnel: { value: cfg.fresnel },
       uPower: { value: cfg.power || 1.3 },
+      uSunDirLocal: { value: new THREE.Vector3(1, 0, 0) },
     },
     vertexShader: ATMOS_VERT,
     fragmentShader: ATMOS_FRAG,
@@ -115,7 +126,7 @@ function makeAtmosphere(radiusUnits, cfg) {
   return new THREE.Mesh(new THREE.SphereGeometry(radiusUnits, 48, 32), mat);
 }
 
-/* ---------- matahari ---------- */
+/* ---------- kilau tepi Matahari ---------- */
 const SUN_FRAG = [
   '#include <common>',
   '#include <logdepthbuf_pars_fragment>',
@@ -132,10 +143,19 @@ const SUN_FRAG = [
   '}',
 ].join('\n');
 
+/* ---------- Matahari ---------- */
 function buildSun() {
   const r = (SUN.radiusKm / RAD) * SIZE_FACTOR;
-  const tex = canvasTexture(buildSurfaceTexture(SUN.texture), true);
-  sunMesh = new THREE.Mesh(new THREE.SphereGeometry(r, 96, 64), new THREE.MeshBasicMaterial({ map: tex }));
+  const t = TEX.sun || {};
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uMap: { value: t.map || null },
+      uTime: { value: 0 },
+    },
+    vertexShader: SUNSURF_VERT,
+    fragmentShader: SUNSURF_FRAG,
+  });
+  sunMesh = new THREE.Mesh(new THREE.SphereGeometry(r, 96, 64), mat);
   scene.add(sunMesh);
 
   if (!glowTextures.sun) glowTextures.sun = makeGlowCanvas(512, [255, 246, 220], [255, 140, 30], 2.4);
@@ -151,16 +171,12 @@ function buildSun() {
     blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
   }));
   sp2.scale.set(r * 12, r * 12, 1);
-  sunGlow.add(sp1); sunGlow.add(sp2);
-
-  /* halo tambahan berskala besar: menjaga Matahari tetap terlihat terang
-     bahkan dari jarak antarplanet */
   const sp3 = new THREE.Sprite(new THREE.SpriteMaterial({
     map: canvasTexture(glowTextures.halo, true), transparent: true, opacity: 0.5,
     blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
   }));
   sp3.scale.set(r * 46, r * 46, 1);
-  sunGlow.add(sp3);
+  sunGlow.add(sp1); sunGlow.add(sp2); sunGlow.add(sp3);
   scene.add(sunGlow);
 
   sunRim = new THREE.Mesh(new THREE.SphereGeometry(r * 1.012, 64, 48), new THREE.ShaderMaterial({
@@ -170,15 +186,15 @@ function buildSun() {
   }));
   scene.add(sunRim);
 
-  sunLight = new THREE.PointLight(0xfff4e2, 3.0, 0, 0);
-  sunLight.decay = 0;                       /* tanpa peredupan jarak: terang merata */
+  sunLight = new THREE.PointLight(0xfff4e2, 1.25, 0, 0);
+  /* intensity ~1.25 penting: dengan decay=0 nilai ini berperan sebagai
+     pengali langsung albedo. Nilai 3.2 membuat seluruh permukaan planet
+     terbakar menjadi putih (Bintik Merah Besar hilang). */
+  sunLight.decay = 0;
   sunLight.distance = 0;
   scene.add(sunLight);
-
-  /* cahaya lemah pengisi (ambient) agar sisi malam tidak sepenuhnya hitam —
-     tetap sangat gelap sehingga bayangan tetap dramatis */
-  const ambient = new THREE.AmbientLight(0x2a3550, 0.35);
-  scene.add(ambient);
+  /* cahaya pengisi sangat lemah agar sisi malam tidak hitam total */
+  scene.add(new THREE.AmbientLight(0x1a2338, 0.35));
 
   const body = {
     id: 'sun', key: 'sun', name: 'Matahari', type: 'star',
@@ -193,34 +209,45 @@ function buildSun() {
 /* ---------- planet & bulan ---------- */
 function buildBody(cfg, parentMoonPlane, hostBody) {
   const isMoon = !!hostBody;
-  const radiusUnits = Math.max((cfg.radiusKm / RAD) * SIZE_FACTOR, isMoon ? MIN_MOON_RADIUS_UNITS : 0.05);
+  const radiusUnits = Math.max((cfg.radiusKm / RAD) * SIZE_FACTOR, MIN_RENDER_RADIUS_UNITS);
 
-  const group = new THREE.Group();      /* posisi orbit (relatif induk) */
-  const spin = new THREE.Group();       /* kemiringan poros + rotasi harian */
+  const group = new THREE.Group();
+  const spin = new THREE.Group();
   group.add(spin);
   (parentMoonPlane || scene).add(group);
 
-  /* bidang orbit bulan: miring mengikuti poros induk, TIDAK ikut rotasi harian */
+  /* bidang orbit bulan: miring mengikuti poros induk, tidak ikut rotasi harian */
   const moonPlane = new THREE.Group();
   if (cfg.axialTilt) moonPlane.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
   group.add(moonPlane);
 
-  const tex = canvasTexture(buildSurfaceTexture(cfg.texture), true);
-  const mat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, metalness: 0.0 });
-  const mesh = new THREE.Mesh(buildSphere(radiusUnits, cfg.flat || 0, isMoon ? 40 : 72, isMoon ? 28 : 48), mat);
+  /* ----- material: tekstur nyata ----- */
+  const isEarth = (cfg.key === 'earth');
+  let mat;
+  if (isEarth) {
+    mat = makeEarthMaterial();
+  } else if (isMoon) {
+    mat = makePlanetMaterial(MOON_TEX_KEY[cfg.name], {
+      roughness: 0.96, normalStrength: 1.15,
+      /* bulan berbatu: emissive sangat kecil — hanya supaya kawah di sisi
+         gelap tidak hilang total, tanpa menghapus bayangan terminator */
+      emissive: 0.035,
+    });
+  } else {
+    const gasGiants = { jupiter: 1, saturn: 1, uranus: 1, neptune: 1 };
+    mat = makePlanetMaterial(cfg.key, {
+      roughness: gasGiants[cfg.key] ? 0.80 : 0.94,
+      normalStrength: 1.0,
+      /* gas raksasa: awan tebal memantulkan cahaya kuat, jadi sedikit lebih
+         terang; planet batuan tetap gelap di sisi malam */
+      emissive: gasGiants[cfg.key] ? 0.10 : 0.035,
+    });
+  }
+
+  const mesh = new THREE.Mesh(
+    buildSphere(radiusUnits, cfg.flat || 0, isMoon ? 48 : 80, isMoon ? 32 : 56), mat);
   spin.add(mesh);
   pickables.push(mesh);
-
-  let cloudMesh = null;
-  if (cfg.cloudTexture) {
-    const cTex = canvasTexture(buildSurfaceTexture(cfg.cloudTexture), true);
-    cloudMesh = new THREE.Mesh(buildSphere(radiusUnits * 1.014, 0, 56, 40),
-      new THREE.MeshStandardMaterial({
-        map: cTex, transparent: true, roughness: 1, metalness: 0,
-        depthWrite: false, alphaTest: 0.015,
-      }));
-    spin.add(cloudMesh);
-  }
 
   let atmoMesh = null;
   if (cfg.atmosphere) {
@@ -230,16 +257,12 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
 
   if (cfg.axialTilt) spin.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
 
-  /* ----- cincin ----- */
+  /* ----- cincin Saturnus (shader: ketebalan + bayangan planet) ----- */
   let ringMesh = null;
-  if (cfg.ring) {
-    const rc = makeRingTexture(cfg.ring.texture.w, cfg.ring.texture.h, cfg.ring.texture.seed, cfg.ring.texture);
-    const rTex = canvasTexture(rc, true);
+  if (cfg.ring && TEX.saturn && TEX.saturn.ring) {
     const innerU = (cfg.ring.inner / RAD) * SIZE_FACTOR;
     const outerU = (cfg.ring.outer / RAD) * SIZE_FACTOR;
-    /* phiSegments = jumlah pembagian RADIAL. Harus banyak (64) agar profil
-       tekstur cincin tergambar mulus, bukan menjadi beberapa garis saja. */
-    const rGeo = new THREE.RingGeometry(innerU, outerU, 256, 64);
+    const rGeo = new THREE.RingGeometry(innerU, outerU, 512, 1);
     const pos = rGeo.attributes.position;
     const uv = rGeo.attributes.uv;
     const v3 = new THREE.Vector3();
@@ -248,10 +271,9 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
       const t = (v3.length() - innerU) / (outerU - innerU);
       uv.setXY(i, t, 0.5);
     }
-    const rMat = new THREE.MeshStandardMaterial({
-      map: rTex, transparent: true, side: THREE.DoubleSide,
-      roughness: 0.9, metalness: 0.0, depthWrite: false, alphaTest: 0.01,
-    });
+    const rMat = makeRingMaterial();
+    rMat.uniforms.uRingInner.value = innerU;
+    rMat.uniforms.uRingOuter.value = outerU;
     ringMesh = new THREE.Mesh(rGeo, rMat);
     ringMesh.rotation.x = Math.PI / 2;
     spin.add(ringMesh);
@@ -262,8 +284,9 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     key: cfg.key || (isMoon ? (hostBody.key + ':' + cfg.name) : cfg.name),
     name: cfg.name,
     type: isMoon ? 'moon' : 'planet',
-    group: group, spin: spin, moonPlane: moonPlane, mesh: mesh, cloudMesh: cloudMesh,
+    group: group, spin: spin, moonPlane: moonPlane, mesh: mesh,
     atmoMesh: atmoMesh, ringMesh: ringMesh,
+    isEarth: isEarth,
     radiusKm: radiusUnits, realRadiusKm: cfg.radiusKm,
     host: hostBody || null, isMoon: isMoon,
     aKm: cfg.aKm, e: cfg.e || 0,
@@ -273,13 +296,11 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     tidallyLocked: !!cfg.tidallyLocked,
     orbitRadiusUnits: cfg.aKm / RAD,
     info: cfg.info || null,
-    theta0: 0, moonTheta0: 0,
-    orbitLine: null,
+    theta0: 0, orbitLine: null,
   };
   group.userData.body = body;
   spin.userData.body = body;
   mesh.userData.bodyId = body.id;
-  if (cloudMesh) cloudMesh.userData.bodyId = body.id;
   if (ringMesh) ringMesh.userData.bodyId = body.id;
 
   /* garis orbit planet: elips nyata (fokus = Matahari) */
@@ -294,7 +315,7 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     }
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
-      new THREE.LineBasicMaterial({ color: 0xa8c4e8, transparent: true, opacity: 0.42, depthWrite: false })
+      new THREE.LineBasicMaterial({ color: 0xa8c4e8, transparent: true, opacity: 0.30, depthWrite: false })
     );
     line.rotation.x = body.incl;
     scene.add(line);
@@ -336,16 +357,15 @@ function buildBelt() {
   scene.add(beltPoints);
 }
 
-/* ---------- medan bintang (titik tajam, selalu di belakang) ---------- */
+/* ---------- medan bintang (titik tajam di ruang layar) ---------- */
 function buildStars() {
-  const N = 6000;
+  const N = 8000;
   const positions = new Float32Array(N * 3);
   const colors = new Float32Array(N * 3);
   const sizes = new Float32Array(N);
   const rnd = mulberry32(31415);
   const tmp = new THREE.Color();
   for (let i = 0; i < N; i++) {
-    /* sebaran merata di bola */
     const u = rnd() * 2 - 1;
     const th = rnd() * Math.PI * 2;
     const s = Math.sqrt(1 - u * u);
@@ -354,24 +374,24 @@ function buildStars() {
     positions[i * 3 + 1] = u * R;
     positions[i * 3 + 2] = s * Math.sin(th) * R;
     const mag = Math.pow(rnd(), 2.6);
-    sizes[i] = 1.1 + mag * 3.4;
+    sizes[i] = 1.0 + mag * 3.2;
     const warm = rnd();
     if (warm < 0.12) tmp.setRGB(1.0, 0.88, 0.74);
     else if (warm < 0.28) tmp.setRGB(0.78, 0.84, 1.0);
     else if (warm < 0.4) tmp.setRGB(1.0, 0.96, 0.9);
     else tmp.setRGB(0.92, 0.95, 1.0);
-    const b = 0.55 + mag * 0.45;
+    const b = 0.5 + mag * 0.5;
     colors[i * 3] = tmp.r * b; colors[i * 3 + 1] = tmp.g * b; colors[i * 3 + 2] = tmp.b * b;
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   geo.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-  /* titik bintang digambar di ruang layar: selalu tajam, tidak pernah buram,
-     dan selalu berada di belakang seluruh isi tata surya */
   const mat = new THREE.ShaderMaterial({
-    uniforms: { uMap: { value: canvasTexture(makeStarDotCanvas(32), true) }, uDpr: { value: renderer.getPixelRatio() } },
+    uniforms: {
+      uMap: { value: canvasTexture(makeStarDotCanvas(32), true) },
+      uDpr: { value: renderer.getPixelRatio() },
+    },
     vertexShader: [
       'attribute float aSize;',
       'varying vec3 vColor;',
@@ -391,24 +411,17 @@ function buildStars() {
       '  gl_FragColor = vec4(vColor, t.a);',
       '}',
     ].join('\n'),
-    transparent: true,
-    depthTest: false,
-    depthWrite: false,
-    vertexColors: true,
-    blending: THREE.AdditiveBlending,
+    transparent: true, depthTest: false, depthWrite: false,
+    vertexColors: true, blending: THREE.AdditiveBlending,
   });
   const pts = new THREE.Points(geo, mat);
   pts.frustumCulled = false;
   pts.renderOrder = -100;
-  pts.position.set(0, 0, 0);
   scene.add(pts);
   starField = pts;
 }
 
-/* ---------- penanda navigasi (bintang penunjuk) ---------- */
-/* Pada skala nyata planet hanya beberapa piksel dari jauh, jadi setiap planet
-   mendapat penanda: inti tajam berwarna (normal blending) + halo lembut
-   (additive). Ini yang membuat planet bisa ditemukan saat terbang. */
+/* ---------- penanda navigasi ---------- */
 function buildBeacons() {
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
   if (!glowTextures.core) glowTextures.core = makeDiscCanvas(64);
@@ -421,24 +434,18 @@ function buildBeacons() {
     if (b.isMoon || b.type === 'star') continue;
     const col = bodyColorHex(b);
     const group = new THREE.Group();
-
-    /* inti: titik kecil tajam, warna planet, tidak tembus cahaya.
-       toneMapped:false agar warna tetap pekat (tidak pudar karena ACES) */
     const core = new THREE.Sprite(new THREE.SpriteMaterial({
       map: coreTex, color: col, transparent: true,
-      blending: THREE.NormalBlending, depthWrite: false, depthTest: false, opacity: 1.0,
-      toneMapped: false,
+      blending: THREE.NormalBlending, depthWrite: false, depthTest: false,
+      opacity: 1.0, toneMapped: false,
     }));
     group.add(core);
-
-    /* halo: cincin cahaya lembut di sekeliling inti */
     const halo = new THREE.Sprite(new THREE.SpriteMaterial({
       map: dotTex, color: col, transparent: true,
-      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false, opacity: 0.22,
-      toneMapped: false,
+      blending: THREE.AdditiveBlending, depthWrite: false, depthTest: false,
+      opacity: 0.22, toneMapped: false,
     }));
     group.add(halo);
-
     group.renderOrder = 100;
     scene.add(group);
     b.beacon = { group: group, core: core, halo: halo };
@@ -452,20 +459,14 @@ function updateBeacons() {
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     if (!b.beacon) continue;
-    bodyWorldPos(b, _bp);
+    bodyScreenPos(b, _bp);   /* relatif kamera: dunia sudah tergeser */
     const dist = Math.max(camera.position.distanceTo(_bp), 1e-6);
-    const px = (b.radiusKm / dist) * (H * 0.5) / tanHalf;   /* radius planet di layar (piksel) */
-
-    /* penanda tampil selama planet masih kecil di layar */
+    const px = (b.radiusKm / dist) * (H * 0.5) / tanHalf;
     let show = px < 5.5;
     if (cameraState.target === b) show = false;
     if (cameraState.target && cameraState.target !== b && dist < b.radiusKm * 25) show = false;
-
     b.beacon.group.visible = show;
-    b.beacon.showLabel = show;
     if (!show) continue;
-
-    /* berapa satuan dunia untuk 1 piksel pada jarak ini */
     const unit = (2 * dist * tanHalf) / H;
     const corePx = 5.4 + Math.min(3.0, Math.max(0, 1 - px / 5.5) * 3.0);
     const haloPx = corePx * 3.2;
@@ -477,7 +478,6 @@ function updateBeacons() {
 }
 
 function bodyColorHex(b) {
-  /* warna pekat untuk penanda navigasi */
   const c = {
     sun: 0xffb44d, mercury: 0xb8a894, venus: 0xf5d98a, earth: 0x2f7fe8, mars: 0xe8622a,
     jupiter: 0xe8b06a, saturn: 0xf2e0a8, uranus: 0x6fe0e8, neptune: 0x3f6fe8,
@@ -485,77 +485,192 @@ function bodyColorHex(b) {
   return c[b.key] !== undefined ? c[b.key] : 0xbbbbbb;
 }
 
-/* ---------- langit berbintang ---------- */
+/* ---------- langit: Bima Sakti nyata ---------- */
 function buildSky() {
-  const canvas = makeSkyCanvas(2048, 1024, 909);
-  const tex = canvasTexture(canvas, true);
-  tex.wrapT = THREE.ClampToEdgeWrapping;
-  /* sphere langit diberi segmen lebih halus agar tekstur tidak bergaris */
-  const geo = new THREE.SphereGeometry(600000, 64, 48);
-  const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.BackSide, depthWrite: false, fog: false });
-  skyMesh = new THREE.Mesh(geo, mat);
+  let mat;
+  const t = TEX.milkyway || {};
+  if (t.map) {
+    t.map.mapping = THREE.EquirectangularReflectionMapping;
+    mat = new THREE.MeshBasicMaterial({ map: t.map, side: THREE.BackSide, depthWrite: false, fog: false });
+  } else {
+    const canvas = makeSkyCanvas(2048, 1024, 909);
+    mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
+  }
+  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 64, 48), mat);
   skyMesh.frustumCulled = false;
+  skyMesh.renderOrder = -200;
   scene.add(skyMesh);
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
 }
 
-/* ---------- animasi: posisi orbit & rotasi ---------- */
-const _v1 = new THREE.Vector3();
+/* =======================================================================
+   FLOATING ORIGIN (titik asal mengambang)
+   ----------------------------------------------------------------------
+   Masalah nyata pada skala 1:1: saat kamera menempel di permukaan Bumi,
+   koordinat dunia mencapai 23.000 unit sementara jarak kamera 0,02 unit.
+   Rasio ~1.000.000 : 1 melampaui presisi float32 → geometri hancur dan
+   planet tidak terlihat (inilah bug "Bumi hilang" yang ditemukan lewat uji).
 
-function updateBodies(days) {
+   Solusi standar industri: kamera SELALU di titik asal (0,0,0), dan
+   seluruh tata surya digeser relatif terhadap kamera. Presisi float
+   selalu penuh karena semua koordinat yang dirender bernilai kecil.
+   ======================================================================= */
+let rebaseOffset = new THREE.Vector3();
+const _absPos = new THREE.Vector3();
+
+/* geser benda-benda tunggal (Matahari, sabuk, bintang, langit) */
+function applyRebaseToStatics() {
+  const nx = -rebaseOffset.x, ny = -rebaseOffset.y, nz = -rebaseOffset.z;
+  if (sunMesh) sunMesh.position.set(nx, ny, nz);
+  if (sunRim) sunRim.position.set(nx, ny, nz);
+  if (sunGlow) sunGlow.position.set(nx, ny, nz);
+  if (beltPoints) beltPoints.position.set(nx, ny, nz);
+  if (starField) starField.position.set(nx, ny, nz);
+  if (skyMesh) skyMesh.position.set(nx, ny, nz);
+}
+
+/* ---------- animasi: orbit, rotasi, arah cahaya ---------- */
+const _v1 = new THREE.Vector3();
+const _sunDir = new THREE.Vector3();
+const _bodyPos = new THREE.Vector3();
+const _inv = new THREE.Matrix4();
+
+/* =======================================================================
+   Animasi dibagi DUA TAHAP supaya konsisten dengan floating origin:
+     1. computePositions(days)  → hitung posisi ABSOLUT semua benda
+     2. applyPositions()        → geser ke posisi render memakai rebaseOffset
+   Urutan di gelung render: computePositions → updateCamera (menetapkan
+   rebaseOffset) → applyPositions → render. Dengan begitu benda dan kamera
+   selalu memakai offset yang SAMA (tidak ada keterlambatan satu frame).
+   ======================================================================= */
+
+function computePositions(days, elapsed) {
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     if (b.type === 'star') {
-      sunMesh.rotation.y = (days / b.rotationDays) * Math.PI * 2 * 0.15;
+      if (sunMesh.material.uniforms && sunMesh.material.uniforms.uTime) {
+        sunMesh.material.uniforms.uTime.value = elapsed || 0;
+      }
+      b.rotationDays = b.rotationDays || 25.38;
+      b.spinAngle = (days / b.rotationDays) * Math.PI * 2 * 0.15;
       continue;
     }
+    if (!b.periodDays) continue;
     const dir = b.periodDays < 0 ? -1 : 1;
-    if (!b.periodDays) continue;            /* pengaman: jangan pernah bagi dengan nol */
     const th = b.theta0 + dir * (days / Math.abs(b.periodDays)) * Math.PI * 2;
     if (!isFinite(th)) continue;
+    b._theta = th;
 
     if (b.isMoon) {
-      /* bulan: orbit nyata × MOON_ORBIT_FACTOR di bidang ekuator induk */
       const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
       const e = b.e;
       const bAxis = a * Math.sqrt(1 - e * e);
       const c = a * e;
-      _v1.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
-      _v1.applyAxisAngle(new THREE.Vector3(1, 0, 0), b.incl);
-      b.group.position.copy(_v1);
-      if (b.tidallyLocked) {
-        /* permukaan yang sama selalu menghadap induk */
-        b.spin.rotation.y = -th - Math.PI / 2;
-      } else {
-        b.spin.rotation.y = (days / b.rotationDays) * Math.PI * 2;
-      }
+      b._local = b._local || new THREE.Vector3();
+      b._local.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
+      b._local.applyAxisAngle(AXIS_X, b.incl);
+      b._spinAngle = b.tidallyLocked ? (-th - Math.PI / 2) : ((days / b.rotationDays) * Math.PI * 2);
+      /* posisi absolut bulan = posisi induk + offset lokal */
+      b.absPos = b.absPos || new THREE.Vector3();
+      if (b.host && b.host.absPos) b.absPos.copy(b.host.absPos).add(b._local);
       continue;
     }
 
-    /* planet: orbit nyata mengelilingi Matahari */
+    /* planet: elips nyata mengelilingi Matahari (fokus di titik asal) */
     const a = b.aKm / RAD;
     const e = b.e;
     const bAxis = a * Math.sqrt(1 - e * e);
     const c = a * e;
-    _v1.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
-    _v1.applyAxisAngle(new THREE.Vector3(1, 0, 0), b.incl);
-    b.group.position.copy(_v1);
-
-    b.spin.rotation.y = (days / b.rotationDays) * Math.PI * 2;
-    if (b.cloudMesh) {
-      b.cloudMesh.rotation.y = (days / b.rotationDays) * Math.PI * 2 * 1.06 + 0.4;
-    }
+    b.absPos = b.absPos || new THREE.Vector3();
+    b.absPos.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
+    b.absPos.applyAxisAngle(AXIS_X, b.incl);
+    b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
   }
 }
 
+const AXIS_X = new THREE.Vector3(1, 0, 0);
+
+function applyPositions() {
+  const nx = -rebaseOffset.x, ny = -rebaseOffset.y, nz = -rebaseOffset.z;
+
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (b.type === 'star') {
+      if (b.spinAngle !== undefined) sunMesh.rotation.y = b.spinAngle;
+      continue;
+    }
+    if (b.isMoon) {
+      if (b._local) b.group.position.copy(b._local);
+      if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
+      continue;
+    }
+    if (!b.absPos) continue;
+    /* posisi render = posisi absolut − offset kamera */
+    b.group.position.set(b.absPos.x + nx, b.absPos.y + ny, b.absPos.z + nz);
+    if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
+
+    /* arah cahaya Matahari (Matahari di titik asal absolut) */
+    _sunDir.copy(b.absPos).negate().normalize();
+
+    if (b.isEarth && b.mesh.material.uniforms) {
+      b.mesh.material.uniforms.uSunDir.value.copy(_sunDir);
+      b.mesh.material.uniforms.uCloudOffset.value = ((app.days || 0) / 0.9 % 1 + 1) % 1;
+    }
+    if (b.atmoMesh) {
+      b.mesh.updateWorldMatrix(true, false);
+      _inv.copy(b.mesh.matrixWorld).invert();
+      b.atmoMesh.material.uniforms.uSunDirLocal.value
+        .copy(_sunDir).transformDirection(_inv);
+    }
+    if (b.ringMesh) {
+      const u = b.ringMesh.material.uniforms;
+      u.uSunDir.value.copy(_sunDir);
+      u.uPlanetCenter.value.set(0, 0, 0);
+      u.uPlanetRadius.value = b.radiusKm;
+    }
+  }
+
+  /* elemen tunggal ikut tergeser */
+  if (sunMesh) sunMesh.position.set(nx, ny, nz);
+  if (sunRim) sunRim.position.set(nx, ny, nz);
+  if (sunGlow) sunGlow.position.set(nx, ny, nz);
+  if (beltPoints) beltPoints.position.set(nx, ny, nz);
+  if (starField) starField.position.set(nx, ny, nz);
+  if (skyMesh) skyMesh.position.set(nx, ny, nz);
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (b.orbitLine) b.orbitLine.position.set(nx, ny, nz);
+  }
+}
+
+/* Posisi ABSOLUT benda (Matahari di titik asal, tanpa pengaruh floating
+   origin). Dipakai untuk fisika, kamera, label, dan penanda. */
 function bodyWorldPos(b, out) {
   out = out || new THREE.Vector3();
   if (b.type === 'star') { out.set(0, 0, 0); return out; }
+  if (b.absPos) { out.copy(b.absPos); return out; }
+  /* bulan: posisi absolut = posisi induk + posisi lokal */
   b.group.getWorldPosition(out);
+  return out;
+}
+
+/* Posisi RELATIF terhadap kamera — inilah yang dipakai untuk merender
+   label & penanda, karena dunia sudah tergeser oleh floating origin. */
+function bodyScreenPos(b, out) {
+  out = out || new THREE.Vector3();
+  bodyWorldPos(b, out);
+  out.sub(rebaseOffset);
   return out;
 }
 
 function findBody(key) {
   for (let i = 0; i < bodies.length; i++) if (bodies[i].key === key) return bodies[i];
+  return null;
+}
+
+/* cari benda berdasarkan nama (bulan punya key gabungan seperti 'mars:Phobos',
+   jadi pencarian lewat nama lebih andal untuk dipakai UI/uji) */
+function findBodyByName(name) {
+  for (let i = 0; i < bodies.length; i++) if (bodies[i].name === name) return bodies[i];
   return null;
 }

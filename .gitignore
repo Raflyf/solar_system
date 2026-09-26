@@ -2,3 +2,18 @@ node_modules/
 .DS_Store
 *.log
 .vercel
+
+# Aset mentah (184 MB) tidak diikutkan ke repo.
+# Semua bisa diunduh ulang lewat skrip di tools/ — lihat README.
+assets_raw/
+
+# berkas kerja sementara
+_chk.py
+_grs_check.png
+_jup_preview.jpg
+_prev_*.jpg
+_zoom*.png
+_px_*.png
+
+# sumber antara hasil olahan (dibuat ulang oleh tools/)
+assets_src/

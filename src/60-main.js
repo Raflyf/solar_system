@@ -10,9 +10,41 @@ const app = {
   orbitsOn: true,
   ready: false,
   fps: 0,
+  qualityTier: 'hi',
 };
 
 const J2000 = Date.UTC(2000, 0, 1, 12, 0, 0);
+
+/* ---------- tingkat kualitas tekstur ---------- */
+/* Tekstur 8K RGBA memakai 134 MB VRAM masing-masing; delapan di antaranya
+   akan menghabiskan memori GPU. Jadi kita pilih tingkat berdasarkan
+   kemampuan perangkat, dan pengguna bisa mengubahnya. */
+function detectQualityTier() {
+  try {
+    const test = document.createElement('canvas');
+    const gl = test.getContext('webgl2') || test.getContext('webgl');
+    if (!gl) return 'lo';
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    const rend = dbg ? String(gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) : '';
+    const mem = navigator.deviceMemory || 8;
+    const maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || 2048;
+    const lowGPU = /Intel|HD Graphics|UHD Graphics|Mali|Adreno|PowerVR|SwiftShader|llvmpipe|Software/i.test(rend);
+    if (lowGPU || mem <= 4 || maxTex < 4096) return 'lo';
+    return 'hi';
+  } catch (e) { return 'lo'; }
+}
+
+function pickQualityTier() {
+  const url = new URLSearchParams(location.search).get('q');
+  if (url === 'hi' || url === 'lo') return url;
+  return detectQualityTier();
+}
+
+function setQualityTier(tier) {
+  app.qualityTier = tier;
+  ASSET_BASE = 'assets/' + tier + '/';
+  try { localStorage.setItem('solarQuality', tier); } catch (e) {}
+}
 
 /* ---------- elemen DOM ---------- */
 const $ = (id) => document.getElementById(id);
@@ -46,19 +78,29 @@ async function boot() {
   await nextFrame();
 
   scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 2000000);
+  camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.0005, 2000000);
   initRenderer(canvas);
   window.addEventListener('resize', onResize);
 
-  setLoading(8, 'Menggambar langit berbintang…');
-  await nextFrame();
+  /* ---- pilih tingkat kualitas tekstur ---- */
+  const tier = pickQualityTier();
+  setQualityTier(tier);
 
-  /* ---- pembangunan bertahap agar bilah pemuatan terlihat hidup ---- */
+  /* ---- muat tekstur asli, dengan bilah kemajuan nyata ---- */
+  setLoading(6, 'Memuat tekstur planet asli…');
+  await nextFrame();
+  await loadAllAssets((done, total, file) => {
+    const pct = 6 + (done / total) * 62;
+    setLoading(pct, 'Mengunduh tekstur ' + done + '/' + total + ' — ' + file);
+  });
+
+  /* ---- pembangunan bertahap ---- */
   const steps = [];
-  steps.push(['Membuat permukaan Matahari…', () => { buildSky(); buildSun(); }]);
+  steps.push(['Menyusun langit Bima Sakti…', () => { buildSky(); }]);
+  steps.push(['Menyalakan Matahari…', () => { buildSun(); }]);
   for (let i = 0; i < PLANETS.length; i++) {
     const p = PLANETS[i];
-    steps.push(['Membuat tekstur ' + p.name + '…', () => {
+    steps.push(['Menata ' + p.name + '…', () => {
       const body = buildBody(p, null, null);
       bodies.push(body);
       if (p.moons) {
@@ -72,7 +114,7 @@ async function boot() {
   steps.push(['Menebar sabuk asteroid…', () => { buildBelt(); }]);
   steps.push(['Menyalakan bintang-bintang…', () => { buildStars(); buildBeacons(); }]);
 
-  const base = 10, span = 74;
+  const base = 70, span = 20;
   for (let i = 0; i < steps.length; i++) {
     setLoading(base + (i / steps.length) * span, steps[i][0]);
     await nextFrame();
@@ -92,7 +134,8 @@ async function boot() {
 
   /* mulai dari "hari ini" */
   app.days = (Date.now() - J2000) / 86400000;
-  updateBodies(app.days);
+  computePositions(app.days, 0);
+  applyPositions();
 
   setLoading(94, 'Menyusun antarmuka…');
   await nextFrame();
@@ -117,19 +160,25 @@ async function boot() {
     if (acc > 0.5) { app.fps = frames / acc; acc = 0; frames = 0; }
 
     if (!app.paused) {
-      /* waktu dibekukan selama transisi kamera agar lompatan mulus */
-      if (!anyTransitionActive()) app.days += dt * app.daysPerSecond;
+      /* waktu dibekukan selama transisi kamera agar lompatan mulus;
+         diperlambat otomatis saat kamera sangat dekat permukaan */
+      if (!anyTransitionActive()) app.days += dt * app.daysPerSecond * effectiveTimeScale();
     }
-    updateBodies(app.days);
+
+    /* --- urutan penting untuk floating origin ---
+       1. hitung posisi absolut semua benda
+       2. perbarui kamera (menetapkan rebaseOffset untuk frame ini)
+       3. geser benda ke posisi render memakai offset yang SAMA
+       Dengan urutan ini tidak ada keterlambatan satu frame antara
+       benda dan kamera — inilah yang membuat zoom presisi mungkin. */
+    computePositions(app.days, now * 0.001);
     updateCamera(dt);
+    applyPositions();
+
     updateTour(dt);
     updateLabels();
     updateBeacons();
     updateHud();
-
-    /* langit selalu mengikuti kamera agar tidak pernah terlewati */
-    if (skyMesh) skyMesh.position.copy(camera.position);
-    if (sunGlow) sunGlow.position.set(0, 0, 0);
 
     renderer.render(scene, camera);
   }
@@ -182,21 +231,26 @@ function buildUI() {
   });
   const slider = $('speedSlider');
   slider.max = String(TIME_TABLE.length - 1);
-  slider.value = '1';
+  slider.value = '5';                       /* default: 1 hari per detik */
   const upd = () => {
     const i = parseInt(slider.value, 10);
     app.daysPerSecond = TIME_TABLE[i];
     const pct = (i / (TIME_TABLE.length - 1)) * 100;
     slider.style.setProperty('--fill', pct + '%');
-    const d = app.daysPerSecond;
-    $('speedLabel').textContent = d < 1 ? '1 dtk = ' + d + ' hari' :
-      d === 1 ? '1 dtk = 1 hari' :
-      d < 30 ? '1 dtk = ' + d + ' hari' :
-      d < 365 ? '1 dtk = ' + (d / 30.44).toFixed(1) + ' bulan' :
-      '1 dtk = ' + (d / 365.25).toFixed(1) + ' tahun';
+    $('speedLabel').textContent = '1 dtk = ' + TIME_LABELS[i];
   };
   slider.addEventListener('input', upd);
   upd();
+
+  /* tombol kualitas tekstur */
+  $('btnQuality').addEventListener('click', () => {
+    const next = app.qualityTier === 'hi' ? 'lo' : 'hi';
+    const url = new URL(location.href);
+    url.searchParams.set('q', next);
+    location.href = url.toString();
+  });
+  $('btnQuality').textContent = '◈ Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
+  $('btnQuality').classList.toggle('active', app.qualityTier === 'hi');
 
   /* ---- pintasan papan tombol ---- */
   window.addEventListener('keydown', (e) => {
@@ -222,10 +276,6 @@ function moonKeyOf(planetKey, moonName) {
   return planetKey + ':' + moonName;
 }
 
-function findBodyByName(name) {
-  for (let i = 0; i < bodies.length; i++) if (bodies[i].name === name) return bodies[i];
-  return null;
-}
 
 function makeGroupLabel(txt) {
   const d = document.createElement('div');
@@ -407,13 +457,13 @@ function updateLabels() {
   for (let i = 0; i < labelBodies.length; i++) {
     const b = labelBodies[i];
     const el = labelEls[i];
-    const wp = bodyWorldPos(b, _tmp);
+    const wp = bodyScreenPos(b, _tmp);   /* relatif kamera */
     const dist = camPos.distanceTo(wp);
 
     /* label bulan disembunyikan bila induknya sudah jauh */
     let visible = true;
     if (b.isMoon) {
-      const hostPos = bodyWorldPos(b.host, _tmp2);
+      const hostPos = bodyScreenPos(b.host, _tmp2);
       const distHost = camPos.distanceTo(hostPos);
       if (distHost > b.host.radiusKm * 90) visible = false;
     }
@@ -430,6 +480,27 @@ function updateLabels() {
     _proj.copy(wp).project(camera);
     if (!isFinite(_proj.x) || !isFinite(_proj.y) || !isFinite(_proj.z)) visible = false;
     else if (_proj.z < -1 || _proj.z > 1 || Math.abs(_proj.x) > 1.25 || Math.abs(_proj.y) > 1.25) visible = false;
+
+    /* sembunyikan label yang berada DI BELAKANG benda besar lain
+       (mis. label Jupiter tidak boleh menembus permukaan Bumi) */
+    if (visible && !b.isMoon && cameraState.target) {
+      const t = cameraState.target;
+      if (t !== b && t.radiusKm > 0) {
+        const tPos = bodyScreenPos(t, _tmp3);
+        const tDist = tPos.length();
+        /* vektor dari kamera ke benda ini */
+        const d2 = wp.length();
+        if (d2 > tDist) {
+          /* apakah garis pandang ke benda ini melewati benda target? */
+          const dir = wp.clone().normalize();
+          const along = tPos.dot(dir);
+          if (along > 0) {
+            const perp = tPos.clone().sub(dir.multiplyScalar(along)).length();
+            if (perp < t.radiusKm * 0.98) visible = false;
+          }
+        }
+      }
+    }
 
     if (!visible) { if (el.style.display !== 'none') el.style.display = 'none'; continue; }
     const x = (_proj.x * 0.5 + 0.5) * W;

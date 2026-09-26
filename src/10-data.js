@@ -14,16 +14,19 @@ const RAD = 6371;                       /* 1 unit tampilan = 1.000 km */
 const AU_KM = 149597870.7;
 
 /* ----------------------------------------------------------------------
-   Skema skala (satu faktor, konsisten di seluruh scene):
-   • Jarak antar planet  : NYATA (aKm / RAD)
-   • Radius semua benda  : NYATA × SIZE_FACTOR
-   • Jarak planet–bulan  : NYATA × SIZE_FACTOR  → proporsi sistem tetap nyata
-   Jadi seluruh tata surya adalah model skala nyata dengan benda langit
-   diperbesar seragam 4× agar terlihat jelas saat terbang.
+   SKALA 1 : 1 (sebenarnya)
+   • Jarak antar planet : NYATA (aKm / RAD)
+   • Radius semua benda : NYATA — tanpa pembesaran sama sekali
+   • Jarak planet–bulan : NYATA
+   Satu-satunya hal yang tidak bisa 1:1 adalah jarak kamera saat melihat
+   seluruh tata surya; itu urusan zoom, bukan skala model.
    ---------------------------------------------------------------------- */
-const SIZE_FACTOR = 4.0;
-const MOON_ORBIT_FACTOR = 4.0;
-const MIN_MOON_RADIUS_UNITS = 0.30;     /* bulan kecil tetap terlihat & bisa diklik */
+const SIZE_FACTOR = 1.0;
+const MOON_ORBIT_FACTOR = 1.0;
+
+/* radius terkecil yang masih boleh ada di scene (unit) — mencegah
+   benda mikroskopis seperti Deimos (0,001 unit) hilang karena presisi float */
+const MIN_RENDER_RADIUS_UNITS = 0.0;   /* benar-benar 1:1, tanpa pembesaran */
 
 /* Kemiringan bidang orbit terhadap ekliptika (derajat) */
 const ORBIT_INCLINATION = {
@@ -404,8 +407,28 @@ const SUN = {
   },
 };
 
-/* Tabel waktu (dipakai slider kecepatan) */
-const TIME_TABLE = [0.5, 1, 3, 7, 14, 30, 60, 120, 240, 480, 1000];
+/* Tabel waktu simulasi: nilai = berapa HARI berlalu per 1 detik nyata.
+   Mencakup mode lambat (mengamati rotasi) sampai sangat cepat (abad). */
+const TIME_TABLE = [
+  1 / 86400,        /* 1 dtk = 1 detik */
+  1 / 1440,         /* 1 dtk = 1 menit */
+  1 / 96,           /* 1 dtk = 15 menit */
+  1 / 24,           /* 1 dtk = 1 jam */
+  0.25,             /* 1 dtk = 6 jam */
+  1,                /* 1 dtk = 1 hari */
+  7,                /* 1 dtk = 1 minggu */
+  30.44,            /* 1 dtk = 1 bulan */
+  91.31,            /* 1 dtk = 1 musim (3 bulan) */
+  365.25,           /* 1 dtk = 1 tahun */
+  3652.5,           /* 1 dtk = 10 tahun */
+  36525,            /* 1 dtk = 1 abad */
+];
+
+/* label untuk tiap entri tabel waktu */
+const TIME_LABELS = [
+  '1 detik', '1 menit', '15 menit', '1 jam', '6 jam', '1 hari',
+  '1 minggu', '1 bulan', '3 bulan', '1 tahun', '10 tahun', '1 abad',
+];
 
 /* Daftar tur terpandu */
 const TOUR = ['sun', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'mercury', 'venus', 'belt', 'system'];
