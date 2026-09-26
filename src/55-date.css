@@ -57,6 +57,29 @@
 }
 .dp-chip:hover { background: rgba(140, 190, 255, 0.16); color: #fff; }
 
+/* chip pemilih jenis peristiwa (pencarian universal) */
+.dp-chips {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  margin-bottom: 9px;
+}
+.dp-chips .dp-chip {
+  font-size: 10.5px;
+  opacity: 0.55;
+  transition: opacity .15s, background .15s, border-color .15s;
+}
+.dp-chips .dp-chip.on {
+  opacity: 1;
+  background: rgba(90, 150, 255, 0.20);
+  border-color: rgba(120, 180, 255, 0.55);
+  color: #e8f0fb;
+}
+/* baris ringkasan hasil pencarian */
+.dp-result-count {
+  font-size: 10.5px; color: #7fc4ff;
+  padding: 4px 2px 7px;
+  font-variant-numeric: tabular-nums;
+}
+
 .dp-current {
   font-size: 11.5px; color: #7fc4ff; padding: 7px 9px;
   background: rgba(60, 120, 200, 0.12);

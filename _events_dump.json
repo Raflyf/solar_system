@@ -1,0 +1,849 @@
+{
+ "range": [
+  2026,
+  2028
+ ],
+ "eclipses": [
+  {
+   "tipe": "matahari",
+   "jenis": "cincin",
+   "tanggal": "2026-02-17T12:15",
+   "mag": 0.96
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "total",
+   "tanggal": "2026-03-03T11:35",
+   "mag": 1.157
+  },
+  {
+   "tipe": "matahari",
+   "jenis": "total",
+   "tanggal": "2026-08-12T17:45",
+   "mag": 1.031
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "sebagian",
+   "tanggal": "2026-08-28T04:15",
+   "mag": 0.938
+  },
+  {
+   "tipe": "matahari",
+   "jenis": "cincin",
+   "tanggal": "2027-02-06T16:00",
+   "mag": 0.914
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "penumbra",
+   "tanggal": "2027-02-20T23:15",
+   "mag": 0.897
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "penumbra",
+   "tanggal": "2027-07-18T16:05",
+   "mag": 0.034
+  },
+  {
+   "tipe": "matahari",
+   "jenis": "total",
+   "tanggal": "2027-08-02T10:05",
+   "mag": 1.06
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "penumbra",
+   "tanggal": "2027-08-17T07:15",
+   "mag": 0.519
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "sebagian",
+   "tanggal": "2028-01-12T04:15",
+   "mag": 0.067
+  },
+  {
+   "tipe": "matahari",
+   "jenis": "cincin",
+   "tanggal": "2028-01-26T15:10",
+   "mag": 0.908
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "sebagian",
+   "tanggal": "2028-07-06T18:20",
+   "mag": 0.39
+  },
+  {
+   "tipe": "matahari",
+   "jenis": "total",
+   "tanggal": "2028-07-22T02:55",
+   "mag": 1.042
+  },
+  {
+   "tipe": "bulan",
+   "jenis": "total",
+   "tanggal": "2028-12-31T16:50",
+   "mag": 1.244
+  }
+ ],
+ "oppositions": [
+  {
+   "planet": "jupiter",
+   "tanggal": "2026-01-11",
+   "elongasi": 179.2
+  },
+  {
+   "planet": "neptune",
+   "tanggal": "2026-09-26",
+   "elongasi": 178.5
+  },
+  {
+   "planet": "saturn",
+   "tanggal": "2026-10-05",
+   "elongasi": 177.3
+  },
+  {
+   "planet": "uranus",
+   "tanggal": "2026-11-26",
+   "elongasi": 179.4
+  },
+  {
+   "planet": "jupiter",
+   "tanggal": "2027-02-11",
+   "elongasi": 178.8
+  },
+  {
+   "planet": "mars",
+   "tanggal": "2027-02-20",
+   "elongasi": 175.5
+  },
+  {
+   "planet": "neptune",
+   "tanggal": "2027-09-29",
+   "elongasi": 178.5
+  },
+  {
+   "planet": "saturn",
+   "tanggal": "2027-10-18",
+   "elongasi": 177.2
+  },
+  {
+   "planet": "uranus",
+   "tanggal": "2027-12-01",
+   "elongasi": 179.3
+  },
+  {
+   "planet": "jupiter",
+   "tanggal": "2028-03-13",
+   "elongasi": 178.4
+  },
+  {
+   "planet": "neptune",
+   "tanggal": "2028-09-30",
+   "elongasi": 178.4
+  },
+  {
+   "planet": "saturn",
+   "tanggal": "2028-10-31",
+   "elongasi": 177.2
+  },
+  {
+   "planet": "uranus",
+   "tanggal": "2028-12-04",
+   "elongasi": 179.3
+  }
+ ],
+ "conjunctions": [
+  {
+   "pair": "venus-mars",
+   "tanggal": "2026-01-08",
+   "sep": 0.18
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2026-01-19",
+   "sep": 0.98
+  },
+  {
+   "pair": "mercury-venus",
+   "tanggal": "2026-01-30",
+   "sep": 0.68
+  },
+  {
+   "pair": "mercury-venus",
+   "tanggal": "2026-02-28",
+   "sep": 4.51
+  },
+  {
+   "pair": "venus-saturn",
+   "tanggal": "2026-03-09",
+   "sep": 0.92
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2026-03-16",
+   "sep": 3.37
+  },
+  {
+   "pair": "mars-saturn",
+   "tanggal": "2026-04-20",
+   "sep": 1.2
+  },
+  {
+   "pair": "mercury-saturn",
+   "tanggal": "2026-04-21",
+   "sep": 0.46
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2026-04-21",
+   "sep": 1.65
+  },
+  {
+   "pair": "venus-uranus",
+   "tanggal": "2026-04-24",
+   "sep": 0.76
+  },
+  {
+   "pair": "mercury-uranus",
+   "tanggal": "2026-05-18",
+   "sep": 0.9
+  },
+  {
+   "pair": "venus-jupiter",
+   "tanggal": "2026-06-10",
+   "sep": 1.62
+  },
+  {
+   "pair": "mercury-jupiter",
+   "tanggal": "2026-06-26",
+   "sep": 3.75
+  },
+  {
+   "pair": "mars-uranus",
+   "tanggal": "2026-07-05",
+   "sep": 0.19
+  },
+  {
+   "pair": "mercury-jupiter",
+   "tanggal": "2026-08-16",
+   "sep": 0.56
+  },
+  {
+   "pair": "mars-jupiter",
+   "tanggal": "2026-11-16",
+   "sep": 1.2
+  },
+  {
+   "pair": "mars-jupiter",
+   "tanggal": "2027-03-31",
+   "sep": 4.26
+  },
+  {
+   "pair": "mercury-saturn",
+   "tanggal": "2027-04-20",
+   "sep": 0.58
+  },
+  {
+   "pair": "venus-saturn",
+   "tanggal": "2027-05-08",
+   "sep": 0.63
+  },
+  {
+   "pair": "mercury-uranus",
+   "tanggal": "2027-05-12",
+   "sep": 1.86
+  },
+  {
+   "pair": "venus-uranus",
+   "tanggal": "2027-06-14",
+   "sep": 0.72
+  },
+  {
+   "pair": "mercury-venus",
+   "tanggal": "2027-07-02",
+   "sep": 4.56
+  },
+  {
+   "pair": "mercury-venus",
+   "tanggal": "2027-08-12",
+   "sep": 0.54
+  },
+  {
+   "pair": "mercury-jupiter",
+   "tanggal": "2027-08-20",
+   "sep": 0.62
+  },
+  {
+   "pair": "venus-jupiter",
+   "tanggal": "2027-08-26",
+   "sep": 0.52
+  },
+  {
+   "pair": "mercury-venus",
+   "tanggal": "2027-10-12",
+   "sep": 3.79
+  },
+  {
+   "pair": "venus-mars",
+   "tanggal": "2027-11-25",
+   "sep": 0.31
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2028-01-09",
+   "sep": 0.68
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2028-01-27",
+   "sep": 3.3
+  },
+  {
+   "pair": "venus-saturn",
+   "tanggal": "2028-02-29",
+   "sep": 3.43
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2028-04-09",
+   "sep": 0.66
+  },
+  {
+   "pair": "venus-uranus",
+   "tanggal": "2028-04-13",
+   "sep": 4.53
+  },
+  {
+   "pair": "mercury-saturn",
+   "tanggal": "2028-04-16",
+   "sep": 2.08
+  },
+  {
+   "pair": "mars-saturn",
+   "tanggal": "2028-05-01",
+   "sep": 1.79
+  },
+  {
+   "pair": "mercury-uranus",
+   "tanggal": "2028-05-08",
+   "sep": 2.63
+  },
+  {
+   "pair": "mercury-venus",
+   "tanggal": "2028-05-24",
+   "sep": 2.46
+  },
+  {
+   "pair": "mercury-uranus",
+   "tanggal": "2028-06-04",
+   "sep": 2.89
+  },
+  {
+   "pair": "venus-uranus",
+   "tanggal": "2028-06-04",
+   "sep": 0.39
+  },
+  {
+   "pair": "venus-mars",
+   "tanggal": "2028-06-14",
+   "sep": 2.03
+  },
+  {
+   "pair": "mars-uranus",
+   "tanggal": "2028-06-24",
+   "sep": 0.21
+  },
+  {
+   "pair": "mercury-uranus",
+   "tanggal": "2028-06-25",
+   "sep": 3.6
+  },
+  {
+   "pair": "mercury-mars",
+   "tanggal": "2028-06-30",
+   "sep": 3.25
+  },
+  {
+   "pair": "venus-uranus",
+   "tanggal": "2028-07-18",
+   "sep": 4.35
+  },
+  {
+   "pair": "mercury-jupiter",
+   "tanggal": "2028-08-28",
+   "sep": 2.18
+  },
+  {
+   "pair": "venus-mars",
+   "tanggal": "2028-09-09",
+   "sep": 2.26
+  },
+  {
+   "pair": "mercury-jupiter",
+   "tanggal": "2028-10-04",
+   "sep": 2.99
+  },
+  {
+   "pair": "mercury-jupiter",
+   "tanggal": "2028-10-23",
+   "sep": 0.96
+  },
+  {
+   "pair": "venus-jupiter",
+   "tanggal": "2028-11-10",
+   "sep": 0.62
+  }
+ ],
+ "meteor": [
+  {
+   "nama": "Quadrantids",
+   "tanggal": "2026-01-03",
+   "zhr": 120,
+   "induk": "Asteroid 2003 EH1"
+  },
+  {
+   "nama": "Quadrantids",
+   "tanggal": "2027-01-03",
+   "zhr": 120,
+   "induk": "Asteroid 2003 EH1"
+  },
+  {
+   "nama": "Quadrantids",
+   "tanggal": "2028-01-03",
+   "zhr": 120,
+   "induk": "Asteroid 2003 EH1"
+  },
+  {
+   "nama": "Lyrids",
+   "tanggal": "2026-04-22",
+   "zhr": 18,
+   "induk": "Komet C/1861 G1 (Thatcher)"
+  },
+  {
+   "nama": "Lyrids",
+   "tanggal": "2027-04-22",
+   "zhr": 18,
+   "induk": "Komet C/1861 G1 (Thatcher)"
+  },
+  {
+   "nama": "Lyrids",
+   "tanggal": "2028-04-22",
+   "zhr": 18,
+   "induk": "Komet C/1861 G1 (Thatcher)"
+  },
+  {
+   "nama": "Eta Aquariids",
+   "tanggal": "2026-05-05",
+   "zhr": 50,
+   "induk": "Komet 1P/Halley"
+  },
+  {
+   "nama": "Eta Aquariids",
+   "tanggal": "2027-05-05",
+   "zhr": 50,
+   "induk": "Komet 1P/Halley"
+  },
+  {
+   "nama": "Eta Aquariids",
+   "tanggal": "2028-05-05",
+   "zhr": 50,
+   "induk": "Komet 1P/Halley"
+  },
+  {
+   "nama": "Perseids",
+   "tanggal": "2026-08-12",
+   "zhr": 100,
+   "induk": "Komet 109P/Swift-Tuttle"
+  },
+  {
+   "nama": "Perseids",
+   "tanggal": "2027-08-12",
+   "zhr": 100,
+   "induk": "Komet 109P/Swift-Tuttle"
+  },
+  {
+   "nama": "Perseids",
+   "tanggal": "2028-08-12",
+   "zhr": 100,
+   "induk": "Komet 109P/Swift-Tuttle"
+  },
+  {
+   "nama": "Orionids",
+   "tanggal": "2026-10-21",
+   "zhr": 20,
+   "induk": "Komet 1P/Halley"
+  },
+  {
+   "nama": "Orionids",
+   "tanggal": "2027-10-21",
+   "zhr": 20,
+   "induk": "Komet 1P/Halley"
+  },
+  {
+   "nama": "Orionids",
+   "tanggal": "2028-10-21",
+   "zhr": 20,
+   "induk": "Komet 1P/Halley"
+  },
+  {
+   "nama": "Leonids",
+   "tanggal": "2026-11-17",
+   "zhr": 15,
+   "induk": "Komet 55P/Tempel-Tuttle"
+  },
+  {
+   "nama": "Leonids",
+   "tanggal": "2027-11-17",
+   "zhr": 15,
+   "induk": "Komet 55P/Tempel-Tuttle"
+  },
+  {
+   "nama": "Leonids",
+   "tanggal": "2028-11-17",
+   "zhr": 15,
+   "induk": "Komet 55P/Tempel-Tuttle"
+  },
+  {
+   "nama": "Geminids",
+   "tanggal": "2026-12-14",
+   "zhr": 150,
+   "induk": "Asteroid 3200 Phaethon"
+  },
+  {
+   "nama": "Geminids",
+   "tanggal": "2027-12-14",
+   "zhr": 150,
+   "induk": "Asteroid 3200 Phaethon"
+  },
+  {
+   "nama": "Geminids",
+   "tanggal": "2028-12-14",
+   "zhr": 150,
+   "induk": "Asteroid 3200 Phaethon"
+  },
+  {
+   "nama": "Ursids",
+   "tanggal": "2026-12-22",
+   "zhr": 10,
+   "induk": "Komet 8P/Tuttle"
+  },
+  {
+   "nama": "Ursids",
+   "tanggal": "2027-12-22",
+   "zhr": 10,
+   "induk": "Komet 8P/Tuttle"
+  },
+  {
+   "nama": "Ursids",
+   "tanggal": "2028-12-22",
+   "zhr": 10,
+   "induk": "Komet 8P/Tuttle"
+  }
+ ],
+ "phases": [
+  {
+   "fase": "purnama",
+   "tanggal": "2026-01-03"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-01-18"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-02-02"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-02-17"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-03-03"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-03-19"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-04-02"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-04-17"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-05-01"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-05-16"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-05-31"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-06-15"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-06-30"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-07-14"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-07-29"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-08-12"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-08-28"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-09-11"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-09-26"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-10-10"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-10-26"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-11-09"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-11-24"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2026-12-09"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2026-12-24"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-01-07"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-01-22"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-02-06"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-02-21"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-03-08"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-03-22"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-04-07"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-04-21"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-05-06"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-05-20"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-06-04"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-06-19"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-07-04"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-07-18"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-08-02"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-08-17"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-08-31"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-09-16"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-09-30"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-10-15"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-10-29"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-11-14"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-11-28"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2027-12-13"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2027-12-27"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-01-12"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-01-26"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-02-10"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-02-25"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-03-11"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-03-26"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-04-09"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-04-24"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-05-08"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-05-24"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-06-07"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-06-22"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-07-06"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-07-22"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-08-05"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-08-20"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-09-04"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-09-18"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-10-03"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-10-18"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-11-02"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-11-16"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-12-02"
+  },
+  {
+   "fase": "baru",
+   "tanggal": "2028-12-16"
+  },
+  {
+   "fase": "purnama",
+   "tanggal": "2028-12-31"
+  }
+ ]
+}
