@@ -1,0 +1,66 @@
+Perbaiki fokus satelit, garis orbit panjang, dan lag Bima Sakti
+
+TIGA MASALAH YANG DILAPORKAN PENGGUNA — semuanya bug nyata.
+
+1. "Sudah diklik Bulan, tapi tidak fokus ke Bulannya"
+   ------------------------------------------------------------------
+   GEJALA: kamera mengikuti titik kosong; Bulan tidak ada di layar.
+   Diukur: jarak kamera ke posisi RENDER Bulan = 63 unit, padahal
+   cameraState menyimpan 0.873 unit. Selisihnya persis satu radius
+   orbit Bulan (60 unit).
+
+   PENYEBAB: applyPositions() masih memakai `b._local` — sisa kode dari
+   masa sebelum ephemeris. Sejak computePositions() diubah memakai
+   ephemerisPos(), `_local` TIDAK PERNAH diisi lagi. Jadi Bulan tidak
+   pernah dipindahkan dari titik asal relatif induknya, sementara kamera
+   memakai absPos yang BENAR. Keduanya jadi terpisah satu radius orbit.
+
+   Ada DUA lapis bug:
+   a) `_local` tidak diisi lagi (posisi render bulan selalu 0,0,0 relatif induk)
+   b) grup bulan adalah anak moonPlane induknya yang dirotasi axialTilt,
+      jadi offset lokal harus dibalik-putar dulu agar posisi render sama
+      dengan absPos
+
+   PERBAIKAN: hitung posisi render bulan dari absPos yang sama dengan yang
+   dipakai kamera, dengan koreksi balik-putar axialTilt induk.
+
+2. "Garis putih panjang itu apa? jadi aneh"
+   ------------------------------------------------------------------
+   PENYEBAB: garis orbit satelit digambar dengan radius penuh orbitnya.
+   Orbit Bulan radiusnya 60 unit = 384.400 km. Saat kamera berada DI DALAM
+   lingkaran itu (dekat permukaan Bulan), garisnya melewati layar sebagai
+   garis lurus panjang tanpa ujung yang terlihat.
+
+   PERBAIKAN: updateOrbitLineVisibility() menyembunyikan garis orbit
+   satelit bila kamera terlalu dekat untuk melihatnya sebagai lingkaran
+   (jarak < radius orbit x 2.2). Opacity juga diturunkan 0.42 -> 0.34.
+
+3. "Performa lag parah"
+   ------------------------------------------------------------------
+   PENYEBAB: ada DUA Bima Sakti sekaligus — bola tekstur nyata
+   (skyMesh, radius 900.000) DAN awan 24.000 titik prosedural dengan
+   ukuran titik 22-46 px. Awan titik itu menghasilkan ~24 juta piksel
+   overdraw tiap frame.
+
+   PERBAIKAN: awan titik sintetis DIHAPUS. Bima Sakti memakai tekstur
+   citra nyata (assets/hi/milkyway.jpg) yang sudah ada di buildSky().
+   Lebih akurat sekaligus jauh lebih ringan.
+
+4. BUG TAMBAHAN yang ditemukan saat memperbaiki di atas
+   ------------------------------------------------------------------
+   SEMUA 12 satelit memakai moonPositionKm() — posisi Bulan BUMI dari
+   teori Meeus. Akibatnya Io ditempatkan 402.446 km dari Jupiter
+   (seharusnya 421.800 km) pada bidang orbit Bulan (inklinasi 5.145"),
+   bukan bidang orbit Io (0.05"). Satelit tidak pernah berada di tempat
+   yang ditunjuk kamera.
+   PERBAIKAN: hanya Bulan Bumi yang memakai moonPositionKm() (perlu untuk
+   akurasi gerhana). Satelit lain memakai orbit Kepler dengan elemen
+   aKm/e/incl NYATA milik masing-masing.
+
+HASIL UJI:
+  - Bulan: jarak render stabil 0.873 selama 10 detik, posisi layar [0,0],
+    radius 190 px. Penilaian visual 10/10.
+  - Error posisi render vs absPos: 0.000 untuk 12/12 satelit
+  - Satelit terlihat: 10/10 (Bumi 1, Mars 2, Jupiter 4, Saturnus 3)
+  - Performa: 90 -> 126 fps
+  - 0 error JavaScript

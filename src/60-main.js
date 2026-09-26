@@ -178,6 +178,7 @@ async function boot() {
 
     updateTour(dt);
     updateLabels();
+    updateOrbitLineVisibility();
     updateBeacons();
     updateHud();
     updateStarLabels();

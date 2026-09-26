@@ -391,8 +391,19 @@ function buildStarField() {
   group.add(clines);
   starField.constellationLines = clines;
 
-  /* --- Bima Sakti --- */
-  group.add(buildMilkyWay());
+  /* --- Bima Sakti ---
+     ------------------------------------------------------------------
+     KINERJA: dulu ada DUA Bima Sakti sekaligus — bola tekstur nyata
+     (skyMesh, radius 900.000) DAN awan 24.000 titik prosedural di sini
+     dengan ukuran titik 22-46 px. Awan titik itu membuat ~24 juta piksel
+     overdraw tiap frame dan itulah penyebab lag yang dilaporkan.
+
+     Sekarang: awan titik sintetis DIHAPUS. Bima Sakti memakai tekstur
+     citra nyata (assets/hi/milkyway.jpg) yang sudah ada di buildSky().
+     Hasilnya lebih akurat (citra sungguhan, bukan rekonstruksi) sekaligus
+     jauh lebih ringan.
+     ------------------------------------------------------------------ */
+  starField.milkyWay = null;
 
   /* --- galaksi & nebula jauh --- */
   const gGroup = new THREE.Group();

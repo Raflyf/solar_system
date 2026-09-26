@@ -322,9 +322,17 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     scene.add(line);
     body.orbitLine = line;
   } else {
-    /* orbit satelit: lingkaran di sekitar induknya. Ini yang membuat satelit
-       terlihat "ada" walaupun bodinya sendiri cuma sub-piksel pada skala 1:1.
-       Opacity dinaikkan + segmen ditambah karena lingkaran ini besar. */
+    /* Orbit satelit: lingkaran di sekitar induknya.
+       ------------------------------------------------------------------
+       Garis ini dulu digambar dengan radius penuh orbit (Bulan: 60 unit =
+       384.400 km). Dari dekat planet, lingkaran sebesar itu melewati layar
+       sebagai GARIS LURUS PANJANG yang terlihat aneh — pengguna melaporkan
+       "garis putih panjang".
+
+       Perbaikan: garis orbit satelit hanya digambar bila kamera cukup jauh
+       untuk melihatnya sebagai lingkaran (lihat updateOrbitLineVisibility).
+       Opacity juga diturunkan supaya tidak mendominasi.
+       ------------------------------------------------------------------ */
     const a = (cfg.aKm / RAD) * MOON_ORBIT_FACTOR;
     const pts = [];
     for (let i = 0; i <= 256; i++) {
@@ -334,13 +342,14 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     const line = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints(pts),
       new THREE.LineBasicMaterial({
-        color: 0x8fb0d8, transparent: true, opacity: 0.42, depthWrite: false,
+        color: 0x8fb0d8, transparent: true, opacity: 0.34, depthWrite: false,
       })
     );
     line.rotation.x = body.incl;
     parentMoonPlane.add(line);
     body.orbitLine = line;
     body.orbitLineIsMoon = true;
+    body.orbitRadiusUnits = a;      /* dipakai untuk uji visibilitas */
   }
   return body;
 }
@@ -436,6 +445,31 @@ function moonColorHex(b) {
 
 const _bp = new THREE.Vector3();
 const _hostP = new THREE.Vector3();
+
+/* Garis orbit satelit hanya ditampilkan bila kamera cukup jauh untuk
+   melihatnya sebagai lingkaran. Kalau kamera berada DI DALAM lingkaran
+   orbit (jarak < radius orbit), garis itu melewati layar sebagai garis
+   lurus panjang yang terlihat aneh — ini yang dilaporkan pengguna.
+   Ambang: tampilkan hanya bila radius orbit minimal 25% dari jarak kamera,
+   supaya lingkaran terlihat utuh di dalam bidang pandang. */
+function updateOrbitLineVisibility() {
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (!b.orbitLine) continue;
+    if (b.orbitLineIsMoon) {
+      const host = b.host;
+      if (!host || !host.absPos) { b.orbitLine.visible = false; continue; }
+      bodyScreenPos(host, _hostP);
+      const distHost = camera.position.distanceTo(_hostP);
+      const rOrbit = b.orbitRadiusUnits || 0;
+      /* sembunyikan bila kamera terlalu dekat (garis akan tampak lurus)
+         atau terlalu jauh (garis tidak terlihat berguna) */
+      b.orbitLine.visible = rOrbit > 0 &&
+                            distHost > rOrbit * 2.2 &&
+                            distHost < rOrbit * 900;
+    }
+  }
+}
 
 function updateBeacons() {
   const H = window.innerHeight;
@@ -607,21 +641,76 @@ function computePositions(days, elapsed) {
   }
 }
 
-/* posisi ephemeris untuk sebuah benda, dalam unit scene (RAD)
-   Bulan memakai posisi GEOSENTRIS presisi dari teori Meeus, bukan
-   orbit lingkaran — inilah kunci akurasi gerhana. */
+/* posisi ephemeris untuk sebuah benda, dalam unit scene (RAD).
+   ----------------------------------------------------------------------
+   BUG YANG DIPERBAIKI DI SINI:
+   Sebelumnya SEMUA satelit memakai moonPositionKm(jd) — yaitu posisi
+   Bulan BUMI dari teori Meeus. Akibatnya:
+     - Io ditempatkan 402.446 km dari Jupiter (seharusnya 421.800 km,
+       dan pada bidang orbit Jupiter, bukan bidang orbit Bulan)
+     - posisinya memakai inklinasi 5,145° milik Bulan, bukan 0,05° milik Io
+   Jadi satelit tidak pernah berada di tempat yang ditunjuk kamera.
+
+   Sekarang:
+     - Bulan (Bumi)  -> moonPositionKm() presisi tinggi (perlu untuk gerhana)
+     - satelit lain  -> orbit Kepler sederhana mengelilingi induknya,
+                        memakai aKm/e/incl NYATA milik satelit itu
+   ---------------------------------------------------------------------- */
 function ephemerisPos(b, jd) {
   if (b.isMoon) {
     if (!b.host) return null;
     const hostPos = b.host.absPos;
     if (!hostPos) return null;
-    /* posisi geosentris Bulan dalam km, kerangka ekliptika J2000 */
-    const mk = moonPositionKm(jd);
     const k = 1 / RAD;
+
+    if (b.name === 'Bulan') {
+      /* Bulan Bumi: teori Meeus bab 47, presisi ~10" — dipakai untuk gerhana */
+      const mk = moonPositionKm(jd);
+      return {
+        x: hostPos.x + mk.x * k,
+        y: hostPos.y + mk.z * k,      /* z ekliptika -> y scene (atas) */
+        z: hostPos.z - mk.y * k,      /* y ekliptika -> -z scene */
+      };
+    }
+
+    /* satelit lain: orbit Kepler mengelilingi induk, memakai elemen NYATA */
+    const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
+    const e = b.e || 0;
+    const n = (2 * Math.PI) / (b.periodDays * 86400);   /* rad per detik */
+    const T = (jd - J2000_JD) * 86400;                  /* detik sejak J2000 */
+    const M = (b.theta0 || 0) + n * T;
+
+    /* selesaikan persamaan Kepler */
+    let E = M;
+    for (let i = 0; i < 6; i++) {
+      E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    }
+
+    /* posisi di bidang orbit (fokus di induk) */
+    const xp = a * (Math.cos(E) - e);
+    const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
+
+    /* miringkan bidang orbit, lalu putar oleh kemiringan poros induk
+       supaya bidang orbit satelit mengikuti ekuator induknya
+       (seperti Bulan yang mengorbit di bidang ekliptika, dan
+        satelit Jupiter yang mengorbit di bidang ekuator Jupiter) */
+    const incl = b.incl || 0;
+    const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
+    const ci = Math.cos(incl), si = Math.sin(incl);
+    let ox = xp;
+    let oy = yp * si;
+    let oz = yp * ci;
+    if (tilt) {
+      const ct = Math.cos(tilt), st = Math.sin(tilt);
+      const ny = oy * ct - ox * st;
+      const nx2 = oy * st + ox * ct;
+      oy = ny; ox = nx2;
+    }
+
     return {
-      x: hostPos.x + mk.x * k,
-      y: hostPos.y + mk.z * k,      /* z ekliptika -> y scene (atas) */
-      z: hostPos.z - mk.y * k,      /* y ekliptika -> -z scene */
+      x: hostPos.x + ox * k,
+      y: hostPos.y + oy * k,
+      z: hostPos.z + oz * k,
     };
   }
   const key = EPHEMERIS_KEY[b.key];
@@ -655,7 +744,34 @@ function applyPositions() {
       continue;
     }
     if (b.isMoon) {
-      if (b._local) b.group.position.copy(b._local);
+      /* ------------------------------------------------------------------
+         BUG YANG DIPERBAIKI DI SINI:
+         Sebelumnya baris ini memakai `b._local` — sisa kode dari masa
+         sebelum ephemeris. Sejak computePositions() diubah memakai
+         ephemerisPos(), `_local` tidak pernah diisi lagi, jadi Bulan
+         TIDAK PERNAH dipindahkan ke posisi nyatanya: ia tetap di titik
+         asal relatif induknya. Akibatnya kamera (yang memakai absPos yang
+         benar) terlihat "tidak mengikuti Bulan" — selisihnya persis satu
+         radius orbit (60 unit untuk Bulan).
+
+         Grup bulan adalah anak dari moonPlane induknya, yang dirotasi oleh
+         axialTilt induk. Jadi offset lokal harus dibalik-putar dulu supaya
+         posisi RENDER-nya sama dengan absPos yang dipakai kamera.
+         ------------------------------------------------------------------ */
+      if (b.absPos && b.host && b.host.absPos) {
+        /* offset bulan terhadap induk, dalam kerangka scene */
+        const dx = b.absPos.x - b.host.absPos.x;
+        const dy = b.absPos.y - b.host.absPos.y;
+        const dz = b.absPos.z - b.host.absPos.z;
+
+        /* balik-putar oleh kemiringan poros induk (moonPlane.rotation.z) */
+        const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
+        const ct = Math.cos(tilt), st = Math.sin(tilt);
+        const lx = dx * ct + dy * st;
+        const ly = -dx * st + dy * ct;
+
+        b.group.position.set(lx, ly, dz);
+      }
       if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
       continue;
     }
