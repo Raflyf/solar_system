@@ -58,10 +58,16 @@ html, body {
 .title-panel {
   top: 18px; left: 18px;
   padding: 12px 18px 11px;
+  /* lebar dibatasi supaya tidak melebar menabrak toolbar / panel lain */
+  max-width: min(430px, calc(100vw - 36px));
 }
 .title-main { font-size: 19px; font-weight: 700; letter-spacing: 3.5px; }
 .title-main span { color: var(--accent); }
-.title-sub { font-size: 11px; color: var(--muted); letter-spacing: 0.6px; margin-top: 2px; }
+.title-sub {
+  font-size: 11px; color: var(--muted); letter-spacing: 0.6px; margin-top: 2px;
+  /* bungkus ke baris berikutnya, jangan meluber keluar panel */
+  overflow-wrap: anywhere;
+}
 
 /* ---------------- tombol ---------------- */
 .btn {
@@ -104,6 +110,14 @@ html, body {
   max-height: calc(100vh - 210px);
   display: flex; flex-direction: column;
   transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .3s;
+}
+
+/* Di desktop lebar sedang judul bisa lebih tinggi dari 74 px; beri jarak
+   supaya sidebar tidak menutupi subjudul (terbukti di uji 1280x800:
+   panel judul 100 px tinggi sementara sidebar mulai di 92 px). */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .sidebar { top: 122px; max-height: calc(100vh - 240px); }
+  .info-panel { top: 122px; }
 }
 .sidebar.hidden { transform: translateX(-260px); opacity: 0; pointer-events: none; }
 .sidebar-head {
@@ -4441,7 +4455,7 @@ function buildStarField() {
   const lgeo = new THREE.BufferGeometry();
   lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lpos), 3));
   const lmat = new THREE.LineBasicMaterial({
-    color: 0x6a94d4, transparent: true, opacity: 0.30,
+    color: 0x6a94d4, transparent: true, opacity: 0.20,
     depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const clines = new THREE.LineSegments(lgeo, lmat);
