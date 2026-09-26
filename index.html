@@ -2305,13 +2305,25 @@ function computePositions(days, elapsed) {
       const e = b.e;
       const bAxis = a * Math.sqrt(1 - e * e);
       const c = a * e;
+      /* _localRaw = offset di bidang orbit (dipakai untuk RENDER).
+         Bulan ditempel di dalam moonPlane yang sudah dirotasi axialTilt
+         induknya, jadi nilai ini TIDAK boleh ikut diputar. */
       b._local = b._local || new THREE.Vector3();
       b._local.set(Math.cos(th) * a - c, 0, Math.sin(th) * bAxis);
       b._local.applyAxisAngle(AXIS_X, b.incl);
+
+      /* _localWorld = offset yang sudah termasuk kemiringan poros induk
+         (dipakai untuk ABSOLUT: kamera, label, penanda).
+         Dipisah supaya tidak terjadi rotasi ganda. */
+      b._localWorld = b._localWorld || new THREE.Vector3();
+      b._localWorld.copy(b._local);
+      const hostTilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
+      if (hostTilt) b._localWorld.applyAxisAngle(AXIS_Z, hostTilt);
+
       b._spinAngle = b.tidallyLocked ? (-th - Math.PI / 2) : ((days / b.rotationDays) * Math.PI * 2);
-      /* posisi absolut bulan = posisi induk + offset lokal */
+      /* posisi absolut bulan = posisi induk + offset yang sudah miring */
       b.absPos = b.absPos || new THREE.Vector3();
-      if (b.host && b.host.absPos) b.absPos.copy(b.host.absPos).add(b._local);
+      if (b.host && b.host.absPos) b.absPos.copy(b.host.absPos).add(b._localWorld);
       continue;
     }
 
@@ -2328,6 +2340,7 @@ function computePositions(days, elapsed) {
 }
 
 const AXIS_X = new THREE.Vector3(1, 0, 0);
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
 
 function applyPositions() {
   const nx = -rebaseOffset.x, ny = -rebaseOffset.y, nz = -rebaseOffset.z;
