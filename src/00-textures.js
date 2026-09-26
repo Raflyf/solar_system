@@ -1,6 +1,7 @@
 /* =======================================================================
-   Tata Surya 3D — Mesin tekstur prosedural (tanpa file eksternal)
+   Tata Surya 3D — Mesin tekstur prosedural HD (tanpa file eksternal)
    Semua tekstur planet dibuat langsung di canvas saat runtime.
+   Resolusi: 2048x1024 untuk planet/satelit besar, 4096x2048 untuk Bumi/Matahari
    ======================================================================= */
 
 /* ---------- util matematika ---------- */
@@ -82,8 +83,17 @@ function makeCanvas(w, h) {
 
 const OUT = [0, 0, 0, 255];
 
-function buildSurfaceTexture(cfg) {
-  const w = cfg.w, h = cfg.h, seed = cfg.seed;
+function buildSurfaceTexture(cfg, bodyName) {
+  /* Tingkatkan resolusi procedural HD untuk planet besar/luar */
+  let w = cfg.w || 2048;
+  let h = cfg.h || 1024;
+  if (['uranus', 'neptune', 'triton', 'titania'].includes(bodyName?.toLowerCase())) {
+    w = 2048; h = 1024;
+  }
+  if (['earth', 'sun', 'jupiter', 'saturn', 'mars', 'venus', 'mercury'].includes(bodyName?.toLowerCase())) {
+    w = 4096; h = 2048;
+  }
+  const seed = cfg.seed;
   const P = cfg.period || 12;
   const canvas = makeCanvas(w, h);
   const ctx = canvas.getContext('2d');

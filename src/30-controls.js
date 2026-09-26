@@ -415,10 +415,15 @@ function updateCamera(dt) {
     accel.addScaledVector(fwd, az);
     accel.addScaledVector(_right, ax);
     accel.addScaledVector(upLocal, ay);
-    if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 5.0);
+    if (accel.lengthSq() > 0) accel.normalize().multiplyScalar(speed * 8.0);
 
     cs.vel.addScaledVector(accel, dt);
-    cs.vel.multiplyScalar(Math.exp(-dt * 3.0));
+    
+    // Perbaikan licin: tambahkan friksi/damping lebih kuat
+    // Jika tidak ada input arah gerak (accel = 0), rem lebih keras
+    const damping = accel.lengthSq() > 0 ? 5.0 : 12.0;
+    cs.vel.multiplyScalar(Math.exp(-dt * damping));
+    
     const vmax = speed * 10;
     if (cs.vel.length() > vmax) cs.vel.setLength(vmax);
     cs.pos.addScaledVector(cs.vel, dt);
