@@ -52,18 +52,21 @@ const TEMPORAL_BADGE = {
 
     let planetTxt;
     if (yrFromJ2000 >= -200 && yrFromJ2000 <= 50) {
-      planetTxt = 'Planet: dalam rentang terbaik (JPL Keplerian 1800–2050)';
+      /* angka dari uji langsung vs JPL Horizons (tools/compare_horizons.js):
+         1800-2050 selisih sudut < 0,2° (terburuk Saturnus ~0,15°) */
+      planetTxt = 'Planet: akurasi < 0,2° (JPL Keplerian, 1800–2050)';
     } else if (yrFromJ2000 > 50) {
       planetTxt = `Planet: ekstrapolasi ${yrFromJ2000.toFixed(0)} thn setelah 2050`;
     } else {
       planetTxt = `Planet: ekstrapolasi ${absYr.toFixed(0)} thn sebelum 1800`;
     }
 
-    /* error Bulan membesar ~0,5"/tahun dari J2000 (perbandingan terhadap
-       DE441 pada 2026 memberi ~22", konsisten dengan laju ini) */
+    /* error Bulan dari uji langsung vs JPL Horizons (tools/compare_moon.js):
+       3–13 detik busur (3–24 km) untuk 2024–2040; membesar menjauh dari
+       J2000. Angka konservatif 10" + 0,5"/tahun. */
     const moonErr = 10 + 0.5 * absYr;
     const moonTxt = absYr <= 50
-      ? `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" (deret Meeus 60 suku)`
+      ? `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" (terverifikasi 3–13" vs JPL)`
       : `Bulan: akurasi ≈ ${moonErr.toFixed(0)}" — makin jauh dari J2000, makin kasar`;
 
     const starTxt = 'Bintang: HYG v3.8 + proper motion nyata';
