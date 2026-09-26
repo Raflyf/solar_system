@@ -250,12 +250,35 @@ function buildUI() {
   if ($('starCount')) {
     $('starCount').textContent = '(' + (STARS_LABELED.length + STARS_OTHER.length) + ')';
   }
-  $('btnHelp').addEventListener('click', () => $('helpPanel').classList.toggle('show'));
-  $('btnHelpClose').addEventListener('click', () => $('helpPanel').classList.remove('show'));
+  /* ---- backdrop & laci (HP) ---- */
+  const backdrop = $('uiBackdrop');
+  const syncBackdrop = () => {
+    const sb = $('sidebar');
+    const dp = $('datePanel');
+    const anyOpen = (sb && sb.classList.contains('open')) ||
+                    $('helpPanel').classList.contains('show') ||
+                    (dp && !dp.classList.contains('hidden')) ||
+                    ($('earthviewModal') && !$('earthviewModal').classList.contains('hidden'));
+    if (backdrop) backdrop.classList.toggle('show', !!anyOpen);
+  };
+  window.__syncBackdrop = syncBackdrop;   /* dipakai handler lain */
+  if (backdrop) backdrop.addEventListener('click', () => {
+    $('sidebar').classList.remove('open');
+    $('helpPanel').classList.remove('show');
+    if ($('datePanel')) $('datePanel').classList.add('hidden');
+    if (typeof datePanelState !== 'undefined') datePanelState.open = false;
+    if ($('earthviewModal')) $('earthviewModal').classList.add('hidden');
+    if (typeof EARTHVIEW_UI !== 'undefined' && EARTHVIEW_UI.modal) EARTHVIEW_UI.hide();
+    syncBackdrop();
+  });
+
+  $('btnHelp').addEventListener('click', () => { $('helpPanel').classList.toggle('show'); syncBackdrop(); });
+  $('btnHelpClose').addEventListener('click', () => { $('helpPanel').classList.remove('show'); syncBackdrop(); });
   $('btnSidebar').addEventListener('click', () => {
     const sb = $('sidebar');
     if (window.matchMedia('(max-width: 980px)').matches) sb.classList.remove('open');
     else sb.classList.toggle('hidden');
+    syncBackdrop();
   });
   /* Tombol "Daftar" di toolbar: di HP membuka laci, di desktop
      menyembunyikan/menampilkan bilah samping. */
@@ -264,7 +287,12 @@ function buildUI() {
     const sb = $('sidebar');
     if (window.matchMedia('(max-width: 980px)').matches) sb.classList.toggle('open');
     else sb.classList.toggle('hidden');
+    syncBackdrop();
   });
+
+  /* tombol lepas fokus (HP: pengganti Esc) */
+  const exitFocusBtn = $('btnExitFocus');
+  if (exitFocusBtn) exitFocusBtn.addEventListener('click', () => focusBody(null));
   $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
 
   $('btnFocus').addEventListener('click', () => {
@@ -445,6 +473,53 @@ function buildUI() {
     }, { passive: false });
   }
 
+  /* ======================================================================
+     PENGUKURAN PITA OTOMATIS (bukan angka tebakan)
+     ----------------------------------------------------------------------
+     Tinggi bilah waktu berbeda di tiap perangkat (teks tanggal bisa
+     membungkus, safe-area berbeda, ukuran font sistem). Daripada menebak
+     nilai tetap — yang berkali-kali menyebabkan tumpang tindih — kita
+     UKUR elemennya dan set variabel CSS --band-time.
+
+     PENTING: pengukuran harus terjadi SETELAH layout stabil. Saat
+     dipanggil terlalu awal, tinggi yang terbaca masih salah (terbukti:
+     gap toolbar vs bilah waktu = -15 px). Karena itu:
+       1. ukur ulang setelah frame berikutnya (requestAnimationFrame)
+       2. ResizeObserver memantau bilah waktu & toolbar — kalau tingginya
+          berubah (teks membungkus, orientasi berubah, font dimuat),
+          nilai pita langsung diperbarui.
+     ====================================================================== */
+  const measureBands = () => {
+    const tb = $('timeBar');
+    const tools = $('topButtons');
+    if (!tb) return;
+    const h = Math.ceil(tb.getBoundingClientRect().height);
+    if (h > 0) {
+      /* +24 px: jarak visual yang lega antara toolbar ikon dan bilah waktu
+         (uji 390px: dengan +14 px gap hanya 4 px — terasa menempel) */
+      document.documentElement.style.setProperty('--band-time', (h + 24) + 'px');
+    }
+    if (tools) {
+      const th = Math.ceil(tools.getBoundingClientRect().height);
+      if (th > 0) document.documentElement.style.setProperty('--band-tools', (th + 10) + 'px');
+    }
+  };
+  window.__measureBands = measureBands;
+  /* ukur sekarang, lagi setelah frame berikutnya, dan lagi setelah
+     font/aset selesai dimuat */
+  measureBands();
+  requestAnimationFrame(() => { measureBands(); requestAnimationFrame(measureBands); });
+  setTimeout(measureBands, 400);
+  window.addEventListener('load', () => setTimeout(measureBands, 60));
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(() => measureBands());
+    const tbEl = $('timeBar'), toolsEl = $('topButtons');
+    if (tbEl) ro.observe(tbEl);
+    if (toolsEl) ro.observe(toolsEl);
+  }
+  window.addEventListener('resize', () => setTimeout(measureBands, 60));
+  window.addEventListener('orientationchange', () => setTimeout(measureBands, 220));
+
   /* tombol kualitas tekstur */
   $('btnQuality').addEventListener('click', () => {
     const next = app.qualityTier === 'hi' ? 'lo' : 'hi';
@@ -589,6 +664,8 @@ function showInfo(body) {
   currentInfoBody = body;
   $('infoName').textContent = body.name;
   $('infoType').textContent = body.isMoon ? (TYPE_LABEL.moon + ' — ' + body.host.name) : TYPE_LABEL[body.type];
+  const exitBtn = $('btnExitFocus');
+  if (exitBtn) exitBtn.classList.toggle('show', !!cameraState.target);
   const t = $('infoTable');
   t.innerHTML = '';
 
@@ -627,6 +704,8 @@ function showInfo(body) {
 
 function hideInfo() {
   $('infoPanel').classList.remove('show');
+  const exitBtn = $('btnExitFocus');
+  if (exitBtn) exitBtn.classList.remove('show');
   currentInfoBody = null;
   updateBodyListActive();
 }

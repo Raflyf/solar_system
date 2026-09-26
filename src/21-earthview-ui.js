@@ -92,10 +92,12 @@ const EARTHVIEW_UI = {
   toggleModal() {
     this.modal.classList.toggle('hidden');
     this.syncButtons();
+    if (window.__syncBackdrop) window.__syncBackdrop();
   },
 
   hide() {
     this.modal.classList.add('hidden');
+    if (window.__syncBackdrop) window.__syncBackdrop();
   },
 
   applyAndEnter() {

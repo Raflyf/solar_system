@@ -48,7 +48,7 @@ const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#05070d">
 <title>Tata Surya 3D — Skala 1:1 dengan Tekstur Asli NASA</title>
 <meta name="description" content="Tata surya 3D skala 1:1 dengan tekstur permukaan asli NASA/USGS. Zoom sampai permukaan planet, simulasi waktu dari detik hingga abad.">
