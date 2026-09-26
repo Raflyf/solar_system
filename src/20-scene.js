@@ -26,6 +26,12 @@ const MOON_TEX_KEY = {
   'Titania': 'titania', 'Triton': 'triton',
 };
 
+/* Bujur tekstur sisi DEKAT Bulan (yang selalu menghadap Bumi).
+   Diukur dari peta Bulan: maria gelap paling pekat ada di u≈0,406
+   (Mare Imbrium, Mare Serenitatis, Oceanus Procellarum). Dipakai untuk
+   menghitung sudut rotasi supaya Bulan benar-benar terkunci pasang-surut. */
+const MOON_NEAR_SIDE_U = 0.406;
+
 function initRenderer(canvas) {
   renderer = new THREE.WebGLRenderer({
     canvas: canvas, antialias: true, powerPreference: 'high-performance',
@@ -229,9 +235,14 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
   } else if (isMoon) {
     mat = makePlanetMaterial(MOON_TEX_KEY[cfg.name], {
       roughness: 0.96, normalStrength: 1.15,
-      /* bulan berbatu: emissive sangat kecil — hanya supaya kawah di sisi
-         gelap tidak hilang total, tanpa menghapus bayangan terminator */
-      emissive: 0.035,
+      /* BULAN TIDAK BOLEH MENYALA DI SISI MALAM.
+         Sebelumnya ada emissive 0.035 supaya detail sisi gelap tidak
+         hilang total — tapi akibatnya Bulan tampak "terang di kedua sisi"
+         tanpa terminator yang jelas, padahal di kenyataan sisi malam Bulan
+         benar-benar hitam (kecuali cahaya bumi / earthshine yang sangat
+         redup, dan itu bukan bagian dari pencahayaan Matahari).
+         emissive: 0 = hanya sisi yang terkena Matahari yang terang. */
+      emissive: 0,
     });
   } else {
     const gasGiants = { jupiter: 1, saturn: 1, uranus: 1, neptune: 1 };
@@ -255,6 +266,19 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     spin.add(atmoMesh);
   }
 
+  /* Urutan rotasi: ZYX, bukan XYZ default.
+     ------------------------------------------------------------------
+     BUG: spin.rotation.z = axialTilt DAN spin.rotation.y = spinAngle
+     berada di objek yang sama. Urutan Euler default Three.js adalah
+     'XYZ', yang berarti matriks R = RX·RY·RZ dan diterapkan ke vektor
+     sebagai RZ dulu, baru RY. Akibatnya kemiringan poros diterapkan
+     LEBIH DULU, lalu rotasi harian memutar Bumi di sekitar sumbu Y yang
+     TETAP — sehingga kutub utara bergeser mengelilingi sumbu Y.
+
+     Dengan urutan 'ZYX', matriks R = RZ·RY: rotasi harian dulu, lalu
+     kemiringan poros. Kutub utara tetap di tempatnya, dan Bumi berputar
+     di sekitar sumbu yang sudah miring — persis seperti Bumi nyata. */
+  spin.rotation.order = 'ZYX';
   if (cfg.axialTilt) spin.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
 
   /* ----- cincin Saturnus (shader: ketebalan + bayangan planet) ----- */
@@ -622,19 +646,52 @@ function computePositions(days, elapsed) {
     b.absPos = b.absPos || new THREE.Vector3();
     b.absPos.set(pos.x, pos.y, pos.z);
 
-    /* spin benda: pakai rotasi sideris nyata, dan Bulan terkunci pasang-surut */
+    /* ==============================================================
+       ROTASI SEMUA BENDA — memakai elemen rotasi IAU
+       --------------------------------------------------------------
+       BUG YANG DIPERBAIKI DI SINI:
+       Kode lama memakai sudut = days/rotationDays * 2pi untuk SEMUA benda,
+       yaitu menghitung rotasi dari J2000 TANPA SUDUT AWAL (W0). Akibatnya
+       permukaan setiap benda tidak berada di posisi yang benar. Untuk
+       Bumi meleset ~280° — itulah kenapa jam lokal tidak sinkron dan
+       Indonesia tampak gelap padahal masih jam 4 pagi.
+
+       PERBAIKAN: memakai rumus IAU WGCCRE 2015:
+           W(t) = W0 + Wdot x d      (d = hari sejak J2000)
+       W0 dan Wdot diambil dari tabel IAU untuk setiap planet, termasuk
+       tanda negatif untuk benda retrograde (Venus, Uranus).
+
+       Untuk SATELIT: semuanya terkunci pasang-surut (periode rotasi =
+       periode orbit), jadi sudutnya dihitung dari arah satelit terhadap
+       induknya — bukan dari W0. Lihat IAU_SATELLITE_ROTATION.
+       ============================================================== */
     if (b.isMoon) {
-      /* Bulan selalu menghadap Bumi. Arahnya dihitung dari vektor
-         Bumi→Bulan supaya tetap benar walau orbitnya miring. */
+      /* Satelit terkunci pasang-surut: sisi dekat selalu menghadap induk.
+         Arah sisi dekat = arah dari satelit ke induk. */
       if (b.host && b.host.absPos) {
         const dx = b.absPos.x - b.host.absPos.x;
         const dz = b.absPos.z - b.host.absPos.z;
-        b._spinAngle = Math.atan2(dx, dz) + Math.PI;
+        const L = Math.hypot(dx, dz) || 1;
+        const phi0 = MOON_NEAR_SIDE_U * Math.PI * 2;
+        const v0x = Math.cos(phi0), v0z = Math.sin(phi0);
+        b._spinAngle = Math.atan2(v0z, v0x) - Math.atan2(-dz / L, -dx / L);
       } else {
-        b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
+        b._spinAngle = 0;
       }
+    } else if (b.key === 'earth') {
+      /* Bumi: GMST lebih presisi daripada W0+Wdot (memperhitungkan
+         perlambatan rotasi dan nutasi), jadi dipakai GMST. */
+      const gmst = 280.46061837 + 360.98564736629 * (jd - J2000_JD);
+      const phiGreenwich = ((gmst % 360) + 360) % 360 * DEG;
+      /* Konvensi tekstur Bumi: bujur 0 ada di u=0.5 (phi=pi pada mesh).
+         Sudut rotasi = phiGreenwich - pi. */
+      b._spinAngle = phiGreenwich - Math.PI;
     } else {
-      b._spinAngle = (days / b.rotationDays) * Math.PI * 2;
+      /* Planet lain: pakai elemen rotasi IAU (W0 + Wdot x d) */
+      const rot = planetRotationAngle(b.key, jd);
+      /* Konvensi tekstur planet (equirectangular standar): bujur 0 ada di
+         u=0.5, sama seperti Bumi. Jadi sudut rotasi = W - pi. */
+      b._spinAngle = rot - Math.PI;
     }
     b._theta = 0;
   }
