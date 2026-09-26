@@ -66,7 +66,22 @@
           <span class="time-speed" id="speedLabel">1 dtk = 1 hari</span>
         </div>
         <input type="range" id="speedSlider" min="0" max="11" step="1" value="5">
-        <div class="time-date" id="dateLabel">—</div>
+        <div class="time-date">
+          <span id="dateLabel">—</span>
+          <select id="tzSelect" title="Zona waktu tampilan jam">
+            <option value="420">WIB (UTC+7)</option>
+            <option value="480">WITA (UTC+8)</option>
+            <option value="540">WIT (UTC+9)</option>
+            <option value="0">UTC</option>
+            <option value="60">UTC+1 (London/Paris)</option>
+            <option value="330">UTC+5:30 (India)</option>
+            <option value="-180">UTC-3 (Brasil)</option>
+            <option value="-300">UTC-5 (New York)</option>
+            <option value="-480">UTC-8 (Los Angeles)</option>
+            <option value="720">UTC+12 (Selandia Baru)</option>
+            <option value="device">Zona perangkat</option>
+          </select>
+        </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
     </div>

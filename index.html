@@ -420,6 +420,45 @@ kbd {
   font-size: 10px;
 }
 
+/* =======================================================================
+   PEMILIH ZONA WAKTU
+   ======================================================================= */
+.time-date {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#tzSelect {
+  background: rgba(255, 255, 255, 0.07);
+  color: #dfe7f2;
+  border: 1px solid rgba(160, 190, 235, 0.28);
+  border-radius: 6px;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+#tzSelect:hover {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(160, 190, 235, 0.5);
+}
+
+#tzSelect:focus {
+  border-color: #7aa7e0;
+  box-shadow: 0 0 0 2px rgba(122, 167, 224, 0.22);
+}
+
+#tzSelect option {
+  background: #10161f;
+  color: #dfe7f2;
+}
+
 /* keterangan langit */
 .sky-info {
   margin-top: 8px;
@@ -508,7 +547,22 @@ kbd {
           <span class="time-speed" id="speedLabel">1 dtk = 1 hari</span>
         </div>
         <input type="range" id="speedSlider" min="0" max="11" step="1" value="5">
-        <div class="time-date" id="dateLabel">—</div>
+        <div class="time-date">
+          <span id="dateLabel">—</span>
+          <select id="tzSelect" title="Zona waktu tampilan jam">
+            <option value="420">WIB (UTC+7)</option>
+            <option value="480">WITA (UTC+8)</option>
+            <option value="540">WIT (UTC+9)</option>
+            <option value="0">UTC</option>
+            <option value="60">UTC+1 (London/Paris)</option>
+            <option value="330">UTC+5:30 (India)</option>
+            <option value="-180">UTC-3 (Brasil)</option>
+            <option value="-300">UTC-5 (New York)</option>
+            <option value="-480">UTC-8 (Los Angeles)</option>
+            <option value="720">UTC+12 (Selandia Baru)</option>
+            <option value="device">Zona perangkat</option>
+          </select>
+        </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
     </div>
@@ -3566,11 +3620,20 @@ const MOON_TEX_KEY = {
   'Titania': 'titania', 'Triton': 'triton',
 };
 
-/* Bujur tekstur sisi DEKAT Bulan (yang selalu menghadap Bumi).
-   Diukur dari peta Bulan: maria gelap paling pekat ada di u≈0,406
-   (Mare Imbrium, Mare Serenitatis, Oceanus Procellarum). Dipakai untuk
-   menghitung sudut rotasi supaya Bulan benar-benar terkunci pasang-surut. */
-const MOON_NEAR_SIDE_U = 0.406;
+/* Bujur tekstur titik sub-Bumi (pusat sisi DEKAT Bulan yang selalu
+   menghadap Bumi).
+   ----------------------------------------------------------------------
+   NILAI INI PERNAH SALAH (0,406) dan menyebabkan Bulan menampilkan sisi
+   yang salah — sebagian sisi jauh yang tanpa maria ikut terlihat.
+
+   Cara mengukur ulang dengan benar: peta Bulan standar (equirectangular)
+   menempatkan titik sub-Bumi (bujur 0, lintang 0) di TENGAH gambar.
+   Diukur dari citra: centroid kegelapan (maria) = u = 0,5009, yang
+   memang sesuai konvensi tengah-gambar.
+
+   Kesalahan lama: 0,406 -> meleset (0,406-0,5) x 360 = -33,8 derajat.
+   ---------------------------------------------------------------------- */
+const MOON_NEAR_SIDE_U = 0.5009;
 
 function initRenderer(canvas) {
   renderer = new THREE.WebGLRenderer({
@@ -3796,13 +3859,38 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     tiltGroup.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
   }
 
-  /* bidang orbit bulan: mengikuti ekuator induk (di kerangka tiltGroup,
-     sehingga otomatis sejajar dengan poros induk yang benar) */
+  /* ======================================================================
+     BIDANG ORBIT SATELIT
+     ----------------------------------------------------------------------
+     BUG YANG DIPERBAIKI:
+     moonPlane dulu disalin orientasi poros INDUK untuk SEMUA satelit.
+     Untuk Bulan Bumi itu SALAH BESAR: orbit Bulan hampir sejajar bidang
+     EKLIPTIKA (kemiringan hanya 5,145 derajat), BUKAN bidang ekuator
+     Bumi (23,44 derajat). Akibatnya sisi dekat Bulan meleset ~23 derajat
+     dari Bumi, sehingga yang terlihat bukan permukaan yang seharusnya.
+
+     ATURAN NYATA:
+       - Bulan Bumi     : bidang orbit ~ EKLIPTIKA (miring 5,145 derajat)
+       - Satelit Mars   : bidang orbit ~ ekuator Mars (miring 1-2 derajat)
+       - Satelit Jupiter: bidang orbit ~ ekuator Jupiter (miring 0-0,5)
+       - Satelit Saturnus: bidang orbit ~ ekuator Saturnus (kecuali Iapetus)
+       - Satelit Uranus : bidang orbit ~ ekuator Uranus (miring 97,77!)
+       - Triton         : bidang orbit MIRING 157 derajat (retrograde)
+
+     Jadi: Bulan Bumi memakai bidang ekliptika, satelit lain memakai
+     ekuator induknya. Ini yang membuat penampakan Bulan benar.
+     ====================================================================== */
   const moonPlane = new THREE.Group();
   group.add(moonPlane);
-  /* salin orientasi poros ke moonPlane supaya bidang orbit satelit
-     mengikuti ekuator induknya */
-  if (!isMoon && cfg.key) {
+
+  if (isMoon && cfg.name === 'Bulan') {
+    /* Bulan Bumi: bidang orbit mengikuti EKLIPTIKA.
+       Kemiringan 5,145 derajat terhadap ekliptika diterapkan di
+       moonLocalOffset (lewat cfg.incl), jadi di sini moonPlane cukup
+       TANPA rotasi poros induk — bidang dasarnya sudah ekliptika
+       (bidang XZ scene). */
+  } else if (!isMoon && cfg.key) {
+    /* planet: bidang orbit satelitnya mengikuti ekuator planet */
     const q = poleQuaternion(cfg.key);
     if (q) moonPlane.quaternion.copy(q);
   } else if (cfg.axialTilt) {
@@ -4252,8 +4340,25 @@ function computePositions(days, elapsed) {
         const dx = b.absPos.x - b.host.absPos.x;
         const dz = b.absPos.z - b.host.absPos.z;
         const L = Math.hypot(dx, dz) || 1;
+
+        /* --------------------------------------------------------------
+           ARAH SISI DEKAT BULAN — KONVENSI UV BOLA THREE.JS
+           --------------------------------------------------------------
+           BUG YANG DIPERBAIKI: kode sebelumnya memakai
+               v0 = ( cos(phi0), sin(phi0) )
+           padahal konvensi SphereGeometry Three.js memetakan u ke arah
+               ( -cos(phi0), 0, sin(phi0) )
+           Tanda X-nya BERLAWANAN, sehingga yang dihitung adalah arah
+           sisi JAUH, bukan sisi dekat. Akibatnya Bulan menampilkan
+           permukaan tanpa maria (sisi jauh) — persis keluhan pengguna.
+
+           Terverifikasi: u=0.5 -> arah +X pada konvensi Three.js,
+           sedangkan rumus lama memberi -X. Selisih 180 derajat.
+           -------------------------------------------------------------- */
         const phi0 = MOON_NEAR_SIDE_U * Math.PI * 2;
-        const v0x = Math.cos(phi0), v0z = Math.sin(phi0);
+        const v0x = -Math.cos(phi0);      /* tanda minus: konvensi Three.js */
+        const v0z = Math.sin(phi0);
+
         let sudut = Math.atan2(v0z, v0x) - Math.atan2(-dz / L, -dx / L);
 
         /* librasi: hanya untuk Bulan Bumi (data Meeus bab 53) */
@@ -4270,13 +4375,42 @@ function computePositions(days, elapsed) {
         b._libLat = 0;
       }
     } else if (b.key === 'earth') {
-      /* Bumi: GMST lebih presisi daripada W0+Wdot (memperhitungkan
-         perlambatan rotasi dan nutasi), jadi dipakai GMST. */
+      /* ==============================================================
+         ROTASI BUMI — memakai GMST
+         --------------------------------------------------------------
+         BUG YANG DIPERBAIKI: kode sebelumnya memakai R = GMST - pi,
+         MELESET 180 DERAJAT. Akibatnya bujur subsolar (titik di Bumi
+         yang tepat di bawah Matahari) berada di sisi yang berlawanan:
+         pada 26 Sep 2026 22:15 WIB aplikasi menempatkan titik subsolar
+         di 128,75E (Indonesia!) padahal seharusnya -50,93 (Samudra
+         Atlantik). Itulah kenapa Indonesia tampak siang padahal malam.
+
+         TURUNAN YANG BENAR:
+         - Konvensi tekstur Bumi (diukur dari citra): bujur geografis
+           lambda berada di u = 0.5 + lambda/360.
+         - Konvensi UV bola Three.js: u memetakan ke arah
+           (-cos(phi), 0, sin(phi)) dengan phi = u x 2pi.
+         - Jadi bujur lambda berada di arah (cos lambda, 0, -sin lambda):
+           pada lambda = 0 (Greenwich) arahnya +X.
+         - Kuaternion poros Bumi memutar sumbu Y ke kutub nyata; untuk
+           Bumi rotasinya mengelilingi sumbu X, sehingga sumbu X LOKAL
+           tetap sama dengan sumbu X scene (arah titik Aries).
+         - GMST = 0 berarti meridian Greenwich tepat di titik Aries.
+         - Maka rotasi mesh yang benar adalah R = GMST.
+
+         Rotasi.y = R memutar sudut vektor (x,z) sebesar -R, sehingga
+         titik dengan bujur lambda berada di sudut (lambda - R), dan
+         titik subsolar (yang seharusnya berada di arah Matahari)
+         menjadi lambda_sub = R - RA_matahari... yang setelah disubstitusi
+         R = GMST menghasilkan lambda_sub = GMST - RA_matahari. Inilah
+         rumus baku bujur subsolar. Terverifikasi: pada 15:15 UTC
+         26 Sep 2026 memberi -50,93 derajat, sama dengan perhitungan
+         independen dari elemen orbit.
+         ============================================================== */
       const gmst = 280.46061837 + 360.98564736629 * (jd - J2000_JD);
-      const phiGreenwich = ((gmst % 360) + 360) % 360 * DEG;
-      /* Konvensi tekstur Bumi: bujur 0 ada di u=0.5 (phi=pi pada mesh).
-         Sudut rotasi = phiGreenwich - pi. */
-      b._spinAngle = phiGreenwich - Math.PI;
+      const gmstDeg = ((gmst % 360) + 360) % 360;
+      b._spinAngle = gmstDeg * DEG;
+      b._gmstDeg = gmstDeg;      /* dipakai untuk offset awan */
     } else {
       /* Planet lain: pakai elemen rotasi IAU (W0 + Wdot x d) */
       const rot = planetRotationAngle(b.key, jd);
@@ -4456,12 +4590,17 @@ function moonLocalOffset(b, jd) {
   return { x: x1, y: y1, z: z1 };
 }
 
-/* Offset satelit dalam kerangka SCENE (setelah orientasi poros induk).
+/* Offset satelit dalam kerangka SCENE (setelah orientasi bidang orbit).
    Dipakai ephemerisPos() untuk posisi absolut.
-   Sejak hierarki tiga tingkat, moonPlane induk memakai KUATERNION
-   (arah kutub nyata), jadi konversinya memakai kuaternion itu. */
+   ----------------------------------------------------------------------
+   PENTING: Bulan Bumi TIDAK memakai orientasi poros Bumi, karena
+   orbitnya sejajar EKLIPTIKA (miring 5,145 derajat), bukan ekuator Bumi
+   (23,44 derajat). Satelit lain memakai ekuator induknya.
+   ---------------------------------------------------------------------- */
 function moonSceneOffset(b, jd) {
   const l = moonLocalOffset(b, jd);
+  /* Bulan Bumi: bidang orbit = ekliptika, tidak perlu rotasi tambahan */
+  if (b.name === 'Bulan') return l;
   if (!b.host || !b.host.key) return l;
   const q = poleQuaternion(b.host.key);
   if (!q) return l;
@@ -4564,23 +4703,26 @@ function applyPositions() {
         const dy = b.absPos.y - b.host.absPos.y;
         const dz = b.absPos.z - b.host.absPos.z;
 
-        /* Balik-putar oleh orientasi poros induk untuk mendapat offset
-           dalam kerangka LOKAL grup bulan.
+        /* Balik-putar oleh orientasi bidang orbit induk untuk mendapat
+           offset dalam kerangka LOKAL grup bulan.
            ------------------------------------------------------------------
-           Sejak hierarki tiga tingkat, moonPlane induk memakai KUATERNION
-           (bukan lagi rotation.z), karena arah kutub nyata setiap planet
-           berbeda-beda. Jadi balik-putarnya harus memakai kuaternion itu,
-           bukan rumus rotasi-z seperti sebelumnya — kalau tidak, posisi
-           render satelit akan meleset dari posisi absolutnya.
+           PENTING: Bulan Bumi tidak memakai orientasi poros Bumi, karena
+           orbitnya sejajar EKLIPTIKA (miring 5,145 derajat), bukan ekuator
+           Bumi (23,44 derajat). Kalau dipaksa memakai poros Bumi, sisi
+           dekat Bulan meleset ~23 derajat dari Bumi.
            ------------------------------------------------------------------ */
-        const q = poleQuaternion(b.host.key);
-        if (q) {
-          _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
-          b.group.position.copy(_v1);
+        if (b.name === 'Bulan') {
+          b.group.position.set(dx, dy, dz);
         } else {
-          const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
-          const ct = Math.cos(tilt), st = Math.sin(tilt);
-          b.group.position.set(dx * ct + dy * st, -dx * st + dy * ct, dz);
+          const q = poleQuaternion(b.host.key);
+          if (q) {
+            _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
+            b.group.position.copy(_v1);
+          } else {
+            const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
+            const ct = Math.cos(tilt), st = Math.sin(tilt);
+            b.group.position.set(dx * ct + dy * st, -dx * st + dy * ct, dz);
+          }
         }
       }
       if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
@@ -5455,6 +5597,20 @@ function buildUI() {
   $('btnNow').addEventListener('click', () => {
     app.days = (Date.now() - J2000) / 86400000;
   });
+
+  /* pemilih zona waktu jam */
+  const tzSel = $('tzSelect');
+  if (tzSel) {
+    /* pilih zona perangkat secara otomatis pada awal */
+    const devOffset = -new Date().getTimezoneOffset();
+    let cocok = false;
+    for (const opt of tzSel.options) {
+      if (opt.value === String(devOffset)) { tzSel.value = opt.value; cocok = true; break; }
+    }
+    if (!cocok) tzSel.value = 'device';
+    setTimezone(tzSel.value);
+    tzSel.addEventListener('change', (e) => setTimezone(e.target.value));
+  }
   const slider = $('speedSlider');
   slider.max = String(TIME_TABLE.length - 1);
   slider.value = '5';                       /* default: 1 hari per detik */
@@ -5766,13 +5922,51 @@ function updateLabels() {
 /* =======================================================================
    HUD sudut
    ======================================================================= */
+/* ---------- zona waktu tampilan jam ----------
+   Simulasi menyimpan waktu sebagai hari sejak J2000 dalam UTC. Jam yang
+   ditampilkan bisa dikonversi ke zona waktu mana pun.
+
+   PENTING: nilai ini HANYA mempengaruhi TAMPILAN jam. Rotasi Bumi dan
+   posisi Matahari selalu dihitung dari UTC, jadi fisika tidak berubah —
+   hanya angka jam yang disesuaikan. */
+let tzOffsetMinutes = 420;      /* bawaan: WIB (UTC+7) */
+
+function setTimezone(v) {
+  if (v === 'device') {
+    tzOffsetMinutes = -new Date().getTimezoneOffset();
+  } else {
+    tzOffsetMinutes = parseInt(v, 10);
+  }
+  updateHud();
+}
+
+/* nama zona untuk ditampilkan */
+function tzLabel() {
+  const m = tzOffsetMinutes;
+  const sign = m < 0 ? '-' : '+';
+  const a = Math.abs(m);
+  const h = Math.floor(a / 60), mm = a % 60;
+  return 'UTC' + sign + h + (mm ? ':' + String(mm).padStart(2, '0') : '');
+}
+
 function updateHud() {
   const hud = $('hudInfo');
   if (!hud || !app.ready) return;
-  const date = new Date(J2000 + app.days * 86400000);
-  const dstr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-  const tstr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  $('dateLabel').textContent = dstr + ' · ' + tstr;
+
+  /* waktu UTC dari simulasi, lalu digeser sesuai zona waktu tampilan */
+  const utcMs = J2000 + app.days * 86400000;
+  const shifted = new Date(utcMs + tzOffsetMinutes * 60000);
+
+  /* pakai getUTC* supaya tidak terpengaruh zona waktu perangkat */
+  const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+                 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dstr = shifted.getUTCDate() + ' ' + BULAN[shifted.getUTCMonth()] +
+               ' ' + shifted.getUTCFullYear();
+  const tstr = String(shifted.getUTCHours()).padStart(2, '0') + ':' +
+               String(shifted.getUTCMinutes()).padStart(2, '0');
+  const lbl = $('dateLabel');
+  if (lbl) lbl.textContent = dstr + ' · ' + tstr + ' ' + tzLabel();
+
   const distAU = camera.position.length() / (AU_KM / RAD);
   const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
   hud.textContent = follow + ' · ' + (distAU < 0.01 ? (distAU * 1000).toFixed(1) + ' rb SA' : distAU.toFixed(2) + ' SA') + ' dari Matahari · ' + Math.round(app.fps) + ' fps';

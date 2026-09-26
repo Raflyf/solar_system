@@ -252,6 +252,20 @@ function buildUI() {
   $('btnNow').addEventListener('click', () => {
     app.days = (Date.now() - J2000) / 86400000;
   });
+
+  /* pemilih zona waktu jam */
+  const tzSel = $('tzSelect');
+  if (tzSel) {
+    /* pilih zona perangkat secara otomatis pada awal */
+    const devOffset = -new Date().getTimezoneOffset();
+    let cocok = false;
+    for (const opt of tzSel.options) {
+      if (opt.value === String(devOffset)) { tzSel.value = opt.value; cocok = true; break; }
+    }
+    if (!cocok) tzSel.value = 'device';
+    setTimezone(tzSel.value);
+    tzSel.addEventListener('change', (e) => setTimezone(e.target.value));
+  }
   const slider = $('speedSlider');
   slider.max = String(TIME_TABLE.length - 1);
   slider.value = '5';                       /* default: 1 hari per detik */
@@ -563,13 +577,51 @@ function updateLabels() {
 /* =======================================================================
    HUD sudut
    ======================================================================= */
+/* ---------- zona waktu tampilan jam ----------
+   Simulasi menyimpan waktu sebagai hari sejak J2000 dalam UTC. Jam yang
+   ditampilkan bisa dikonversi ke zona waktu mana pun.
+
+   PENTING: nilai ini HANYA mempengaruhi TAMPILAN jam. Rotasi Bumi dan
+   posisi Matahari selalu dihitung dari UTC, jadi fisika tidak berubah —
+   hanya angka jam yang disesuaikan. */
+let tzOffsetMinutes = 420;      /* bawaan: WIB (UTC+7) */
+
+function setTimezone(v) {
+  if (v === 'device') {
+    tzOffsetMinutes = -new Date().getTimezoneOffset();
+  } else {
+    tzOffsetMinutes = parseInt(v, 10);
+  }
+  updateHud();
+}
+
+/* nama zona untuk ditampilkan */
+function tzLabel() {
+  const m = tzOffsetMinutes;
+  const sign = m < 0 ? '-' : '+';
+  const a = Math.abs(m);
+  const h = Math.floor(a / 60), mm = a % 60;
+  return 'UTC' + sign + h + (mm ? ':' + String(mm).padStart(2, '0') : '');
+}
+
 function updateHud() {
   const hud = $('hudInfo');
   if (!hud || !app.ready) return;
-  const date = new Date(J2000 + app.days * 86400000);
-  const dstr = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
-  const tstr = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
-  $('dateLabel').textContent = dstr + ' · ' + tstr;
+
+  /* waktu UTC dari simulasi, lalu digeser sesuai zona waktu tampilan */
+  const utcMs = J2000 + app.days * 86400000;
+  const shifted = new Date(utcMs + tzOffsetMinutes * 60000);
+
+  /* pakai getUTC* supaya tidak terpengaruh zona waktu perangkat */
+  const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+                 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+  const dstr = shifted.getUTCDate() + ' ' + BULAN[shifted.getUTCMonth()] +
+               ' ' + shifted.getUTCFullYear();
+  const tstr = String(shifted.getUTCHours()).padStart(2, '0') + ':' +
+               String(shifted.getUTCMinutes()).padStart(2, '0');
+  const lbl = $('dateLabel');
+  if (lbl) lbl.textContent = dstr + ' · ' + tstr + ' ' + tzLabel();
+
   const distAU = camera.position.length() / (AU_KM / RAD);
   const follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
   hud.textContent = follow + ' · ' + (distAU < 0.01 ? (distAU * 1000).toFixed(1) + ' rb SA' : distAU.toFixed(2) + ' SA') + ' dari Matahari · ' + Math.round(app.fps) + ' fps';

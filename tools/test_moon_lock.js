@@ -2,13 +2,19 @@
    Menghitung sudut antara sisi-dekat Bulan dan arah ke Bumi, untuk
    berbagai posisi orbit. Sudut harus ~0 derajat SELALU.
 
+   CATATAN: berkas ini dulu memakai MOON_NEAR_SIDE_U = 0,406 dan rumus
+   v0 = (cos, sin) yang KEDUANYA SALAH (lihat tools/test_sync.js untuk
+   turunan lengkap). Sekarang disamakan dengan nilai yang dipakai
+   aplikasi: u = 0,5009 dan konvensi UV bola Three.js.
+
    Jalankan: node tools/test_moon_lock.js */
 
-const MOON_NEAR_SIDE_U = 0.406;
+const MOON_NEAR_SIDE_U = 0.5009;
 
-/* sisi dekat dalam kerangka lokal mesh (konvensi UV bola Three.js) */
+/* sisi dekat dalam kerangka lokal mesh.
+   Konvensi SphereGeometry Three.js: u -> (-cos(phi), 0, sin(phi)). */
 const phi0 = MOON_NEAR_SIDE_U * Math.PI * 2;
-const v0x = Math.cos(phi0), v0z = Math.sin(phi0);
+const v0x = -Math.cos(phi0), v0z = Math.sin(phi0);
 
 /* sudut rotasi mesh yang BENAR */
 function sudutBenar(dx, dz) {
