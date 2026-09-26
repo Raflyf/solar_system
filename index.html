@@ -1608,6 +1608,100 @@ const TOUR = ['sun', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'ne
 <script>
 "use strict";
 /* =======================================================================
+   RESONANSI LAPLACE — Io, Europa, Ganymede
+   ----------------------------------------------------------------------
+   FENOMENA NYATA: tiga satelit terbesar Jupiter terkunci dalam resonansi
+   orbital 1:2:4. Selama Ganymede mengelilingi Jupiter satu kali, Europa
+   dua kali, dan Io empat kali.
+
+   Yang istimewa adalah HUBUNGAN SUDUT yang tetap:
+
+     phi = lambda_Io - 3 x lambda_Europa + 2 x lambda_Ganymede  ~  180 derajat
+
+   Hubungan ini tidak pernah berubah, dan akibatnya ketiga satelit TIDAK
+   PERNAH segaris pada sisi yang sama. Ditemukan Laplace pada 1770-an.
+
+   =======================================================================
+   TEMUAN PENTING — TIDAK PERLU KOREKSI BUATAN
+   ----------------------------------------------------------------------
+   Awalnya saya berencana "memaksa" resonansi ini dengan menggeser posisi
+   ketiga satelit. Ternyata TIDAK PERLU: setelah memakai elemen orbit JPL
+   yang benar (a, e, omega, M0, node), resonansi Laplace SUDAH terpenuhi
+   dengan sendirinya.
+
+   Diukur dari data JPL yang dipakai aplikasi:
+     phi pada J2000        = 180,000 derajat  (tepat target)
+     laju phi              = -0,0000005 derajat/hari  (praktis nol)
+     phi setelah 100 tahun = 179,982 derajat  (tetap terkunci)
+
+   Ini sekaligus BUKTI bahwa data JPL yang diekstrak benar: kalau ada
+   satu saja nilai M0 salah, phi tidak akan 180 derajat.
+
+   Jadi modul ini adalah ALAT VERIFIKASI, bukan alat koreksi. Memaksakan
+   koreksi tambahan justru akan merusak ketelitian yang sudah ada.
+   ======================================================================= */
+
+const LAPLACE_RESONANCE = {
+  /* laju rata-rata gerak (derajat per hari) dari JPL */
+  Io: 203.4889538,
+  Europa: 101.3747235,
+  Ganymede: 50.3176081,
+  /* sudut resonansi target (derajat) */
+  targetPhi: 180.0,
+};
+
+/* Hitung sudut resonansi Laplace pada JD tertentu.
+   phi = lambda_Io - 3 lambda_Europa + 2 lambda_Ganymede
+   Mengembalikan derajat dalam rentang 0..360. */
+function laplaceAngle(jd) {
+  const d = jd - J2000_JD;
+  const r = LAPLACE_RESONANCE;
+  const lambdaIo = (r.Io * d) % 360;
+  const lambdaEu = (r.Europa * d) % 360;
+  const lambdaGa = (r.Ganymede * d) % 360;
+  let phi = lambdaIo - 3 * lambdaEu + 2 * lambdaGa;
+  phi = phi % 360;
+  if (phi < 0) phi += 360;
+  return phi;
+}
+
+/* Simpangan sudut resonansi dari 180 derajat.
+   Nilai kecil (< ~1 derajat) berarti resonansi terkunci dengan baik. */
+function laplaceDeviation(jd) {
+  const phi = laplaceAngle(jd);
+  let dev = phi - LAPLACE_RESONANCE.targetPhi;
+  while (dev > 180) dev -= 360;
+  while (dev < -180) dev += 360;
+  return dev;
+}
+
+/* Sudut resonansi dihitung dari elemen orbit LENGKAP (node + omega + M),
+   bukan hanya dari laju rata-rata. Ini cara yang dipakai aplikasi,
+   karena posisi satelit dihitung dari elemen itu.
+   Dipakai oleh uji verifikasi untuk memastikan resonansi tetap terkunci. */
+function laplaceAngleFromElements(jd) {
+  const d = jd - J2000_JD;
+  const el = (typeof SATELLITE_ELEMENTS !== 'undefined') ? SATELLITE_ELEMENTS : null;
+  if (!el || !el.Io || !el.Europa || !el.Ganymede) return null;
+
+  /* lambda = node + omega + M + n x d  (bujur rata-rata) */
+  function lambda(nama, laju) {
+    const s = el[nama];
+    return s.node + s.omega + s.M0 + laju * d;
+  }
+  let phi = lambda('Io', LAPLACE_RESONANCE.Io)
+          - 3 * lambda('Europa', LAPLACE_RESONANCE.Europa)
+          + 2 * lambda('Ganymede', LAPLACE_RESONANCE.Ganymede);
+  phi = phi % 360;
+  if (phi < 0) phi += 360;
+  return phi;
+}
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
    EPHEMERIS AKURAT — posisi nyata benda langit
    ----------------------------------------------------------------------
    Sumber data:
@@ -2150,7 +2244,7 @@ function moonLibration(jd) {
                      T * T * T / 69699) * DEG;
   const F  = norm360(93.2720950 + 483202.0175233 * T - 0.0036539 * T * T) * DEG;
 
-  const sin = Math.sin, cos = Math.cos;
+  const sin = Math.sin;
 
   /* libration in longitude (derajat) */
   const lp =
@@ -2176,7 +2270,28 @@ function moonLibration(jd) {
     + 0.033 * sin(2 * D + F)
     - 0.027 * sin(Mp + 2 * F);
 
-  return { lonDeg: lp, latDeg: bp };
+  /* ---------------------------------------------------------------------
+     LIBRASI DIURNAL (parallactic libration)
+     ---------------------------------------------------------------------
+     Pengamat di permukaan Bumi melihat Bulan dari arah yang sedikit
+     berbeda dibanding pengamat di pusat Bumi. Karena Bumi berputar,
+     perbedaan ini berubah sepanjang hari dan menambah +-1 derajat pada
+     librasi bujur.
+
+     Besarnya bergantung pada jarak pengamat dari sumbu rotasi Bumi:
+       amplitudo = (R_bumi / jarak_bulan) dalam radian
+                 = 6371 / 384400 = 0.01657 rad = 0.949 derajat
+
+     Sudut fasenya mengikuti GMST — sama dengan sudut rotasi Bumi. Jadi
+     pengamat di meridian yang menghadap Bulan melihat librasi positif.
+
+     Ini diterapkan sebagai suku tambahan pada librasi bujur.
+     --------------------------------------------------------------------- */
+  const gmst = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360) * DEG;
+  const ampDiurnal = (RADIUS_EARTH_KM / 384400) * (180 / Math.PI);  /* derajat */
+  const diurnal = ampDiurnal * Math.sin(gmst);
+
+  return { lonDeg: lp + diurnal, latDeg: bp, diurnalDeg: diurnal };
 }
 
 /* iluminasi Bulan (0 = baru, 1 = purnama) dan fase */
@@ -2590,6 +2705,125 @@ const SATELLITE_ELEMENTS = {
   "tilt": 0.4
  }
 };
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   ORIENTASI POROS PLANET — arah kutub nyata (RA, Dec)
+   ----------------------------------------------------------------------
+   Sumber: IAU Working Group on Cartographic Coordinates and Rotational
+   Elements (WGCCRE 2015, Archinal et al. 2018)
+   https://doi.org/10.1007/s10569-017-9805-5
+
+   MASALAH YANG DIPERBAIKI:
+   Sebelumnya semua planet dimiringkan dengan spin.rotation.z = axialTilt,
+   sehingga SEMUA planet miring ke arah sumbu X yang sama. Padahal di
+   kenyataan setiap planet punya arah kutub sendiri:
+
+     planet      RA kutub    Dec kutub
+     Merkurius   281.010     61.416
+     Venus       272.760     67.160
+     Bumi          0.000     90.000
+     Mars        317.269     54.433
+     Jupiter     268.057     64.495
+     Saturnus     40.589     83.537
+     Uranus      257.311    -15.175
+     Neptunus    299.360     43.460
+
+   Perhatikan Uranus: Dec NEGATIF (-15,175) — kutubnya menunjuk ke bawah
+   bidang ekliptika. Itulah kenapa Uranus tampak "menggelinding".
+
+   CARA KERJA:
+   1. Ubah (RA, Dec) menjadi vektor kutub dalam kerangka ekuator J2000
+   2. Putar ke kerangka ekliptika (miring 23,4393 derajat)
+   3. Petakan ke kerangka scene (x=x, y=z_ekliptika, z=-y_ekliptika)
+   4. Hitung kuaternion yang memutar sumbu Y mesh ke vektor kutub itu
+   ======================================================================= */
+
+const EPSILON_OBLIQUITY = 23.4392911 * DEG;   /* kemiringan ekliptika J2000 */
+
+/* arah kutub utara setiap planet: [RA derajat, Dec derajat] */
+const PLANET_POLE = {
+  mercury: [281.0103, 61.4155],
+  venus:   [272.7600, 67.1600],
+  earth:   [0.0000, 90.0000],     /* ekuator Bumi = ekuator langit */
+  mars:    [317.269202, 54.432516],
+  jupiter: [268.056595, 64.495303],
+  saturn:  [40.5890, 83.5370],
+  uranus:  [257.3110, -15.1750],
+  neptune: [299.3600, 43.4600],
+  sun:     [286.1300, 63.8700],
+};
+
+/* ubah (RA, Dec) menjadi vektor kutub dalam kerangka SCENE */
+function poleVectorScene(raDeg, decDeg) {
+  const ra = raDeg * DEG, dec = decDeg * DEG;
+  /* kerangka ekuator J2000 */
+  const xe = Math.cos(dec) * Math.cos(ra);
+  const ye = Math.cos(dec) * Math.sin(ra);
+  const ze = Math.sin(dec);
+  /* putar ke ekliptika: kemiringan EPSILON terhadap sumbu X */
+  const yl = ye * Math.cos(EPSILON_OBLIQUITY) + ze * Math.sin(EPSILON_OBLIQUITY);
+  const zl = -ye * Math.sin(EPSILON_OBLIQUITY) + ze * Math.cos(EPSILON_OBLIQUITY);
+  /* petakan ke scene: x=x, y=z_ekliptika (atas), z=-y_ekliptika */
+  return { x: xe, y: zl, z: -yl };
+}
+
+/* Sudut kemiringan poros terhadap bidang orbit planet (derajat).
+   Untuk planet, ini dihitung dari vektor kutub vs normal orbit.
+   Nilai acuan (dari IAU / NASA fact sheet):
+     Merkurius 0,034 ; Venus 177,36 ; Bumi 23,44 ; Mars 25,19 ;
+     Jupiter 3,13 ; Saturnus 26,73 ; Uranus 97,77 ; Neptunus 28,32  */
+const AXIAL_TILT_DEG = {
+  mercury: 0.034, venus: 177.36, earth: 23.4392911, mars: 25.19,
+  jupiter: 3.13, saturn: 26.73, uranus: 97.77, neptune: 28.32,
+  sun: 7.25,
+};
+
+/* Hitung kuaternion yang memutar sumbu +Y mesh ke arah kutub nyata.
+   Hasilnya dipakai pada grup `spin` supaya planet berputar di sekitar
+   poros yang BENAR, bukan poros tegak yang dimiringkan sembarang. */
+function poleQuaternion(key) {
+  const p = PLANET_POLE[key];
+  if (!p) return null;
+  const v = poleVectorScene(p[0], p[1]);
+  /* vektor kutub dinormalisasi */
+  const L = Math.hypot(v.x, v.y, v.z) || 1;
+  const kx = v.x / L, ky = v.y / L, kz = v.z / L;
+
+  /* kuaternion yang memutar (0,1,0) ke (kx,ky,kz).
+     Rumus sumbu-rotasi: sumbu = (0,1,0) x k, sudut = acos(dot) */
+  const dot = ky;   /* (0,1,0) . k = ky */
+  const q = new THREE.Quaternion();
+  if (dot > 0.999999) {
+    /* sudah sejajar, tidak perlu rotasi */
+    return q;
+  }
+  if (dot < -0.999999) {
+    /* berlawanan arah: putar 180 derajat pada sumbu X */
+    q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI);
+    return q;
+  }
+  /* sumbu rotasi = (0,1,0) x (kx,ky,kz) = (1*kz - 0*ky, 0*kx - 0*kz, 0*ky - 1*kx) */
+  const ax = kz, ay = 0, az = -kx;
+  const aL = Math.hypot(ax, ay, az) || 1;
+  const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
+  q.setFromAxisAngle(new THREE.Vector3(ax / aL, ay / aL, az / aL), angle);
+  return q;
+}
+
+/* Sudut kemiringan poros planet terhadap ekuator langit, dalam derajat.
+   Dihitung dari vektor kutub — dipakai untuk verifikasi. */
+function poleTiltFromEcliptic(key) {
+  const p = PLANET_POLE[key];
+  if (!p) return 0;
+  const v = poleVectorScene(p[0], p[1]);
+  const L = Math.hypot(v.x, v.y, v.z) || 1;
+  /* sumbu Y scene = kutub ekliptika */
+  return Math.acos(Math.max(-1, Math.min(1, v.y / L))) * 180 / Math.PI;
+}
 
 </script>
 
@@ -3523,15 +3757,57 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
   const isMoon = !!hostBody;
   const radiusUnits = Math.max((cfg.radiusKm / RAD) * SIZE_FACTOR, MIN_RENDER_RADIUS_UNITS);
 
+  /* ======================================================================
+     HIERARKI TIGA TINGKAT — supaya poros planet BENAR secara fisika
+     ----------------------------------------------------------------------
+     BUG YANG DIPERBAIKI:
+     Sebelumnya hanya ada dua tingkat: `group` (posisi) dan `spin` (rotasi).
+     Kemiringan poros ditulis ke spin.rotation.z, dan rotasi harian ke
+     spin.rotation.y pada objek yang SAMA. Akibatnya:
+       1. Semua planet miring ke arah sumbu X yang sama, padahal arah
+          kutub nyata berbeda-beda (Uranus bahkan Dec NEGATIF, -15,175)
+       2. Urutan Euler harus diakali dengan rotation.order = 'ZYX'
+          supaya kutub tidak bergeser
+
+     Struktur yang BENAR (tiga tingkat terpisah):
+       group      : posisi planet (dipindah oleh floating origin)
+       tiltGroup  : orientasi poros TETAP (kuaternion dari RA/Dec kutub)
+       spin       : rotasi harian mengelilingi sumbu Y LOKAL
+
+     Dengan pemisahan ini, rotasi harian selalu mengelilingi poros yang
+     sudah benar, dan kutub tidak pernah bergeser. Tidak perlu lagi
+     mengakali urutan Euler.
+     ====================================================================== */
   const group = new THREE.Group();
+  const tiltGroup = new THREE.Group();
   const spin = new THREE.Group();
-  group.add(spin);
+  group.add(tiltGroup);
+  tiltGroup.add(spin);
   (parentMoonPlane || scene).add(group);
 
-  /* bidang orbit bulan: miring mengikuti poros induk, tidak ikut rotasi harian */
+  /* orientasi poros: pakai arah kutub nyata untuk planet, dan kemiringan
+     sederhana untuk satelit (data kutub satelit tidak tersedia lengkap) */
+  if (!isMoon && cfg.key) {
+    const q = poleQuaternion(cfg.key);
+    if (q) tiltGroup.quaternion.copy(q);
+  } else if (cfg.axialTilt) {
+    /* satelit: miringkan mengikuti poros induknya (bidang orbit satelit
+       hampir sejajar ekuator induk untuk sebagian besar kasus) */
+    tiltGroup.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
+  }
+
+  /* bidang orbit bulan: mengikuti ekuator induk (di kerangka tiltGroup,
+     sehingga otomatis sejajar dengan poros induk yang benar) */
   const moonPlane = new THREE.Group();
-  if (cfg.axialTilt) moonPlane.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
   group.add(moonPlane);
+  /* salin orientasi poros ke moonPlane supaya bidang orbit satelit
+     mengikuti ekuator induknya */
+  if (!isMoon && cfg.key) {
+    const q = poleQuaternion(cfg.key);
+    if (q) moonPlane.quaternion.copy(q);
+  } else if (cfg.axialTilt) {
+    moonPlane.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
+  }
 
   /* ----- material: tekstur nyata ----- */
   const isEarth = (cfg.key === 'earth');
@@ -3572,20 +3848,12 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
     spin.add(atmoMesh);
   }
 
-  /* Urutan rotasi: ZYX, bukan XYZ default.
-     ------------------------------------------------------------------
-     BUG: spin.rotation.z = axialTilt DAN spin.rotation.y = spinAngle
-     berada di objek yang sama. Urutan Euler default Three.js adalah
-     'XYZ', yang berarti matriks R = RX·RY·RZ dan diterapkan ke vektor
-     sebagai RZ dulu, baru RY. Akibatnya kemiringan poros diterapkan
-     LEBIH DULU, lalu rotasi harian memutar Bumi di sekitar sumbu Y yang
-     TETAP — sehingga kutub utara bergeser mengelilingi sumbu Y.
-
-     Dengan urutan 'ZYX', matriks R = RZ·RY: rotasi harian dulu, lalu
-     kemiringan poros. Kutub utara tetap di tempatnya, dan Bumi berputar
-     di sekitar sumbu yang sudah miring — persis seperti Bumi nyata. */
-  spin.rotation.order = 'ZYX';
-  if (cfg.axialTilt) spin.rotation.z = THREE.MathUtils.degToRad(cfg.axialTilt);
+  /* Rotasi harian diterapkan pada grup `spin`, yang berada DI DALAM
+     tiltGroup. Karena tiltGroup sudah memegang orientasi poros yang benar
+     (kuaternion dari RA/Dec kutub nyata), rotasi harian di sumbu Y lokal
+     otomatis mengelilingi poros yang benar. Tidak perlu mengakali urutan
+     Euler lagi — itu sudah tidak dipakai sejak hierarki tiga tingkat. */
+  if (cfg.axialTilt) spin.rotation.z = 0;
 
   /* ----- cincin Saturnus (shader: ketebalan + bayangan planet) ----- */
   let ringMesh = null;
@@ -3913,6 +4181,7 @@ function applyRebaseToStatics() {
 
 /* ---------- animasi: orbit, rotasi, arah cahaya ---------- */
 const _v1 = new THREE.Vector3();
+const _invQ = new THREE.Quaternion();
 const _sunDir = new THREE.Vector3();
 const _bodyPos = new THREE.Vector3();
 const _inv = new THREE.Matrix4();
@@ -4130,6 +4399,12 @@ function moonLocalOffset(b, jd) {
      fase orbit satelit NYATA — bukan 0 seperti sebelumnya. Tanpa M0,
      satelit berada di titik sembarang pada orbitnya (error sampai
      diameter orbit = 843.600 km untuk Io).
+
+     PRESESI APSIS & SIMPUL juga diterapkan. Orbit satelit tidak tetap:
+     titik terdekat (apsis) dan titik simpul bergerak mengelilingi induk.
+     JPL memberi periodenya dalam tahun (P_apsis, P_node). Untuk Iapetus,
+     periode apsis 3130 tahun; untuk Phobos hanya 2,3 tahun — jadi efek
+     ini nyata untuk satelit dekat.
      ------------------------------------------------------------------ */
   const el = SATELLITE_ELEMENTS[b.name];
   const a = (b.aKm / RAD) * MOON_ORBIT_FACTOR;
@@ -4148,31 +4423,50 @@ function moonLocalOffset(b, jd) {
   const xp = a * (Math.cos(E) - e);
   const yp = a * Math.sqrt(1 - e * e) * Math.sin(E);
 
-  /* argumen periapsis (omega) dari JPL, supaya orientasi elipsnya benar */
-  const omega = el ? (el.omega * DEG) : 0;
+  /* argumen periapsis dengan PRESESI.
+     omega(t) = omega_JPL + (360 / P_apsis) x d
+     P_apsis dalam tahun, d dalam hari. */
+  let omega = el ? (el.omega * DEG) : 0;
+  if (el && el.pApsisYr > 0) {
+    const dHari = jd - J2000_JD;
+    const lajuApsis = (360 / (el.pApsisYr * 365.25)) * DEG;   /* rad/hari */
+    omega += lajuApsis * dHari;
+  }
   const co = Math.cos(omega), so = Math.sin(omega);
   const xr = xp * co - yp * so;
   const yr = xp * so + yp * co;
 
-  /* bidang orbit dimiringkan oleh inklinasi terhadap ekuator induk */
+  /* bujur simpul naik dengan PRESESI juga */
+  let node = el ? (el.node * DEG) : 0;
+  if (el && el.pNodeYr > 0) {
+    const dHari = jd - J2000_JD;
+    const lajuNode = (360 / (el.pNodeYr * 365.25)) * DEG;     /* rad/hari */
+    node += lajuNode * dHari;
+  }
+
+  /* bidang orbit dimiringkan oleh inklinasi terhadap ekuator induk,
+     lalu diputar oleh bujur simpul */
   const incl = b.incl || 0;
   const ci = Math.cos(incl), si = Math.sin(incl);
-  return { x: xr, y: yr * si, z: yr * ci };
+  const cn = Math.cos(node), sn = Math.sin(node);
+  /* rotasi bidang: miringkan dulu, lalu putar oleh simpul */
+  const x1 = xr * cn - yr * ci * sn;
+  const y1 = xr * sn + yr * ci * cn;
+  const z1 = yr * si;
+  return { x: x1, y: y1, z: z1 };
 }
 
-/* Offset satelit dalam kerangka SCENE (setelah kemiringan poros induk).
-   Dipakai ephemerisPos() untuk posisi absolut. */
+/* Offset satelit dalam kerangka SCENE (setelah orientasi poros induk).
+   Dipakai ephemerisPos() untuk posisi absolut.
+   Sejak hierarki tiga tingkat, moonPlane induk memakai KUATERNION
+   (arah kutub nyata), jadi konversinya memakai kuaternion itu. */
 function moonSceneOffset(b, jd) {
   const l = moonLocalOffset(b, jd);
-  const tilt = THREE.MathUtils.degToRad(b.host ? (b.host.axialTiltDeg || 0) : 0);
-  if (!tilt) return l;
-  const ct = Math.cos(tilt), st = Math.sin(tilt);
-  /* moonPlane.rotation.z memutar kerangka lokal ke kerangka scene */
-  return {
-    x: l.x * ct - l.y * st,
-    y: l.x * st + l.y * ct,
-    z: l.z,
-  };
+  if (!b.host || !b.host.key) return l;
+  const q = poleQuaternion(b.host.key);
+  if (!q) return l;
+  _v1.set(l.x, l.y, l.z).applyQuaternion(q);
+  return { x: _v1.x, y: _v1.y, z: _v1.z };
 }
 
 /* Offset satelit terhadap induknya, dalam unit scene (tanpa posisi induk).
@@ -4270,15 +4564,24 @@ function applyPositions() {
         const dy = b.absPos.y - b.host.absPos.y;
         const dz = b.absPos.z - b.host.absPos.z;
 
-        /* balik-putar oleh kemiringan poros induk (moonPlane.rotation.z)
-           untuk mendapat offset dalam kerangka LOKAL grup bulan.
-           Kebalikan dari moonSceneOffset(): (x,y) -> (x ct + y st, -x st + y ct) */
-        const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
-        const ct = Math.cos(tilt), st = Math.sin(tilt);
-        const lx = dx * ct + dy * st;
-        const ly = -dx * st + dy * ct;
-
-        b.group.position.set(lx, ly, dz);
+        /* Balik-putar oleh orientasi poros induk untuk mendapat offset
+           dalam kerangka LOKAL grup bulan.
+           ------------------------------------------------------------------
+           Sejak hierarki tiga tingkat, moonPlane induk memakai KUATERNION
+           (bukan lagi rotation.z), karena arah kutub nyata setiap planet
+           berbeda-beda. Jadi balik-putarnya harus memakai kuaternion itu,
+           bukan rumus rotasi-z seperti sebelumnya — kalau tidak, posisi
+           render satelit akan meleset dari posisi absolutnya.
+           ------------------------------------------------------------------ */
+        const q = poleQuaternion(b.host.key);
+        if (q) {
+          _v1.set(dx, dy, dz).applyQuaternion(_invQ.copy(q).invert());
+          b.group.position.copy(_v1);
+        } else {
+          const tilt = THREE.MathUtils.degToRad(b.host.axialTiltDeg || 0);
+          const ct = Math.cos(tilt), st = Math.sin(tilt);
+          b.group.position.set(dx * ct + dy * st, -dx * st + dy * ct, dz);
+        }
       }
       if (b._spinAngle !== undefined) b.spin.rotation.y = b._spinAngle;
       /* LIBRASI LINTANG: goyangan naik-turun Bulan (+-6,7°). Diterapkan
@@ -4297,7 +4600,14 @@ function applyPositions() {
 
     if (b.isEarth && b.mesh.material.uniforms) {
       b.mesh.material.uniforms.uSunDir.value.copy(_sunDir);
-      b.mesh.material.uniforms.uCloudOffset.value = ((app.days || 0) / 0.9 % 1 + 1) % 1;
+      /* Offset awan: awan HARUS ikut berputar bersama Bumi, plus sedikit
+         pergeseran karena angin zonal (super-rotasi atmosfer Bumi ~5%).
+         Rumus lama ((days / 0.9) % 1) tidak terhubung ke rotasi Bumi sama
+         sekali, jadi awan tampak melayang dengan kecepatan yang salah.
+         Rumus baru: awan berputar 1,05 putaran per hari — sedikit lebih
+         cepat dari permukaan, seperti atmosfer Bumi yang sebenarnya. */
+      b.mesh.material.uniforms.uCloudOffset.value =
+        ((app.days * 1.05) % 1 + 1) % 1;
     }
     if (b.atmoMesh) {
       b.mesh.updateWorldMatrix(true, false);
@@ -4317,6 +4627,27 @@ function applyPositions() {
   if (sunMesh) sunMesh.position.set(nx, ny, nz);
   if (sunRim) sunRim.position.set(nx, ny, nz);
   if (sunGlow) sunGlow.position.set(nx, ny, nz);
+
+  /* ======================================================================
+     BUG BESAR YANG DIPERBAIKI DI SINI
+     ----------------------------------------------------------------------
+     `sunLight` (PointLight) TIDAK PERNAH DIPINDAHKAN. Padahal:
+       - floating origin membuat kamera SELALU di (0,0,0)
+       - Matahari digeser ke (nx,ny,nz) = -rebaseOffset
+       - PointLight tetap di (0,0,0) = POSISI KAMERA
+
+     Akibatnya cahaya selalu datang dari ARAH KAMERA, bukan dari Matahari:
+       - Sisi benda yang menghadap kamera SELALU terang
+       - Terminator muncul di tepi, bukan di posisi nyata
+       - Jam lokal TIDAK PERNAH bisa sinkron (Indonesia gelap padahal siang)
+       - Bulan tampak "terang di kedua sisi" karena kamera melihat sisi
+         terangnya
+
+     Perbaikan: pindahkan PointLight ke posisi Matahari yang sama dengan
+     sunMesh. Sekarang cahaya benar-benar datang dari Matahari.
+     ====================================================================== */
+  if (sunLight) sunLight.position.set(nx, ny, nz);
+
   if (beltPoints) beltPoints.position.set(nx, ny, nz);
   if (typeof starField !== 'undefined' && starField.group) {
     starField.group.position.set(nx, ny, nz);

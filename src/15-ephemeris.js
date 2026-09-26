@@ -541,7 +541,7 @@ function moonLibration(jd) {
                      T * T * T / 69699) * DEG;
   const F  = norm360(93.2720950 + 483202.0175233 * T - 0.0036539 * T * T) * DEG;
 
-  const sin = Math.sin, cos = Math.cos;
+  const sin = Math.sin;
 
   /* libration in longitude (derajat) */
   const lp =
@@ -567,7 +567,28 @@ function moonLibration(jd) {
     + 0.033 * sin(2 * D + F)
     - 0.027 * sin(Mp + 2 * F);
 
-  return { lonDeg: lp, latDeg: bp };
+  /* ---------------------------------------------------------------------
+     LIBRASI DIURNAL (parallactic libration)
+     ---------------------------------------------------------------------
+     Pengamat di permukaan Bumi melihat Bulan dari arah yang sedikit
+     berbeda dibanding pengamat di pusat Bumi. Karena Bumi berputar,
+     perbedaan ini berubah sepanjang hari dan menambah +-1 derajat pada
+     librasi bujur.
+
+     Besarnya bergantung pada jarak pengamat dari sumbu rotasi Bumi:
+       amplitudo = (R_bumi / jarak_bulan) dalam radian
+                 = 6371 / 384400 = 0.01657 rad = 0.949 derajat
+
+     Sudut fasenya mengikuti GMST — sama dengan sudut rotasi Bumi. Jadi
+     pengamat di meridian yang menghadap Bulan melihat librasi positif.
+
+     Ini diterapkan sebagai suku tambahan pada librasi bujur.
+     --------------------------------------------------------------------- */
+  const gmst = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360) * DEG;
+  const ampDiurnal = (RADIUS_EARTH_KM / 384400) * (180 / Math.PI);  /* derajat */
+  const diurnal = ampDiurnal * Math.sin(gmst);
+
+  return { lonDeg: lp + diurnal, latDeg: bp, diurnalDeg: diurnal };
 }
 
 /* iluminasi Bulan (0 = baru, 1 = purnama) dan fase */
