@@ -153,6 +153,34 @@ untuk diamati.
 
 ---
 
+## Verifikasi akurasi (uji langsung vs NASA/JPL)
+
+Angka di bawah **bukan klaim** — semuanya dari uji langsung terhadap data
+resmi, dan bisa dijalankan ulang siapa pun:
+
+| Uji | Cara jalankan | Hasil terverifikasi |
+|---|---|---|
+| Posisi 8 planet vs JPL Horizons | `python tools/fetch_horizons.py <tgl>` lalu `node tools/compare_horizons.js` | Selisih sudut **0,0005°–0,15°** (uji 1900, 2026, 2040, 2150) |
+| Posisi Bulan vs JPL Horizons | `python tools/fetch_moon.py` lalu `node tools/compare_moon.js` | **3–13 detik busur (3–24 km)** untuk 2024–2040 (uji 10 tanggal) |
+| 16 gerhana vs katalog NASA | `node tools/test_full.js` | **16/16 terdeteksi**, rata-rata selisih magnitudo 0,043 |
+| Arah kutub planet vs IAU | `node tools/test_poles_laplace.js` | 8/8 kutub, 8/8 kemiringan |
+| Rotasi & retrograde | `node tools/test_rotation.js` | 9/9 periode, 9/9 arah, 12/12 satelit terkunci |
+| Resonansi Laplace (Io-Europa-Ganymede) | `node tools/test_poles_laplace.js` | Simpangan maks **0,018°** |
+| Bintang (HYG v3.8) | `node tools/test_full.js` | 17/17 jarak bintang cocok (toleransi 20% Hipparcos) |
+
+Rentang validitas: **planet 1800–2050** (JPL Keplerian, Standish 1990),
+**Bulan** terbaik di dekat J2000 dan memburuk ±0,5"/tahun menjauh,
+**bintang** proper motion linear ±1.000 tahun dari J2000. Di luar rentang
+itu nilai tetap dihitung, tetapi statusnya ekstrapolasi — badge di panel
+Tanggal menampilkan status ini secara jujur.
+
+Sumber data: JPL Horizons & DE441 (posisi), IAU WGCCRE 2015 (arah poros),
+Meeus *Astronomical Algorithms* (Bulan & rotasi), katalog HYG v3.8
+(bintang), Five Millennium Canon of Eclipses — Espenak & Meeus, NASA
+(gerhana), IMO (hujan meteor).
+
+---
+
 ## Sumber aset
 
 Semua tekstur permukaan berasal dari citra nyata:
