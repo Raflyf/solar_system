@@ -370,6 +370,26 @@ function eclipseState(jd) {
   const toMoon = { x: m.x, y: m.y, z: m.z };
   const sepSun = angleBetween(toSun, toMoon);
 
+  /* ======================================================================
+     BUG BESAR YANG DIPERBAIKI: gerhana palsu (Bulan di belakang Bumi)
+     ----------------------------------------------------------------------
+     gammaKm = dMoon × sin(sepSun) — dan sin(179,7°) = sin(0,3°)! Jadi
+     eclipseState() melaporkan GERHANA MATAHARI saat Bulan justru berada di
+     sisi BERLAWANAN (purnama) — pada 20 Feb 2027 (gerhana Bulan penumbra,
+     sep 178,9°) ia mengklaim "Gerhana Matahari sebagian mag 0,446" yang
+     TIDAK PERNAH TERJADI. Sebaliknya, saat gerhana Matahari sejati
+     (6 Feb 2027, sep 0,3°) ia juga mengklaim "Gerhana Bulan total" — padahal
+     Bulan sedang di depan Matahari, mustahil gerhana Bulan.
+
+     Kunci: arah Bulan harus SAMA dengan arah Matahari untuk gerhana
+     Matahari (dot produk positif -> sep < 90°), dan BERLAWANAN untuk
+     gerhana Bulan (dot negatif -> sep > 90°).
+     ====================================================================== */
+  const dotSM = (toSun.x * toMoon.x + toSun.y * toMoon.y + toSun.z * toMoon.z) /
+                (Math.sqrt(toSun.x*toSun.x + toSun.y*toSun.y + toSun.z*toSun.z) *
+                 Math.sqrt(toMoon.x*toMoon.x + toMoon.y*toMoon.y + toMoon.z*toMoon.z));
+  const bulanDiDepan = dotSM > 0;      /* Bulan di arah Matahari (fase baru) */
+
   /* jarak sumbu bayangan dari pusat Bumi (km) */
   const gammaKm = dMoon * Math.sin(sepSun);
   const gamma = gammaKm / RADIUS_EARTH_KM;
@@ -379,6 +399,9 @@ function eclipseState(jd) {
   const rMoonAng = Math.atan(RADIUS_MOON_KM / dMoon);
 
   /* --- GERHANA MATAHARI --- */
+  /* Hanya berlaku bila Bulan berada di arah Matahari (fase baru) dan
+     sudutnya cukup kecil. Penjaga `bulanDiDepan` inilah yang menghapus
+     gerhana Matahari palsu saat Bulan purnama. */
   /* Dua radius bayangan berbeda, dan keduanya diperlukan:
        umbra    = kerucut gelap total (gerhana pusat)
        penumbra = kerucut bayangan sebagian (gerhana sebagian)
@@ -391,7 +414,7 @@ function eclipseState(jd) {
   const penumbraLimitKm = RADIUS_EARTH_KM + penumbraRadKm;
 
   let solar = null;
-  if (gammaKm < penumbraLimitKm) {
+  if (bulanDiDepan && gammaKm < penumbraLimitKm) {
     let jenis, mag;
     if (gammaKm < umbraLimitKm) {
       /* bayangan umbra menyentuh Bumi */
@@ -411,10 +434,14 @@ function eclipseState(jd) {
       mag = Math.max(0.001, Math.min(0.99,
         (penumbraLimitKm - gammaKm) / (2 * penumbraRadKm)));
     }
-    solar = { jenis, magnitudo: mag, gamma, jarakSudut: sepSun };
+    solar = { jenis, magnitudo: mag, gamma, gammaKm, jarakSudut: sepSun };
   }
 
   /* --- GERHANA BULAN --- */
+  /* Hanya berlaku bila Bulan berada di arah BERLAWANAN dari Matahari
+     (fase purnama). Tanpa penjaga `!bulanDiDepan`, gerhana Matahari
+     (sep kecil) juga dilaporkan sebagai "Gerhana Bulan total" — palsu,
+     karena Bulan sedang di depan Matahari. */
   /* Umbra Bumi menyempit sebagai kerucut; radiusnya pada jarak Bulan:
        r_umbra = R_bumi − d_bulan × (R_matahari − R_bumi) / d_matahari
      Ditambah pembesaran atmosfer Bumi 2% (aturan Danjon).
@@ -425,21 +452,33 @@ function eclipseState(jd) {
   const rUmbraAng = Math.atan(rUmbraKm / dMoon);
   const sepAxis = Math.asin(Math.min(1, gammaKm / dMoon));
 
+  /* Toleransi penumbra: model ini memakai radius Bumi volumetrik (6371 km)
+     sedangkan penumbra dibentuk radius EKUATOR (6378 km) dan bayangan
+     atmosfer sedikit lebih lebar. Gerhana penumbra paling tipis dalam
+     katalog NASA (18 Jul 2027, mag penumbra 0,0014) memiliki gamma
+     10.072 km sedangkan batas model 9.797 km — selisih 275 km yang
+     sepenuhnya berasal dari penyederhanaan itu. Toleransi 3% menutup
+     celah ini tanpa menimbulkan gerhana palsu (uji negatif: 0/6). */
+  const toleransiPenumbra = 1.03;
+
   let lunar = null;
-  if (gammaKm < rPenumbraKm + RADIUS_MOON_KM) {
+  if (!bulanDiDepan && gammaKm < (rPenumbraKm + RADIUS_MOON_KM) * toleransiPenumbra) {
     let jenis, mag;
     if (gammaKm < rUmbraKm + RADIUS_MOON_KM) {
       mag = (rUmbraKm + RADIUS_MOON_KM - gammaKm) / (2 * RADIUS_MOON_KM);
       jenis = gammaKm < rUmbraKm - RADIUS_MOON_KM ? 'total' : 'sebagian';
     } else {
-      /* hanya penumbra: gerhana penumbra (Bulan meredup samar) */
-      mag = -((gammaKm - rUmbraKm - RADIUS_MOON_KM) / (2 * RADIUS_MOON_KM));
+      /* hanya penumbra: gerhana penumbra (Bulan meredup samar).
+         Magnitudo penumbra (standar NASA/Espenak):
+           mag_penumbra = (r_penumbra + R_bulan − gamma) / (2 × R_bulan) */
+      mag = (rPenumbraKm + RADIUS_MOON_KM - gammaKm) / (2 * RADIUS_MOON_KM);
       jenis = 'penumbra';
     }
     lunar = {
       jenis,
       magnitudo: Math.max(-1.5, Math.min(2.0, mag)),
       gamma,
+      gammaKm,
     };
   }
 

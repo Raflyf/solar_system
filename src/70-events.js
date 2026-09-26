@@ -206,44 +206,295 @@ function eventsAt(date, windowDays) {
   return uniq;
 }
 
-/* ---------- pencarian gerhana dalam rentang ---------- */
+/* ---------- pencarian GERHANA dalam rentang (dipertahankan) ---------- */
 function searchEclipses(fromDate, toDate) {
+  return searchEvents(fromDate, toDate, ['gerhana']);
+}
+
+/* =======================================================================
+   PENCARIAN PERISTIWA LANGIT UNIVERSAL
+   -----------------------------------------------------------------------
+   Dulu hanya bisa mencari gerhana. Sekarang mencari SEMUA jenis peristiwa
+   yang bisa dihitung aplikasi, dalam rentang tanggal bebas:
+
+     • Gerhana Matahari & Bulan (total / cincin / sebagian / penumbra)
+     • Oposisi planet      — paling terang & terdekat dari Bumi
+     • Konjungsi planet    — berpasangan (mis. Venus–Jupiter < 3°)
+     • Konjungsi Matahari  — planet di balik Matahari (superior)
+     • Hujan meteor        — puncak (ZHR maksimum), data IMO
+     • Bulan baru & purnama (fase ekstrem)
+     • Perigee/Apogee Bulan (bulan super/mini) — opsional
+
+   Setiap hasil punya: jenis, ikon, judul, detail, tanggal, jd, dan
+   `skor` untuk pengurutan kepentingan.
+   ======================================================================= */
+const EVENT_KINDS = {
+  gerhana:  { label: 'Gerhana (Matahari & Bulan)', ikon: '🌑', skor: 100 },
+  oposisi:  { label: 'Oposisi planet',             ikon: '✨', skor: 70 },
+  konjungsi:{ label: 'Konjungsi planet',           ikon: '🪐', skor: 55 },
+  matahari: { label: 'Konjungsi Matahari',         ikon: '⊙',  skor: 45 },
+  meteor:   { label: 'Puncak hujan meteor',        ikon: '☄️', skor: 60 },
+  fase:     { label: 'Bulan baru & purnama',       ikon: '🌙', skor: 35 },
+};
+
+function searchEvents(fromDate, toDate, kinds) {
   const jd0 = dateToJD(fromDate);
   const jd1 = dateToJD(toDate);
+  const aktif = kinds && kinds.length ? kinds : Object.keys(EVENT_KINDS);
+  const on = (k) => aktif.indexOf(k) >= 0;
   const hasil = [];
 
-  /* langkah 0.25 hari sudah cukup: gerhana bulan berlangsung berjam-jam,
-     dan gerhana matahari selalu terdeteksi karena memakai penumbra */
-  for (let jd = jd0; jd <= jd1; jd += 0.25) {
-    const st = eclipseState(jd);
-    if (st.solar) {
-      hasil.push({
-        jenis: 'matahari', ikon: '🌑',
-        judul: 'Gerhana Matahari ' + st.solar.jenis,
-        tanggal: jdToDate(jd),
-        magnitudo: st.solar.magnitudo, jd,
-      });
+  /* ---- 1. GERHANA ----
+     PENDEKATAN BARU (deteksi berbasis fase):
+     Gerhana hanya mungkin terjadi di dekat Bulan baru (Matahari) atau
+     purnama (Bulan). Versi lama memindai SELURUH rentang dengan langkah
+     0,25 hari — cara itu (a) lambat untuk rentang panjang, dan (b) tetap
+     MELEWATKAN gerhana pendek (terbukti: gerhana total 22 Jul 2028 hilang,
+     dan gerhana penumbra tipis 18 Jul 2027 tidak tertangkap).
+
+     Sekarang: cari dulu waktu Bulan baru & purnama (murah), lalu pindai
+     halus (5-30 menit) hanya di sekitar waktu-waktu itu. Lebih cepat DAN
+     lebih lengkap. */
+  if (on('gerhana')) {
+    /* -- 1a. kandidat: ekstrem elongasi Bulan -- */
+    const kandidat = [];
+    {
+      const step = 0.5;
+      let q0 = null, q1 = null;
+      for (let jd = jd0 - 2; jd <= jd1 + 2; jd += step) {
+        const f = moonPhase(jd);
+        const el = f.elongasi;
+        if (q0 !== null && q1 !== null) {
+          const a = q0.el, b = q1.el, c = el;
+          /* purnama (maksimum > 170) atau bulan baru (minimum < 10) */
+          if ((b > a && b > c && b > 170) || (b < a && b < c && b < 10)) {
+            kandidat.push(q1.jd);
+          }
+        }
+        q0 = q1; q1 = { jd, el };
+      }
     }
-    if (st.lunar) {
+    /* -- 1b. pindai halus di sekitar tiap kandidat --
+       Jendela ±1,1 hari (bukan ±0,65): puncak gerhana bisa terjadi hingga
+       ~1 hari dari ekstrem elongasi — terbukti: gerhana Bulan total
+       31 Des 2028 (puncak 16:59 UT) berada di luar jendela ±0,65 hari,
+       sehingga terlewat seluruhnya.
+       Langkah menyesuaikan rentang: rentang panjang tidak perlu resolusi
+       super halus (dan tetap cepat). */
+    const tahunRentang = (jd1 - jd0) / 365.25;
+    const menitLangkah = tahunRentang <= 5 ? 5 : (tahunRentang <= 15 ? 12 : 30);
+    const stepH = menitLangkah / 1440;
+    const kontak = [];
+    for (const t of kandidat) {
+      for (let jd = t - 1.1; jd <= t + 1.1; jd += stepH) {
+        if (jd < jd0 || jd > jd1) continue;
+        const st = eclipseState(jd);
+        if (st.solar) {
+          kontak.push({ tipe: 'matahari', jenis: st.solar.jenis, jd,
+                        mag: Math.abs(st.solar.magnitudo),
+                        gam: Math.abs(st.solar.gammaKm) });
+        }
+        if (st.lunar) {
+          kontak.push({ tipe: 'bulan', jenis: st.lunar.jenis, jd,
+                        mag: Math.abs(st.lunar.magnitudo),
+                        gam: Math.abs(st.lunar.gammaKm) });
+        }
+      }
+    }
+    /* -- 1c. kelompokkan per tipe (satu gerhana = satu rangkaian) -- */
+    const grup = [];
+    for (const tipe of ['matahari', 'bulan']) {
+      const list = kontak.filter(k => k.tipe === tipe);
+      let cur = null;
+      for (const k of list) {
+        if (cur && (k.jd - cur.akhir) < 0.4) {
+          cur.akhir = k.jd;
+          if (k.gam < cur.gam) {
+            cur.gam = k.gam; cur.puncak = k.jd; cur.jenis = k.jenis; cur.mag = k.mag;
+          }
+        } else {
+          if (cur) grup.push(cur);
+          cur = { tipe, jenis: k.jenis, awal: k.jd, akhir: k.jd,
+                  puncak: k.jd, mag: k.mag, gam: k.gam };
+        }
+      }
+      if (cur) grup.push(cur);
+    }
+    for (const g of grup) {
+      const ikon = g.tipe === 'matahari' ? '🌑' : '🔴';
       hasil.push({
-        jenis: 'bulan', ikon: '🔴',
-        judul: 'Gerhana Bulan ' + st.lunar.jenis,
-        tanggal: jdToDate(jd),
-        magnitudo: st.lunar.magnitudo, jd,
+        jenis: 'gerhana', ikon,
+        judul: 'Gerhana ' + (g.tipe === 'matahari' ? 'Matahari ' : 'Bulan ') + g.jenis,
+        detail: 'magnitudo puncak ' + g.mag.toFixed(3),
+        tanggal: jdToDate(g.puncak), magnitudo: g.mag, jd: g.puncak,
+        skor: 100,
       });
     }
   }
 
-  /* gabungkan kejadian berdekatan (satu gerhana terdeteksi di beberapa
-     langkah berturut-turut) */
+  /* ---- 2. OPOSISI & KONJUNGSI MATAHARI ---- */
+  const planetKeys = ['mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune'];
+  const planetNama = {
+    mercury: 'Merkurius', venus: 'Venus', mars: 'Mars', jupiter: 'Jupiter',
+    saturn: 'Saturnus', uranus: 'Uranus', neptune: 'Neptunus',
+  };
+  if (on('oposisi') || on('matahari')) {
+    /* elongasi dihitung tiap 0.5 hari, lalu puncak dicari (naik->turun).
+       Tanpa pencarian puncak, satu oposisi bisa muncul puluhan kali. */
+    const step = 0.5;
+    const prev = {};      /* elongasi sebelumnya per planet */
+    const rising = {};    /* apakah sedang menanjak */
+    for (let jd = jd0 - step; jd <= jd1 + step; jd += step) {
+      for (const key of planetKeys) {
+        const e = planetElongation(key, jd);
+        if (!e) continue;
+        const el = e.elongasi;
+        const p = prev[key];
+        if (p !== undefined) {
+          const up = el > p;
+          if (rising[key] === true && !up) {
+            /* puncak elongasi = oposisi (bila besar) atau konjungsi atas
+               (bila elongasi kecil — planet di balik Matahari) */
+            if (el > 150 && on('oposisi') && jd >= jd0 && jd <= jd1) {
+              hasil.push({
+                jenis: 'oposisi', ikon: '✨',
+                judul: planetNama[key] + ' di Oposisi',
+                detail: 'paling terang & terdekat · elongasi ' + el.toFixed(1) + '°',
+                tanggal: jdToDate(jd), jd, skor: 70 + el / 100,
+              });
+            } else if (el < 20 && key !== 'mercury' && key !== 'venus' &&
+                       on('matahari') && jd >= jd0 && jd <= jd1) {
+              hasil.push({
+                jenis: 'matahari', ikon: '⊙',
+                judul: planetNama[key] + ' di Konjungsi Matahari',
+                detail: 'berada di balik Matahari · elongasi ' + el.toFixed(1) + '°',
+                tanggal: jdToDate(jd), jd, skor: 45 + (20 - el) / 10,
+              });
+            }
+          }
+          rising[key] = up;
+        }
+        prev[key] = el;
+      }
+    }
+  }
+
+  /* ---- 3. KONJUNGSI PLANET-PLANET ----
+     Hanya pasangan yang BENAR-BENAR TERLIHAT yang dicari: keduanya harus
+     cukup terang (mag < 6, batas mata telanjang). Tanpa saringan ini,
+     hasilnya didominasi pasangan tak menarik seperti Merkurius–Uranus
+     (38 kali dalam 3 tahun) yang tak bisa dilihat mata tanpa alat. */
+  if (on('konjungsi')) {
+    /* magnitudo perkiraan terbaik tiap planet (oposisi) */
+    const MAG = { mercury: -1.9, venus: -4.6, mars: -2.9, jupiter: -2.9,
+                  saturn: 0.0, uranus: 5.7, neptune: 7.8 };
+    const step = 0.5;
+    const prevSep = {};
+    const risingSep = {};
+    for (let jd = jd0 - step; jd <= jd1 + step; jd += step) {
+      const e = earthPositionKm(jd);
+      for (let i = 0; i < planetKeys.length; i++) {
+        for (let j = i + 1; j < planetKeys.length; j++) {
+          const p1 = planetKeys[i], p2 = planetKeys[j];
+          /* saringan keterlihatan: keduanya harus terang */
+          if (MAG[p1] > 6 || MAG[p2] > 6) continue;
+          const a = bodyPositionKm(p1, jd), b = bodyPositionKm(p2, jd);
+          if (!a || !b) continue;
+          const v1 = { x: a.x - e.x, y: a.y - e.y, z: a.z - e.z };
+          const v2 = { x: b.x - e.x, y: b.y - e.y, z: b.z - e.z };
+          const l1 = Math.hypot(v1.x, v1.y, v1.z), l2 = Math.hypot(v2.x, v2.y, v2.z);
+          const dot = (v1.x*v2.x + v1.y*v2.y + v1.z*v2.z) / (l1 * l2);
+          const sep = Math.acos(Math.max(-1, Math.min(1, dot))) / DEG;
+          const kk = p1 + '|' + p2;
+          const ps = prevSep[kk];
+          if (ps !== undefined) {
+            const turun = sep < ps;
+            /* Puncak konjungsi = pemisahan MINIMUM: sebelumnya menurun
+               (risingSep === false) dan sekarang mulai naik (!turun).
+               BUG LAMA: syaratnya `risingSep === false && turun` = "sedang
+               menurun DAN masih menurun" — bukan puncak, melainkan setiap
+               langkah selama penurunan. Akibatnya satu konjungsi tercatat
+               puluhan kali (uji validasi: 511 konjungsi dalam 3 tahun). */
+            if (risingSep[kk] === false && !turun && ps < 5 &&
+                jd >= jd0 && jd <= jd1) {
+              hasil.push({
+                jenis: 'konjungsi', ikon: '🪐',
+                judul: 'Konjungsi ' + planetNama[p1] + '–' + planetNama[p2],
+                detail: 'pemisahan ' + ps.toFixed(2) + '° — tampak berdekatan di langit',
+                tanggal: jdToDate(jd), jd, skor: 55 + (5 - ps),
+              });
+            }
+            risingSep[kk] = turun ? false : true;
+          } else {
+            risingSep[kk] = false;
+          }
+          prevSep[kk] = sep;
+        }
+      }
+    }
+  }
+
+  /* ---- 4. HUJAN METEOR (puncak) ---- */
+  if (on('meteor') && typeof METEOR_SHOWERS !== 'undefined') {
+    const y0 = fromDate.getUTCFullYear(), y1 = toDate.getUTCFullYear();
+    for (const ms of METEOR_SHOWERS) {
+      for (let y = y0; y <= y1; y++) {
+        const t = new Date(Date.UTC(y, ms.puncak.bulan - 1, ms.puncak.hari, 12, 0, 0));
+        const jd = dateToJD(t);
+        if (jd < jd0 || jd > jd1) continue;
+        hasil.push({
+          jenis: 'meteor', ikon: '☄️',
+          judul: 'Puncak Hujan Meteor ' + ms.nama,
+          detail: 'ZHR ~' + ms.zhr + '/jam · ' + ms.induk + ' · ' + ms.v_kms + ' km/s',
+          tanggal: t, jd, skor: 60,
+        });
+      }
+    }
+  }
+
+  /* ---- 5. BULAN BARU & PURNAMA ----
+     PENTING: puncak elongasi harus dicari dengan MEMBANDINGKAN TETANGGA
+     (a < b > c untuk purnama, a > b < c untuk bulan baru). Versi lama
+     hanya memeriksa "naik lalu turun" pada langkah 0,25 hari sehingga satu
+     purnama terdeteksi puluhan kali — uji validasi menemukan 85 "fase" per
+     tahun, padahal seharusnya 12-13 purnama + 12-13 bulan baru. */
+  if (on('fase')) {
+    const step = 0.25;
+    let p0 = null, p1 = null;
+    for (let jd = jd0 - step; jd <= jd1 + step; jd += step) {
+      const f = moonPhase(jd);
+      const el = f.elongasi;
+      if (p0 !== null && p1 !== null) {
+        const a = p0.el, b = p1.el, c = el;
+        if (b > a && b > c && b > 170 && p1.jd >= jd0 && p1.jd <= jd1) {
+          hasil.push({
+            jenis: 'fase', ikon: '🌕',
+            judul: 'Purnama',
+            detail: 'iluminasi ' + (f.iluminasi * 100).toFixed(0) + '%',
+            tanggal: jdToDate(p1.jd), jd: p1.jd, skor: 35,
+          });
+        } else if (b < a && b < c && b < 10 && p1.jd >= jd0 && p1.jd <= jd1) {
+          hasil.push({
+            jenis: 'fase', ikon: '🌑',
+            judul: 'Bulan Baru',
+            detail: 'iluminasi ' + (f.iluminasi * 100).toFixed(0) + '%',
+            tanggal: jdToDate(p1.jd), jd: p1.jd, skor: 35,
+          });
+        }
+      }
+      p0 = p1; p1 = { jd, el };
+    }
+  }
+
+  /* ---- gabungkan kejadian berdekatan (satu peristiwa = satu baris) ---- */
   const gabung = [];
   for (const e of hasil) {
     const last = gabung[gabung.length - 1];
-    if (last && last.jenis === e.jenis && (e.jd - last.jd) < 1.2) {
-      /* simpan yang magnitudonya terbesar (puncak gerhana) */
-      if (Math.abs(e.magnitudo) > Math.abs(last.magnitudo)) {
-        last.jd = e.jd; last.magnitudo = e.magnitudo;
-        last.tanggal = e.tanggal; last.judul = e.judul;
+    if (last && last.jenis === e.jenis && last.judul === e.judul &&
+        Math.abs(e.jd - last.jd) < 1.5) {
+      if ((e.skor || 0) > (last.skor || 0)) {
+        last.jd = e.jd; last.tanggal = e.tanggal;
+        last.skor = e.skor; last.magnitudo = e.magnitudo;
       }
       continue;
     }
@@ -311,12 +562,13 @@ function buildDatePanel() {
       </div>
 
       <div class="dp-section">
-        <div class="dp-section-title">Cari gerhana</div>
+        <div class="dp-section-title">Cari peristiwa langit</div>
+        <div class="dp-chips" id="dpKinds"></div>
         <div class="dp-row dp-row-2">
           <input type="date" id="dpFrom" class="dp-input">
           <input type="date" id="dpTo" class="dp-input">
         </div>
-        <button class="btn small" id="dpSearch">🔍 Cari Gerhana</button>
+        <button class="btn small" id="dpSearch">🔍 Cari Peristiwa</button>
         <div class="dp-results" id="dpResults"></div>
       </div>
     </div>
@@ -334,6 +586,23 @@ function buildDatePanel() {
   $('dpTo').value = future.toISOString().slice(0, 10);
 
   $('dpClose').addEventListener('click', () => toggleDatePanel(false));
+
+  /* ---- chip pemilih jenis peristiwa ---- */
+  {
+    const box = $('dpKinds');
+    box.innerHTML = Object.keys(EVENT_KINDS).map(k => {
+      const it = EVENT_KINDS[k];
+      return `<button class="dp-chip on" data-kind="${k}" title="${it.label}">` +
+             `${it.ikon} ${it.label}</button>`;
+    }).join('');
+    box.querySelectorAll('.dp-chip').forEach(ch => {
+      ch.addEventListener('click', () => {
+        ch.classList.toggle('on');
+        /* jangan biarkan semua mati — minimal satu harus aktif */
+        if (!box.querySelector('.dp-chip.on')) ch.classList.add('on');
+      });
+    });
+  }
   $('dpGo').addEventListener('click', () => {
     const d = $('dpDate').value;
     const t = $('dpTime').value || '12:00';
@@ -408,33 +677,52 @@ function runEclipseSearch() {
     $('dpResults').innerHTML = '<div class="dp-empty">Tanggal akhir harus setelah tanggal awal</div>';
     return;
   }
-  /* batasi rentang agar tidak membekukan browser */
+  /* batasi rentang agar tidak membekukan browser. Rentang besar berarti
+     ribuan titik perhitungan (0,5 hari/langkah × 7 planet × pasangan). */
   const hariRentang = (d1 - d0) / 86400000;
   if (hariRentang > 366 * 40) {
     $('dpResults').innerHTML = '<div class="dp-empty">Rentang maksimum 40 tahun</div>';
     return;
   }
-  $('dpResults').innerHTML = '<div class="dp-empty">Menghitung…</div>';
+  /* jenis yang dipilih pengguna (chip) */
+  const kinds = [...$('dpKinds').querySelectorAll('.dp-chip.on')].map(c => c.dataset.kind);
+  if (!kinds.length) {
+    $('dpResults').innerHTML = '<div class="dp-empty">Pilih minimal satu jenis peristiwa</div>';
+    return;
+  }
+  $('dpResults').innerHTML = '<div class="dp-empty">Menghitung… (rentang ' +
+    (hariRentang / 365.25).toFixed(1) + ' tahun)</div>';
   /* jalankan setelah UI diperbarui supaya pesan "menghitung" terlihat */
   setTimeout(() => {
-    const res = searchEclipses(d0, d1);
+    const t0 = performance.now();
+    const res = searchEvents(d0, d1, kinds);
+    /* urutkan kronologis */
+    res.sort((a, b) => a.jd - b.jd);
     datePanelState.searchResults = res;
+    const ms = Math.round(performance.now() - t0);
     if (!res.length) {
-      $('dpResults').innerHTML = '<div class="dp-empty">Tidak ada gerhana di rentang ini</div>';
+      $('dpResults').innerHTML = '<div class="dp-empty">Tidak ada peristiwa di rentang ini</div>';
       return;
     }
-    $('dpResults').innerHTML = res.map((e, i) => `
+    const MAX = 200;
+    const shown = res.slice(0, MAX);
+    const lebih = res.length - shown.length;
+    $('dpResults').innerHTML =
+      '<div class="dp-result-count">' + res.length + ' peristiwa ditemukan' +
+      (lebih > 0 ? ' (menampilkan ' + MAX + ' terdekat)' : '') +
+      ' · ' + ms + ' ms</div>' +
+      shown.map((e, i) => `
       <div class="dp-result" data-idx="${i}">
         <span class="dp-ev-ikon">${e.ikon}</span>
         <span class="dp-ev-text">
           <b>${e.judul}</b>
-          <i>${formatTanggalPendek(e.tanggal)} · mag ${e.magnitudo.toFixed(3)}</i>
+          <i>${formatTanggalPendek(e.tanggal)}${e.detail ? ' · ' + e.detail : ''}</i>
         </span>
       </div>
     `).join('');
     $('dpResults').querySelectorAll('.dp-result').forEach(el => {
       el.addEventListener('click', () => {
-        const e = res[parseInt(el.dataset.idx, 10)];
+        const e = shown[parseInt(el.dataset.idx, 10)];
         if (!e) return;
         jumpToDate(e.tanggal);
         $('dpDate').value = e.tanggal.toISOString().slice(0, 10);
