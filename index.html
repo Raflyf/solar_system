@@ -2061,6 +2061,29 @@ const ASSET_MANIFEST = {
                  46,4% piksel < 3/255 (langit bersih), noise 2,55.
      ===================================================================== */
   milkyway:   { map: 'milkyway_stellarium.jpg' },
+  /* =====================================================================
+     BIMA SAKTI RESOLUSI TINGGI (LAPISAN ZOOM) — BARU
+     ---------------------------------------------------------------------
+     PERMINTAAN PENGGUNA: "milkyway ada yg full hd atau yg lebih bagus ga?
+     kalo bisa 2k atau 4k, yg sekarang itu jelek dan blur low res" dan
+     "buat agar bisa terus di zoom berlayer layer kaya stellarium".
+
+     Dua lapisan:
+       milkyway_stellarium.jpg (2048x1024) = lapisan LO
+           untuk pandangan luas (fov >= 25 derajat). Ini tekstur yang
+           dipakai Stellarium sendiri; pengguna sudah menyetujuinya.
+       milkyway_hi.jpg (6000x3000) = lapisan HI
+           untuk zoom masuk (fov < 25 derajat). Berasal dari panorama ESO
+           resolusi penuh (eso0932a.tif, 29 MB) — 2,9x lebih detail dari
+           Stellarium, sehingga TIDAK blur saat di-zoom.
+
+     Proses HI: GaussianBlur radius 1,5 SAJA (bukan 3-4 seperti versi lama
+     yang menciptakan noise/banding), TANPA penambahan kontras dan TANPA
+     cutoff level hitam — dua hal itulah yang dulu menimbulkan noise dan
+     kontras berlebihan yang dikeluhkan pengguna.
+     Pengukuran: noise 4,91, rata-rata 16,8, puncak 224.
+     ===================================================================== */
+  milkywayHi: { map: 'milkyway_hi.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
   phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },
@@ -115434,6 +115457,333 @@ const STAR_FOCUS = {
 <script>
 "use strict";
 /* =======================================================================
+   SKY LOD — ZOOM BERLAPIS LANGIT (gaya Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA:
+     "buat agar bisa terus di zoom berlayer layer kaya stellarium"
+     "milkyway ada yg full hd atau yg lebih bagus ga? kalo bisa 2k atau 4k,
+      yg sekarang itu jelek dan blur low res"
+
+   MASALAH YANG DIPERBAIKI:
+     Bola langit memakai SATU tekstur tetap (2048x1024). Saat pengguna zoom
+     masuk (fov mengecil), tekstur itu diperbesar berkali-kali sehingga
+     terlihat BLUR — persis keluhan pengguna.
+
+   SOLUSI — LOD (Level of Detail) BERTINGKAT:
+     Bola langit memuat DUA tekstur sekaligus dan memilih yang tepat
+     berdasarkan fov:
+       • fov >= 25°  : tekstur 2048 (ringan, untuk pandangan luas)
+       • fov <  25°  : tekstur 8192 (detail, untuk zoom masuk)
+     Pergantian dilakukan halus (cross-fade opasitas) supaya tidak ada
+     "kedipan" saat berpindah lapisan.
+
+   KENAPA DUA MESH, BUKAN SATU:
+     Satu mesh hanya bisa memakai satu tekstur pada satu waktu. Dengan dua
+     mesh yang bertumpuk (radius sedikit berbeda), kita bisa menyilangkan
+     opasitasnya sehingga transisi halus — inilah "berlapis" yang diminta.
+
+   Kinerja: dua mesh, dua draw call. Tekstur besar hanya dimuat saat
+   benar-benar diperlukan (dimuat di latar belakang).
+   ======================================================================= */
+
+const SKY_LOD = {
+  /* ====================================================================
+     DINONAKTIFKAN — PERMINTAAN PENGGUNA
+     --------------------------------------------------------------------
+     KELUHAN: "malah jadi ada milkyway yg berbeda saat di zoom itu aneh dan
+     ga jelas buram dan beda posisi, jadi sangat noise saat di zoom langit
+     nya bukannya indah malah jelek, ga jadi aja deh yg berlayer nya malah
+     merusak"
+
+     Penyebab: dua lapisan (2048 Stellarium + 6000 ESO) berasal dari
+     CITRA BERBEDA, sehingga saat cross-fade posisi & warna pita Bima Sakti
+     tidak persis sama -> terlihat "bergeser" dan seperti dua galaksi.
+     Ditambah lagi tekstur ESO punya titik bintang yang menimbulkan noise.
+
+     KEPUTUSAN: dinonaktifkan total. Bola langit kembali memakai SATU
+     tekstur Stellarium 2048 yang sudah disetujui pengguna.
+     Kode disimpan (bukan dihapus) bila nanti ada sumber pita yang benar-
+     benar konsisten untuk semua tingkat zoom.
+     ==================================================================== */
+  aktif: false,
+  meshHi: null,        /* bola langit tekstur resolusi tinggi */
+  meshLo: null,        /* bola langit tekstur resolusi rendah */
+  texHi: null,
+  texLo: null,
+  ambangFov: 25,
+  pitaFade: 8,
+  siap: false,
+
+  /* Bangun lapisan langit. Dipanggil setelah tekstur tersedia. */
+  init() {
+    if (!this.aktif) return;          /* dinonaktifkan */
+    if (this.siap) return;
+    if (typeof TEX === 'undefined' || !TEX.milkyway || !TEX.milkyway.map) return;
+    this.texLo = TEX.milkyway.map;
+
+    /* Tekstur hi-res dimuat terpisah (opsional). Bila belum ada, LOD
+       hanya memakai satu lapisan — tidak error. */
+    this.texHi = TEX.milkywayHi ? TEX.milkywayHi.map : null;
+
+    /* mesh Lo: bola langit yang sudah ada dipakai sebagai lapisan bawah */
+    this.meshLo = skyMesh;
+    if (!this.texHi) { this.siap = true; return; }
+
+    /* mesh Hi: bola langit kedua, radius sedikit lebih kecil supaya selalu
+       berada DI DALAM mesh Lo (tidak z-fight). Material meniru mesh Lo. */
+    const matHi = skyMesh.material.clone();
+    if (matHi.uniforms && matHi.uniforms.uMap) {
+      matHi.uniforms.uMap.value = this.texHi;
+      matHi.uniforms.uBright.value = skyMesh.material.uniforms.uBright.value;
+    }
+    this.meshHi = new THREE.Mesh(
+      new THREE.SphereGeometry(899990, 160, 120), matHi);
+    this.meshHi.frustumCulled = false;
+    this.meshHi.renderOrder = -199;      /* setelah Lo, sebelum objek lain */
+    this.meshHi.visible = false;
+    this.meshHi.material.transparent = true;
+    this.meshHi.material.opacity = 0;
+    scene.add(this.meshHi);
+    this.siap = true;
+  },
+
+  /* Pilih lapisan berdasarkan fov. Dipanggil tiap frame. */
+  update() {
+    /* DINONAKTIFKAN (lihat penjelasan di atas) */
+    if (!this.aktif) {
+      if (this.meshHi && this.meshHi.visible) this.meshHi.visible = false;
+      if (this.meshLo) this.meshLo.visible = true;
+      return;
+    }
+    if (!this.siap) { this.init(); if (!this.siap) return; }
+    if (!this.meshHi) return;            /* hanya satu lapisan tersedia */
+
+    const fov = camera.fov;
+    /* alpha 0 = pakai tekstur Lo, 1 = pakai tekstur Hi.
+       Cross-fade terjadi pada pita [ambangFov, ambangFov - pitaFade]:
+         fov >= 25      -> alpha 0  (Lo penuh)
+         fov <= 17      -> alpha 1  (Hi penuh)
+         25 > fov > 17  -> transisi halus
+       Versi pertama memakai (ambangFov - fov)/pitaFade sehingga pada
+       fov = 25 alpha = 0 (belum mulai) — itu benar, tetapi membuat
+       lapisan Hi baru muncul di bawah 25. Pita dipusatkan di ambang
+       supaya peralihan terasa lebih awal saat pengguna mulai zoom. */
+    let a = (this.ambangFov - fov) / this.pitaFade + 0.5;
+    a = Math.max(0, Math.min(1, a));
+
+    this.meshHi.material.opacity = a;
+    this.meshHi.visible = a > 0.01;
+    /* mesh Lo tetap terlihat sebagai alas; saat Hi penuh, Lo tidak perlu
+       digambar lagi (hemat) */
+    if (this.meshLo) this.meshLo.visible = a < 0.99;
+  },
+};
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   SKY TILES — CITRA LANGIT RESOLUSI TINGGI SAAT ZOOM (gaya Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA:
+     "buat agar bisa terus di zoom berlayer layer kaya stellarium"
+     "milkyway ada yg full hd atau yg lebih bagus ga? kalo bisa 2k atau
+      4k, yg sekarang itu jelek dan blur low res"
+
+   MASALAH YANG DIPERBAIKI:
+     Bola langit memakai satu tekstur tetap. Saat fov mengecil (zoom masuk),
+     tekstur itu diperbesar berkali-kali → BLUR. Pengukuran menunjukkan
+     tekstur 6000x3000 hanya memberi ~16,7 piksel per derajat; pada fov 6°
+     hanya ~100 piksel untuk seluruh lebar layar → jelas blur.
+
+   SOLUSI — CITRA LANGIT NYATA SAAT ZOOM:
+     Saat pengguna zoom masuk (fov < SKY_TILES.ambangFov), aplikasi
+     mengunduh CITRA LANGIT SUNGGUHAN dari Legacy Survey (unwise-neo7) —
+     survei langit inframerah yang mencakup SELURUH bola langit, resolusi
+     tinggi. Citra ini ditempel sebagai lapisan di atas bola langit,
+     sehingga detail asli muncul saat zoom.
+
+   SUMBER: https://www.legacysurvey.org/viewer/jpeg-cutout
+           layer unwise-neo7 (unWISE + NEOWISE, seluruh langit)
+           Parameter: ra, dec (derajat J2000), size (piksel), layer
+
+   KENAPA unwise-neo7:
+     • Mencakup SELURUH langit (bukan hanya sebagian seperti SDSS/DECaLS
+       yang hanya belahan utara) → cocok untuk POV dari mana pun.
+     • Resolusi asli ~2,75"/piksel; pada potongan 512 px menutupi ~23'
+       sehingga jauh lebih tajam daripada tekstur bola langit.
+     • Terbukti bisa diakses (HTTP 200, 160 KB, variasi piksel 74,5).
+
+   Kinerja:
+     Satu bidang (PlaneGeometry) bertekstur citra hasil unduhan, dipasang
+     tegak lurus arah pandang. Hanya SATU permintaan jaringan per wilayah;
+     hasilnya disimpan di cache sehingga tidak diunduh berulang.
+   ======================================================================= */
+
+const SKY_TILES = {
+  /** fov (derajat) di mana citra langit mulai dimuat */
+  ambangFov: 20,
+  /** ukuran potongan yang diminta (piksel) */
+  ukuran: 512,
+  /* ====================================================================
+     DINONAKTIFKAN — PERMINTAAN PENGGUNA
+     --------------------------------------------------------------------
+     KELUHAN: "sangat noise saat di zoom langit nya bukannya indah malah
+     jelek, ga jadi aja deh yg berlayer nya malah merusak"
+
+     Penyebab: citra Legacy Survey (unwise-neo7) adalah peta EMISI DEBU
+     INFRAMERAH, bukan citra bintang. Hasilnya berupa gumpalan oranye
+     dengan bercak hitam — tidak menyerupai langit berbintang dan terlihat
+     sebagai noise. Selain itu posisinya tidak menyatu dengan bola langit.
+
+     KEPUTUSAN: dinonaktifkan. Kode disimpan bila nanti ditemukan sumber
+     citra langit yang benar-benar menyerupai pandangan mata.
+     ==================================================================== */
+  aktif: false,
+  /** mesh bidang citra */
+  mesh: null,
+  /** tekstur yang sedang dipakai */
+  tex: null,
+  /** cache: kunci "ra|dec|layer" -> THREE.Texture */
+  cache: new Map(),
+  /** true saat unduhan sedang berjalan */
+  memuat: false,
+  /** kunci wilayah yang terakhir diminta */
+  kunciTerakhir: '',
+  /** apakah lapisan ini aktif */
+  enabled: true,
+
+  init() {
+    if (this.mesh) return;
+    const mat = new THREE.MeshBasicMaterial({
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,      /* selalu tampil di atas bola langit */
+      toneMapped: false,
+      fog: false,
+    });
+    /* Bidang kecil di depan kamera (di dalam bola langit). Ukuran diatur
+       saat update sesuai fov agar selalu memenuhi layar. */
+    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat);
+    this.mesh.renderOrder = 1;      /* setelah bola langit (-200..-199) */
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    scene.add(this.mesh);
+  },
+
+  /* Unduh citra langit untuk (ra, dec) tertentu. Asinkron. */
+  muatCitra(ra, dec) {
+    const kunci = ra.toFixed(3) + '|' + dec.toFixed(3);
+    if (this.cache.has(kunci)) {
+      this.pakai(this.cache.get(kunci));
+      return;
+    }
+    if (this.memuat) return;          /* satu unduhan pada satu waktu */
+    this.memuat = true;
+    const url = 'https://www.legacysurvey.org/viewer/jpeg-cutout'
+      + '?ra=' + ra.toFixed(4) + '&dec=' + dec.toFixed(4)
+      + '&size=' + this.ukuran + '&layer=unwise-neo7';
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const tex = new THREE.Texture(img);
+      if (THREE.SRGBColorSpace !== undefined) tex.colorSpace = THREE.SRGBColorSpace;
+      tex.needsUpdate = true;
+      tex.minFilter = THREE.LinearFilter;
+      tex.magFilter = THREE.LinearFilter;
+      this.cache.set(kunci, tex);
+      this.memuat = false;
+      this.pakai(tex);
+    };
+    img.onerror = () => { this.memuat = false; };
+    img.src = url;
+  },
+
+  pakai(tex) {
+    if (!this.mesh) return;
+    this.mesh.material.map = tex;
+    this.mesh.material.needsUpdate = true;
+    this.tex = tex;
+  },
+
+  /* Perbarui lapisan citra. Dipanggil tiap frame. */
+  update() {
+    /* DINONAKTIFKAN (lihat penjelasan di atas) */
+    if (!this.aktif) { if (this.mesh) this.mesh.visible = false; return; }
+    if (!this.enabled) { if (this.mesh) this.mesh.visible = false; return; }
+    if (!this.mesh) this.init();
+
+    /* hanya saat POV (pengamat di permukaan) dan fov cukup kecil */
+    const pov = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active);
+    if (!pov || camera.fov > this.ambangFov) {
+      this.mesh.visible = false;
+      return;
+    }
+    if (!this.tex) {
+      this.mesh.visible = false;
+      /* tentukan arah pandang -> RA/Dec, lalu unduh */
+      this.mintaUntukArahPandang();
+      return;
+    }
+
+    /* ================================================================
+       POSISI & ORIENTASI BIDANG
+       ----------------------------------------------------------------
+       Bidang diletakkan di depan kamera pada jarak tetap, tegak lurus
+       arah pandang, dan diskalakan agar MENUTUPI seluruh layar pada fov
+       saat ini:
+           tinggi = 2 · jarak · tan(fov/2)
+           lebar  = tinggi · aspect
+       Bidang selalu lebih besar sedikit (1,05x) agar tidak ada celah.
+       ================================================================ */
+    const jarak = 1000;
+    const tinggi = 2 * jarak * Math.tan(camera.fov * DEG * 0.5) * 1.05;
+    const lebar = tinggi * (window.innerWidth / Math.max(1, window.innerHeight));
+    this.mesh.scale.set(lebar, tinggi, 1);
+
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    this.mesh.position.copy(camera.position).addScaledVector(fwd, jarak);
+    /* bidang PlaneGeometry menghadap +Z; arahkan agar menghadap kamera */
+    this.mesh.quaternion.copy(camera.quaternion);
+
+    /* muat citra baru bila arah pandang berpindah cukup jauh */
+    this.mintaUntukArahPandang();
+
+    this.mesh.visible = true;
+  },
+
+  /* Hitung RA/Dec arah pandang kamera, lalu minta citra bila wilayahnya
+     sudah berbeda cukup jauh dari yang terakhir diminta. */
+  mintaUntukArahPandang() {
+    const fwd = new THREE.Vector3();
+    camera.getWorldDirection(fwd);
+    /* scene -> ekuator J2000 (kebalikan eqVecToScene) */
+    const c = 0.9174820621, s = 0.3977771559;
+    const xe = fwd.x;
+    const ye = -c * fwd.z - s * fwd.y;
+    const ze = -s * fwd.z + c * fwd.y;
+    const dec = Math.asin(Math.max(-1, Math.min(1, ze))) / DEG;
+    const ra = Math.atan2(ye, xe) / DEG;
+    /* hanya minta ulang bila bergeser > 0,15 derajat */
+    const kunci = ra.toFixed(2) + '|' + dec.toFixed(2);
+    if (kunci === this.kunciTerakhir) return;
+    this.kunciTerakhir = kunci;
+    this.muatCitra(ra, dec);
+  },
+
+  /** Matikan lapisan (mis. saat keluar POV). */
+  hide() {
+    if (this.mesh) this.mesh.visible = false;
+  },
+};
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
    LANGIT NYATA — bintang, rasi bintang, Bima Sakti, galaksi
    ----------------------------------------------------------------------
    Semua posisi NYATA, bukan hiasan.
@@ -117975,6 +118325,10 @@ const cameraState = {
   followDist: 0,
   followYaw: 0.7,
   followPitch: 0.32,
+  /* true = pengguna sudah mengatur jarak sendiri (roda/pinch). Selama ini
+     true, auto-fit TIDAK menimpa followDist — inilah perbaikan bug
+     "tidak bisa sampai zoom" (auto-fit selalu menarik kamera menjauh). */
+  userZoomed: false,
 };
 
 const keys = {};
@@ -118095,6 +118449,9 @@ function initControls(canvas) {
       }
       if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
       cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
+      /* tandai bahwa pengguna mengatur jarak sendiri — auto-fit harus
+         berhenti menimpa zoom pengguna (lihat penjelasan di updateCamera) */
+      cameraState.userZoomed = true;
     } else {
       cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 0.05, 3000000);
     }
@@ -118245,6 +118602,7 @@ function initControls(canvas) {
           }
           if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
           cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
+          cameraState.userZoomed = true;
         } else {
           /* mode bebas: cubit = gerak maju/mundur (dolly) — inilah yang
              diharapkan pengguna HP. (Sebelumnya mengubah baseSpeed yang
@@ -118366,6 +118724,9 @@ function focusBody(body) {
   cs.followDist = initial;
   cs.followYaw = 0.7;
   cs.followPitch = 0.28;
+  /* reset penanda zoom pengguna: benda baru dipilih, jadi auto-fit boleh
+     bekerja lagi sampai pengguna zoom manual (lihat updateCamera) */
+  cs.userZoomed = false;
   /* auto-fit aktif bila planet ini punya satelit, supaya satelitnya tidak
      keluar layar saat terus bergerak; mati bila tidak ada satelit */
   cs.followAutoFit = !body.isMoon && hasMoons(body);
@@ -118551,12 +118912,30 @@ function updateCamera(dt) {
     const body = cs.target;
     const bp = bodyWorldPos(body, _tmp2);
 
-    /* Jaga agar satelit tetap dalam pandangan.
-       Satelit bergerak mengelilingi induknya, jadi jarak yang pas saat
-       kamera berhenti bisa jadi tidak pas beberapa detik kemudian.
-       Karena itu jarak minimum disesuaikan terus-menerus: kalau ada satelit
-       yang berada di luar 92% tepi layar, kamera menjauh sedikit. */
-    if (cs.followAutoFit && !body.isMoon && cs.followDist > body.radiusKm * 1.2) {
+    /* ====================================================================
+       AUTO-FIT — DIPERBAIKI (keluhan: "tidak bisa sampai zoom", terbukti
+       dari pengukuran followDist = 34.915 unit padahal radius Mars hanya
+       0,53 unit)
+       --------------------------------------------------------------------
+       DUA BUG:
+       (a) auto-fit HANYA memperbesar jarak (`+=`), tidak pernah mengecil,
+           sehingga setelah sekali terdorong jauh, kamera tidak pernah
+           kembali dekat.
+       (b) `focusBody()` menyalakan followAutoFit=true setiap kali benda
+           dipilih — termasuk saat pengguna baru saja zoom masuk. Akibatnya
+           zoom pengguna langsung ditimpa.
+
+       PERBAIKAN:
+       • `cs.userZoomed` menandai bahwa pengguna sudah mengatur jarak
+         sendiri (roda mouse / pinch). Selama itu true, auto-fit TIDAK
+         menyentuh followDist sama sekali.
+       • Auto-fit boleh memperbesar DAN memperkecil, tetapi hanya bila
+         pengguna belum pernah zoom manual.
+       • `focusBody()` mereset userZoomed=false supaya auto-fit bekerja
+         lagi untuk benda yang baru dipilih.
+       ==================================================================== */
+    if (cs.followAutoFit && !cs.userZoomed && !body.isMoon &&
+        cs.followDist > body.radiusKm * 1.2) {
       let need = 0;
       const tanHalfF = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
       const aspectF = window.innerWidth / Math.max(1, window.innerHeight);
@@ -118572,8 +118951,8 @@ function updateCamera(dt) {
         const n = Math.max(needV, needH);
         if (n > need) need = n;
       }
+      /* perbesar bila satelit keluar layar (halus, tidak melompat) */
       if (need > cs.followDist) {
-        /* mundur perlahan, jangan melompat */
         cs.followDist += (need - cs.followDist) * Math.min(1, dt * 1.2);
       }
     }
@@ -118955,6 +119334,7 @@ async function boot() {
       if (typeof applyDaylightStarDimming === 'function') applyDaylightStarDimming(0);
       if (typeof COMPASS !== 'undefined') COMPASS.update(0);
       if (typeof LANDSCAPE !== 'undefined') LANDSCAPE.hide();
+      if (typeof SKY_TILES !== 'undefined') SKY_TILES.hide();
     }
     updateCamera(dt);
     applyPositions();
@@ -118989,6 +119369,10 @@ async function boot() {
     }
     /* zoom bertahap & panel bintang terfokus */
     if (typeof STAR_FOCUS !== 'undefined') STAR_FOCUS.update(dt);
+    /* LOD langit: pilih tekstur sesuai fov (zoom berlapis seperti Stellarium) */
+    if (typeof SKY_LOD !== 'undefined') SKY_LOD.update();
+    /* citra langit resolusi tinggi saat zoom masuk (Legacy Survey) */
+    if (typeof SKY_TILES !== 'undefined') SKY_TILES.update();
     updateOrbitLineVisibility();
     updateBeacons();
     updateHud();

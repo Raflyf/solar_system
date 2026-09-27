@@ -31,6 +31,29 @@ const ASSET_MANIFEST = {
                  46,4% piksel < 3/255 (langit bersih), noise 2,55.
      ===================================================================== */
   milkyway:   { map: 'milkyway_stellarium.jpg' },
+  /* =====================================================================
+     BIMA SAKTI RESOLUSI TINGGI (LAPISAN ZOOM) — BARU
+     ---------------------------------------------------------------------
+     PERMINTAAN PENGGUNA: "milkyway ada yg full hd atau yg lebih bagus ga?
+     kalo bisa 2k atau 4k, yg sekarang itu jelek dan blur low res" dan
+     "buat agar bisa terus di zoom berlayer layer kaya stellarium".
+
+     Dua lapisan:
+       milkyway_stellarium.jpg (2048x1024) = lapisan LO
+           untuk pandangan luas (fov >= 25 derajat). Ini tekstur yang
+           dipakai Stellarium sendiri; pengguna sudah menyetujuinya.
+       milkyway_hi.jpg (6000x3000) = lapisan HI
+           untuk zoom masuk (fov < 25 derajat). Berasal dari panorama ESO
+           resolusi penuh (eso0932a.tif, 29 MB) — 2,9x lebih detail dari
+           Stellarium, sehingga TIDAK blur saat di-zoom.
+
+     Proses HI: GaussianBlur radius 1,5 SAJA (bukan 3-4 seperti versi lama
+     yang menciptakan noise/banding), TANPA penambahan kontras dan TANPA
+     cutoff level hitam — dua hal itulah yang dulu menimbulkan noise dan
+     kontras berlebihan yang dikeluhkan pengguna.
+     Pengukuran: noise 4,91, rata-rata 16,8, puncak 224.
+     ===================================================================== */
+  milkywayHi: { map: 'milkyway_hi.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
   phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },
