@@ -84,7 +84,6 @@ html, body {
    ===================================================================== */
 body.hide-ui .ui { display: none; }
 body.hide-ui .ui-show { display: block; }
-body.hide-ui #labelLayer { display: none; }
 .ui > * { pointer-events: auto; }
 
 /* =======================================================================
@@ -118496,12 +118495,30 @@ function updateBeacons() {
        menonjol dari planet. Nilai ini tetap kecil di layar (tidak menutupi
        langit) tetapi cukup untuk langsung terlihat dan bisa diklik.
        ===================================================================== */
-    const basePx = b.isMoon ? 7.2 : 6.0;
-    const corePx = basePx + Math.min(3.5, Math.max(0, 1 - px / 6.0) * 3.5);
-    const haloPx = corePx * (b.isMoon ? 3.8 : 3.4);
+    /* =====================================================================
+       UKURAN PENANDA — DIPERKECIL (keluhan: terlalu glow/bersinar)
+       ---------------------------------------------------------------------
+       KELUHAN: "planet dan satelit terlalu glow dan bersinar jadi malah
+       aneh, matahari pun malah tertutup glow dan cahaya dari planet dan
+       satelit"
+
+       UKURAN LAMA:
+         inti planet 6,0 px + halo 3,4x = ~20 px
+         inti Bulan  7,2 px + halo 3,8x = ~27 px
+       Halo sebesar itu menutupi Matahari saat planet melintas di depannya
+       dan membuat semua benda tampak seperti bola cahaya.
+
+       UKURAN BARU:
+         inti planet 4,0 px + halo 2,2x = ~9 px  (tetap kelihatan, bisa diklik)
+         inti Bulan  5,0 px + halo 2,6x = ~13 px (Bulan tetap lebih menonjol)
+       Opacity halo 0,26+0,12sin -> 0,14 tetap (tidak berdenyut berlebihan).
+       ===================================================================== */
+    const basePx = b.isMoon ? 5.0 : 4.0;
+    const corePx = basePx + Math.min(2.5, Math.max(0, 1 - px / 6.0) * 2.5);
+    const haloPx = corePx * (b.isMoon ? 2.6 : 2.2);
     b.beacon.core.scale.set(corePx * unit, corePx * unit, 1);
     b.beacon.halo.scale.set(haloPx * unit, haloPx * unit, 1);
-    b.beacon.halo.material.opacity = 0.26 + 0.12 * Math.sin(now * 0.0022 + i * 1.7);
+    b.beacon.halo.material.opacity = 0.14;
     b.beacon.group.position.copy(_bp);
   }
 }
@@ -119700,8 +119717,8 @@ function initControls(canvas) {
     const fovNow = camera.fov || 50;
     const tinggiLayar = window.innerHeight || 640;
 
-    /* toleransi dasar 22 px (mencakup beacon) + bagian benda yang terlihat */
-    let tolPlanetDeg = 22 * fovNow / tinggiLayar;
+    /* toleransi dasar 14 px (mencakup beacon inti+halo ~9-13 px) */
+    let tolPlanetDeg = 14 * fovNow / tinggiLayar;
     tolPlanetDeg = Math.max(0.02, Math.min(6.0, tolPlanetDeg));
     const bendaTerdekat = cariBendaDariArah(arahKlik, tolPlanetDeg);
     if (bendaTerdekat) { focusBody(bendaTerdekat); return; }
