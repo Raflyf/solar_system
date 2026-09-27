@@ -260,8 +260,8 @@ function initControls(canvas) {
     const fovNow = camera.fov || 50;
     const tinggiLayar = window.innerHeight || 640;
 
-    /* toleransi dasar 22 px (mencakup beacon) + bagian benda yang terlihat */
-    let tolPlanetDeg = 22 * fovNow / tinggiLayar;
+    /* toleransi dasar 14 px (mencakup beacon inti+halo ~9-13 px) */
+    let tolPlanetDeg = 14 * fovNow / tinggiLayar;
     tolPlanetDeg = Math.max(0.02, Math.min(6.0, tolPlanetDeg));
     const bendaTerdekat = cariBendaDariArah(arahKlik, tolPlanetDeg);
     if (bendaTerdekat) { focusBody(bendaTerdekat); return; }

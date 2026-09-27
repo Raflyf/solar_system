@@ -56,7 +56,6 @@ html, body {
    ===================================================================== */
 body.hide-ui .ui { display: none; }
 body.hide-ui .ui-show { display: block; }
-body.hide-ui #labelLayer { display: none; }
 .ui > * { pointer-events: auto; }
 
 /* =======================================================================
