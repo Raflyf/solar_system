@@ -36,8 +36,12 @@ HYG_GZ = os.path.join(STELL, 'hygdata_v40.csv.gz')
 MODERN = os.path.join(STELL, 'modern_index.json')
 NAMEFAB = os.path.join(STELL, 'name.fab')
 
-# batas magnitudo: mata telanjang di langit gelap ~6,5
-MAG_MAX = 6.5
+# batas magnitudo.
+#  6,5 = mata telanjang di langit sangat gelap (8.921 bintang)
+#  8,0 = terlihat dengan binokular / langit sangat gelap (41.488 bintang)
+# Dipakai 8,0 supaya medan bintang padat seperti Stellarium, tetapi tetap
+# ringan: bintang dirender sebagai point sprite (satu draw call).
+MAG_MAX = 8.0
 
 
 def buka_hyg():

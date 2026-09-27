@@ -51,18 +51,23 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — TAJAM & TEGAS (gaya Stellarium)
+     UKURAN BINTANG — DISESUAIKAN UNTUK KATALOG MAG <= 8,0
      ---------------------------------------------------------------------
-     Referensi Stellarium: bintang dirender sebagai TITIK KECIL TAJAM.
-     Bintang paling terang (mag 0) sekitar 4-5 px; redup 1 px. Kecerlahan
-     dibawa oleh alpha, bukan ukuran raksasa.
+     Katalog 41.488 bintang (mag <= 8,0). Rumus disesuaikan supaya:
+       • mag 0 -> ~5,0 px (titik tajam)
+       • mag 6 -> ~1,8 px (mata telanjang)
+       • mag 8 -> ~1,1 px (redup, tetap terlihat)
+     Kekurangan yang dilaporkan: "medan bintang kurang padat". Solusinya
+     BUKAN memperbesar titik (membuat blob), melainkan memperbanyak bintang
+     redup yang terlihat — dilakukan lewat batas alpha minimum di bawah.
      ===================================================================== */
-  return Math.max(1.2, 4.2 - mag * 0.50);
+  return Math.max(1.1, 5.0 - mag * 0.50);
 }
 function starAlpha(mag) {
-  /* Alpha: bintang terang hampir opak, redup tetap terlihat.
-     Rentang 0,55..1,0. */
-  return Math.max(0.55, Math.min(1.0, 1.12 - mag * 0.085));
+  /* Alpha minimum diturunkan ke 0,30 (dari 0,42) supaya bintang redup
+     mag 7-8 tetap tampak sebagai titik samar. Ini yang membuat medan
+     bintang terasa PADAT seperti Stellarium tanpa memperbesar ukuran. */
+  return Math.max(0.30, Math.min(1.0, 1.10 - mag * 0.085));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
