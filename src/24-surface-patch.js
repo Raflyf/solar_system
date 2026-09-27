@@ -98,20 +98,38 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
 
   const lat0 = centerLat * DEG, lon0 = centerLon * DEG;
   const cosLat0 = Math.cos(lat0), sinLat0 = Math.sin(lat0);
-  /* =====================================================================
-     DUA MODE UV — sesuai tekstur yang dipakai
-     ---------------------------------------------------------------------
-     • MODE GLOBAL (spanDeg tidak diberikan): tekstur mencakup seluruh Bumi
-       (4096x2048 equirectangular). UV = posisi geografis langsung.
-     • MODE DETAIL (spanDeg diberikan): tekstur hanya mencakup wilayah
-       kecil di sekitar pengamat (dari tile NASA GIBS). UV harus
-       dinormalisasi KE DALAM wilayah itu, bukan ke seluruh dunia.
-       BUG YANG DIPERBAIKI: tanpa normalisasi ini, tekstur 6° melar
-       menutupi seluruh patch sehingga layar jadi satu warna rata
-       (terbukti di uji: seluruh layar (130,181,213) = biru laut).
-     ===================================================================== */
+
+  /* =======================================================================
+     UV PATCH — MEMAKAI WILAYAH YANG SESUAI, BUKAN SELURUH TEKSTUR
+     -----------------------------------------------------------------------
+     MASALAH (terukur, dari keluhan "semua planet polos"):
+       Patch permukaan mencakup 92° dari bola, tetapi UV-nya dipetakan ke
+       SELURUH tekstur planet (u: 0..1, v: 0..1). Akibatnya:
+         • Wilayah yang dilihat kamera (hanya ~25 km dari 6371 km radius,
+           yaitu ~0,22° atau 0,06% permukaan) hanya mendapat ~1 piksel
+           dari tekstur 2048 px → layar tampak SATU WARNA RATA.
+         • Terbukti: baris permukaan Mars = (221,115,73) di 8 titik,
+           variasi warna = 1 (harusnya puluhan).
+
+     SOLUSI: UV dihitung dari posisi geografis sesungguhnya, tetapi
+     DIPETAKAN KE WILAYAH TEKSTUR YANG SESUAI dengan luas patch — bukan
+     ke seluruh dunia. Jadi:
+         • pusat patch  → pusat wilayah tekstur (UV 0,5 ; 0,5)
+         • tepi patch   → tepi wilayah tekstur (UV 0 atau 1)
+     Dengan begitu seluruh 2048 px tekstur terpakai untuk wilayah patch,
+     dan resolusi efektif naik ~400x.
+
+     Parameter spanDeg:
+       • Bila diberikan (mode DETAIL, dari tile NASA GIBS) → wilayah
+         tekstur = spanDeg derajat, seperti sebelumnya.
+       • Bila TIDAK diberikan (mode GLOBAL, tekstur seluruh dunia) →
+         wilayah tekstur = sudut patch itu sendiri, sehingga tekstur
+         tidak "diperas" ke wilayah yang jauh lebih luas.
+     ======================================================================= */
+  const patchDeg = mesh.geometry.parameters.thetaLength / DEG;   /* luas patch */
   const useDetail = (spanDeg && spanDeg > 0);
-  const half = useDetail ? spanDeg / 2 : 0;
+  const span = useDetail ? spanDeg : patchDeg;
+
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
     v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
@@ -122,23 +140,21 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
     v.applyQuaternion(q);
     const latDeg = Math.asin(Math.max(-1, Math.min(1, v.y))) / DEG;
     const lonDeg = Math.atan2(-v.z, v.x) / DEG;
-    let u, vv;
-    if (useDetail) {
-      /* ==============================================================
-         V TERBALIK — BUG YANG DIPERBAIKI
-         --------------------------------------------------------------
-         Kanvas Y naik KE BAWAH (baris 0 = paling utara), sedangkan
-         lintang naik KE ATAS. Tanpa pembalikan ini, tekstur tampil
-         terbalik utara-selatan sehingga wilayah yang terlihat bukan
-         wilayah pengamat (terbukti: layar jadi satu warna rata).
-         ============================================================== */
-      u = (lonDeg - (centerLon - half)) / spanDeg;
-      vv = 1 - (latDeg - (centerLat - half)) / spanDeg;
-    } else {
-      u = 0.5 + lonDeg / 360;
-      vv = 0.5 + latDeg / 180;
-    }
-    uv.setXY(i, u - Math.floor(u), Math.max(0, Math.min(1, vv)));
+
+    /* jarak sudut dari pusat patch (dalam derajat) */
+    let dLon = lonDeg - centerLon;
+    while (dLon > 180) dLon -= 360;
+    while (dLon < -180) dLon += 360;
+    const dLat = latDeg - centerLat;
+
+    /* petakan ke 0..1 berdasarkan luas wilayah tekstur */
+    const half = span / 2;
+    let u = 0.5 + dLon / span;
+    let vv = 0.5 + dLat / span;
+    /* ulang untuk bujur yang melintasi ±180° */
+    u = u - Math.floor(u);
+    vv = Math.max(0, Math.min(1, vv));
+    uv.setXY(i, u, vv);
   }
   uv.needsUpdate = true;
 }

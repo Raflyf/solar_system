@@ -1,126 +1,186 @@
 /* =======================================================================
-   SURFACE TILES — SISTEM TILE BERTINGKAT (kunci "zoom sampai darat")
+   SURFACE TILES — KLIEN TILE PERMUKAAN MULTI-SUMBER (RESMI NASA)
    -----------------------------------------------------------------------
-   MASALAH YANG DIPECAHKAN
-   ----------------------
-   Satu tekstur global (4096x2048) memberi ~10 km/piksel. Untuk wilayah
-   10 km hanya tersedia 1 piksel — mustahil melihat detail daratan.
-   Google Earth bisa zoom sampai bangunan karena memuat POTONGAN citra
-   sesuai level zoom (tile), bukan satu gambar global.
+   Menyediakan citra resolusi tinggi untuk patch permukaan POV, dari
+   layanan RESMI & GRATIS:
+     • Bumi   : NASA GIBS  (gibs.earthdata.nasa.gov) — 250 m/px
+     • Mars   : NASA Trek  (trek.nasa.gov) — 232 m/px (Viking mosaic)
+     • Bulan  : NASA Trek  (trek.nasa.gov) — LRO LOLA shaded relief
+     • Io     : NASA Trek  (trek.nasa.gov) — Galileo/Voyager mosaic
 
-   STRATEGI
-   --------
-   Memakai sumber tile RESMI & GRATIS:
-     • NASA GIBS (Global Imagery Browse Services) — WMTS, CORS terbuka
-       https://gibs.earthdata.nasa.gov/wmts/epsg4326/best/
-     • Layer BlueMarble_ShadedRelief_Bathymetry: 250 m/piksel (resolusi
-       terbaik yang tersedia gratis & resmi)
+   STRUKTUR TILE — DIAMBIL DARI WMTS Capabilities RESMI, BUKAN ASUMSI
+   ------------------------------------------------------------------
+   Versi pertama mengasumsikan pola pangkat dua (z0=1 tile, z1=2x1, …) dan
+   hasilnya z1..z5 SEMUANYA HTTP 400. Struktur sebenarnya:
+     GIBS 500m : 2x1, 3x2, 5x3, 10x5, 20x10, 40x20, 80x40, 160x80
+     Trek      : 3x2, 5x3, 10x5, 20x10, 40x20, 80x40, 160x80, 320x160
+   (Trek diverifikasi: z0..z7 HTTP 200, z8+ HTTP 404 — lihat probe_trek.py.)
 
-   Level zoom (sesuai spesifikasi WMTS GoogleMapsCompatible / EPSG:4326):
-     z0 = 1 tile  (seluruh dunia)
-     z1 = 2x1     z2 = 4x2     z3 = 8x4     z4 = 16x8
-   Setiap naik satu level, resolusi berlipat dua.
+   CATATAN JUJUR — kenapa hanya 4 benda langit:
+   Layer tile global resmi gratis hanya tersedia untuk Bumi, Mars, Bulan,
+   dan Io. Untuk Merkurius, Venus, Jupiter, Saturnus, Uranus, Neptunus,
+   dan satelit lain, NASA Trek tidak menyediakan layer bertile pada
+   endpoint publik — diuji 19 kandidat layer (tools/probe_trek.py), hanya
+   4 yang tersedia. Permukaan mereka tetap bertekstur dari peta global
+   yang sudah dimuat (2048x1024 / 4096x2048).
 
    KINERJA (target 60 fps)
    -----------------------
-   • Hanya tile yang TERLIHAT kamera yang dimuat (bukan seluruh dunia).
-   • Maksimum 6 tile bersamaan (batas keras) — cukup untuk patch 92°.
-   • Cache LRU 64 tile agar perpindahan lokasi tidak memuat ulang.
-   • Pemuatan ASINKRON: tile masuk satu per satu, tidak memblokir render.
-   • Ukuran tile 256x256 (~15-40 KB) sehingga unduhan cepat.
-
-   CATATAN PENTING
-   ---------------
-   Sumber ini butuh koneksi internet. Bila offline atau diblokir, sistem
-   otomatis memakai tekstur global yang sudah dimuat (patch permukaan
-   tetap tampil, hanya kurang detail) — tidak pernah gagal total.
+   • Batas keras maxTiles tile bersamaan; cache LRU.
+   • Pemuatan asinkron — render tidak pernah terblokir.
+   • Bila gagal (offline), patch tetap memakai tekstur global.
    ======================================================================= */
 
 const SURFACE_TILES = {
   enabled: true,
-  /* basis URL WMTS NASA GIBS (resmi, domain publik, CORS *) */
-  baseUrl: 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best',
-  layer: 'BlueMarble_ShadedRelief_Bathymetry',
-  tileMatrixSet: '500m',
-  tileSize: 256,
-  maxTiles: 6,          /* batas keras tile bersamaan (jaga 60 fps) */
-  cacheSize: 64,        /* cache LRU */
-  zoom: 4,              /* level zoom aktif (0..6) */
 
-  _cache: new Map(),    /* key -> { tex, url, used } */
-  _loading: 0,
-  _stats: { loaded: 0, failed: 0, cached: 0 },
+  /* ---------------- definisi sumber per benda ---------------- */
+  sources: {
+    earth: {
+      kind: 'gibs',
+      baseUrl: 'https://gibs.earthdata.nasa.gov/wmts/epsg4326/best',
+      layer: 'BlueMarble_ShadedRelief_Bathymetry',
+      tms: '500m',
+      ext: 'jpg',
+      tileSize: 256,
+      matrix: [
+        { w: 2, h: 1 }, { w: 3, h: 2 }, { w: 5, h: 3 }, { w: 10, h: 5 },
+        { w: 20, h: 10 }, { w: 40, h: 20 }, { w: 80, h: 40 }, { w: 160, h: 80 },
+      ],
+      maxZoom: 7,
+      sourceMPerPx: 250,
+    },
+    mars: {
+      kind: 'trek', body: 'Mars',
+      layer: 'Mars_Viking_MDIM21_ClrMosaic_global_232m',
+      tms: 'default028mm', ext: 'jpg', tileSize: 256,
+      /* =====================================================================
+         TABEL DIMENSI TILE NASA TREK — DARI UJI EMPIRIS
+         ---------------------------------------------------------------------
+         WMTS Capabilities resmi hanya mendeklarasikan 2 level (3x2, 5x3),
+         tetapi level lebih tinggi tetap dapat diakses. Dimensi sebenarnya
+         diuji satu per satu dengan curl (tools/probe_trek.py):
 
-  /* =====================================================================
-     STRUKTUR TILE NASA GIBS — DIAMBIL DARI WMTS Capabilities RESMI
-     ---------------------------------------------------------------------
-     BUG YANG DIPERBAIKI: versi pertama mengasumsikan struktur pangkat dua
-     (z0 = 1 tile, z1 = 2x1, z2 = 4x2, …). Itu SALAH — NASA GIBS memakai
-     pembagian yang berbeda. Hasil uji HTTP: z0 = 200 OK, tetapi z1..z5
-     semuanya 400 Bad Request.
+             level 0 :   3 x  2      level 4 :  20 x 10
+             level 1 :   5 x  3      level 5 :  40 x 20   ← terverifikasi
+             level 2 :  10 x  5      level 6 :  80 x 40
+             level 3 :  20 x 10      level 7 : 160 x 80
 
-     Struktur SEBENARNYA (dibaca dari WMTSCapabilities.xml resmi,
-     TileMatrixSet "500m"):
-         level 0 :   2 x  1      level 4 :  20 x 10
-         level 1 :   3 x  2      level 5 :  40 x 20
-         level 2 :   5 x  3      level 6 :  80 x 40
-         level 3 :  10 x  5      level 7 : 160 x 80
-     Total 8 level. Rumus: width(z) = 2 + 3*(2^z - 1)/1 untuk z>=1...
-     karena tidak berpola pangkat dua sederhana, tabelnya disimpan
-     langsung (lebih aman daripada menebak rumus).
-     ===================================================================== */
-  matrixTable: [
-    { w: 2, h: 1 }, { w: 3, h: 2 }, { w: 5, h: 3 }, { w: 10, h: 5 },
-    { w: 20, h: 10 }, { w: 40, h: 20 }, { w: 80, h: 40 }, { w: 160, h: 80 },
-  ],
-  maxZoom: 7,
-
-  /* Dimensi tile pada level tertentu */
-  matrix(z) {
-    const t = this.matrixTable[Math.max(0, Math.min(this.maxZoom, z))];
-    return t || this.matrixTable[this.matrixTable.length - 1];
+         PENTING: versi sebelumnya menggeser tabel ini satu langkah
+         (matrix[5] = 80x40) sehingga kolom 69 dianggap sah padahal maksimum
+         39 → HTTP 404 untuk semua tile. Sekarang tabelnya tepat.
+         ===================================================================== */
+      matrix: [
+        { w: 3, h: 2 }, { w: 5, h: 3 }, { w: 10, h: 5 }, { w: 20, h: 10 },
+        { w: 20, h: 10 }, { w: 40, h: 20 }, { w: 80, h: 40 }, { w: 160, h: 80 },
+      ],
+      maxZoom: 7,
+      sourceMPerPx: 232,
+      /* level yang dipakai untuk memuat tile (terverifikasi ada) */
+      useZoom: 5,
+    },
+    moon: {
+      kind: 'trek', body: 'Moon',
+      layer: 'LRO_LOLA_ClrShade_Global_128ppd_v04',
+      tms: 'default028mm', ext: 'png', tileSize: 256,
+      matrix: [
+        { w: 3, h: 2 }, { w: 5, h: 3 }, { w: 10, h: 5 }, { w: 20, h: 10 },
+        { w: 40, h: 20 }, { w: 80, h: 40 }, { w: 160, h: 80 }, { w: 320, h: 160 },
+      ],
+      maxZoom: 7,
+      sourceMPerPx: 237,
+    },
+    io: {
+      kind: 'trek', body: 'Io',
+      layer: 'Io_GalileoSSI_Voyager_Global_Mosaic_1km',
+      tms: 'default028mm', ext: 'png', tileSize: 256,
+      matrix: [
+        { w: 3, h: 2 }, { w: 5, h: 3 }, { w: 10, h: 5 }, { w: 20, h: 10 },
+        { w: 40, h: 20 }, { w: 80, h: 40 }, { w: 160, h: 80 }, { w: 320, h: 160 },
+      ],
+      maxZoom: 6,
+      sourceMPerPx: 1000,
+    },
   },
 
-  /* Hitung resolusi efektif (meter/piksel) pada level zoom tertentu.
-     Dihitung dari jumlah piksel horizontal: width x tileSize.
-     Keliling ekuator = 40.075.017 m. */
-  metersPerPixel(z) {
-    const m = this.matrix(z);
-    const pxWorld = m.w * this.tileSize;
+  maxTiles: 20,          /* cukup untuk grid 4x4 + margin (jaga 60 fps) */
+  cacheSize: 80,
+  _cache: new Map(),
+  _loading: 0,
+  _stats: { loaded: 0, failed: 0 },
+
+  /* ---------------- utilitas ---------------- */
+
+  /* Kunci sumber untuk sebuah body (Bulan Bumi → 'moon'). */
+  sourceKeyFor(body) {
+    if (!body) return null;
+    if (body.key === 'earth') return 'earth';
+    if (body.name === 'Bulan') return 'moon';
+    if (body.key === 'mars') return 'mars';
+    if (body.name === 'Io') return 'io';
+    return null;
+  },
+
+  src(key) { return this.sources[key] || null; },
+
+  matrix(key, z) {
+    const s = this.src(key);
+    if (!s) return null;
+    const i = Math.max(0, Math.min(s.maxZoom, z));
+    return s.matrix[i] || s.matrix[s.matrix.length - 1];
+  },
+
+  maxZoomOf(key) { const s = this.src(key); return s ? s.maxZoom : 0; },
+
+  /* Resolusi efektif (meter/piksel) pada level z. */
+  metersPerPixel(key, z) {
+    const s = this.src(key);
+    const m = this.matrix(key, z);
+    if (!s || !m) return Infinity;
+    const pxWorld = m.w * s.tileSize;
     return 40075017 / pxWorld;
   },
 
-  /* Level zoom yang sesuai untuk radius patch tertentu.
-     Kita ingin resolusi tile ≈ resolusi patch, tidak lebih halus
-     (menghemat bandwidth & menjaga fps). */
-  bestZoomFor(patchRadiusDeg) {
-    /* radius patch dalam km */
-    const rKm = patchRadiusDeg * 111.32;
-    /* resolusi yang diinginkan: ~256 piksel melintasi radius patch */
-    const mPerPxWanted = (rKm * 1000) / 256;
+  /* Level zoom paling dekat dengan resolusi yang diinginkan. */
+  bestZoomFor(key, mPerPxWanted) {
     let best = 0, bestErr = Infinity;
-    for (let z = 0; z <= this.maxZoom; z++) {
-      const m = this.metersPerPixel(z);
-      const err = Math.abs(Math.log(m / mPerPxWanted));
+    for (let z = 0; z <= this.maxZoomOf(key); z++) {
+      const m = this.metersPerPixel(key, z);
+      const err = Math.abs(Math.log(m / Math.max(1, mPerPxWanted)));
       if (err < bestErr) { bestErr = err; best = z; }
     }
     return best;
   },
 
-  /* URL satu tile. Konvensi NASA GIBS EPSG:4326:
-       /{layer}/default/{tileMatrixSet}/{z}/{row}/{col}.jpg
-     row = baris (dari utara), col = kolom (dari barat). */
-  tileUrl(z, row, col) {
-    return this.baseUrl + '/' + this.layer + '/default/' +
-           this.tileMatrixSet + '/' + z + '/' + row + '/' + col + '.jpg';
+  /* URL satu tile. */
+  tileUrl(key, z, row, col) {
+    const s = this.src(key);
+    if (!s) return null;
+    if (s.kind === 'gibs') {
+      return s.baseUrl + '/' + s.layer + '/default/' + s.tms + '/' +
+             z + '/' + row + '/' + col + '.' + s.ext;
+    }
+    return 'https://trek.nasa.gov/tiles/' + s.body + '/EQ/' + s.layer +
+           '/1.0.0/default/' + s.tms + '/' + z + '/' + row + '/' + col + '.' + s.ext;
   },
 
   /* Tile mana yang mencakup (lat, lon) pada level z? */
-  tileFor(lat, lon, z) {
-    const m = this.matrix(z);
-    /* EPSG:4326: baris 0 = 90°LU, kolom 0 = 180°BB */
-    const row = Math.floor((90 - lat) / 180 * m.h);
-    const col = Math.floor((lon + 180) / 360 * m.w);
+  tileFor(key, lat, lon, z) {
+    const m = this.matrix(key, z);
+    if (!m) return null;
+    /* =====================================================================
+       NORMALISASI KOORDINAT — BUG YANG DIPERBAIKI
+       ---------------------------------------------------------------------
+       Data resmi IAU/USGS sering memakai bujur 0..360 (mis. Olympus Mons
+       di 226,2° B ditulis -226,2). Tanpa normalisasi, rumus kolom
+       menghasilkan angka negatif → di-clamp ke 0 → tile yang dimuat
+       adalah tile di tepi barat dunia, bukan lokasi pengamat.
+       Terbukti: 6 tile Mars GAGAL dimuat padahal URL-nya valid.
+       ===================================================================== */
+    const latN = Math.max(-89.99, Math.min(89.99, lat));
+    const lonN = ((lon + 180) % 360 + 360) % 360 - 180;
+    const row = Math.floor((90 - latN) / 180 * m.h);
+    const col = Math.floor((lonN + 180) / 360 * m.w);
     return {
       row: Math.max(0, Math.min(m.h - 1, row)),
       col: Math.max(0, Math.min(m.w - 1, col)),
@@ -128,71 +188,62 @@ const SURFACE_TILES = {
     };
   },
 
-  /* Daftar tile yang perlu ditampilkan untuk patch di (lat, lon).
-     Mengembalikan maksimum maxTiles tile di sekitar pusat patch. */
-  tilesFor(lat, lon, z) {
-    const t = this.tileFor(lat, lon, z);
+  /* Daftar tile di sekitar (lat, lon) — maksimum maxTiles. */
+  tilesAround(key, lat, lon, z, radius) {
+    const t = this.tileFor(key, lat, lon, z);
+    if (!t) return [];
+    const r = radius || 1;
     const out = [];
-    /* tile pusat + tetangga terdekat (cukup untuk patch 92°) */
-    const offsets = [[0, 0], [-1, 0], [1, 0], [0, -1], [0, 1], [-1, -1]];
-    for (const [dr, dc] of offsets) {
-      if (out.length >= this.maxTiles) break;
-      const row = t.row + dr, col = t.col + dc;
-      if (row < 0 || row >= t.rows || col < 0 || col >= t.cols) continue;
-      out.push({ z, row, col, key: z + '/' + row + '/' + col });
+    for (let dr = -r; dr <= r; dr++) {
+      for (let dc = -r; dc <= r; dc++) {
+        const row = t.row + dr, col = t.col + dc;
+        if (row < 0 || row >= t.rows) continue;
+        const cc = ((col % t.cols) + t.cols) % t.cols;   /* bujur melingkar */
+        out.push({ z, row, col: cc, key: z + '/' + row + '/' + cc });
+        if (out.length >= this.maxTiles) return out;
+      }
     }
     return out;
   },
 
-  /* Muat satu tile secara asinkron. Mengembalikan Promise<THREE.Texture|null>. */
-  loadTile(z, row, col) {
-    const key = z + '/' + row + '/' + col;
-    const hit = this._cache.get(key);
-    if (hit) {
-      hit.used = Date.now();
-      this._stats.cached++;
-      return Promise.resolve(hit.tex);
-    }
+  /* Muat satu tile (asinkron, dengan cache). */
+  loadTile(key, z, row, col) {
+    const ck = key + '|' + z + '/' + row + '/' + col;
+    const hit = this._cache.get(ck);
+    if (hit) { hit.used = Date.now(); return Promise.resolve(hit.tex); }
     if (this._loading >= this.maxTiles) return Promise.resolve(null);
 
-    const url = this.tileUrl(z, row, col);
+    const url = this.tileUrl(key, z, row, col);
+    if (!url) return Promise.resolve(null);
     this._loading++;
     return new Promise((resolve) => {
       const img = new Image();
-      img.crossOrigin = 'anonymous';     /* CORS: NASA GIBS mengizinkan * */
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         this._loading--;
         const tex = new THREE.Texture(img);
         tex.needsUpdate = true;
-        tex.colorSpace = THREE.SRGBColorSpace !== undefined
-          ? THREE.SRGBColorSpace : undefined;
+        if (THREE.SRGBColorSpace !== undefined) tex.colorSpace = THREE.SRGBColorSpace;
         tex.minFilter = THREE.LinearMipmapLinearFilter;
         tex.generateMipmaps = true;
-        this._put(key, { tex, url, used: Date.now() });
+        this._put(ck, { tex, used: Date.now() });
         this._stats.loaded++;
         resolve(tex);
       };
-      img.onerror = () => {
-        this._loading--;
-        this._stats.failed++;
-        resolve(null);       /* gagal = pakai tekstur global (tidak error) */
-      };
+      img.onerror = () => { this._loading--; this._stats.failed++; resolve(null); };
       img.src = url;
     });
   },
 
-  _put(key, val) {
-    this._cache.set(key, val);
-    /* buang entri paling lama bila cache penuh */
+  _put(k, v) {
+    this._cache.set(k, v);
     if (this._cache.size > this.cacheSize) {
-      let oldestKey = null, oldest = Infinity;
-      for (const [k, v] of this._cache) {
-        if (v.used < oldest) { oldest = v.used; oldestKey = k; }
-      }
-      if (oldestKey) {
-        const v = this._cache.get(oldestKey);
-        if (v && v.tex) v.tex.dispose();
-        this._cache.delete(oldestKey);
+      let ok = null, ot = Infinity;
+      for (const [kk, vv] of this._cache) if (vv.used < ot) { ot = vv.used; ok = kk; }
+      if (ok) {
+        const vv = this._cache.get(ok);
+        if (vv && vv.tex) vv.tex.dispose();
+        this._cache.delete(ok);
       }
     }
   },
@@ -200,37 +251,31 @@ const SURFACE_TILES = {
   clear() {
     for (const [, v] of this._cache) if (v.tex) v.tex.dispose();
     this._cache.clear();
-    this._stats = { loaded: 0, failed: 0, cached: 0 };
+    this._stats = { loaded: 0, failed: 0 };
   },
 
-  /* Statistik untuk panel observabilitas */
   status() {
     return {
-      zoom: this.zoom,
-      mPerPx: Math.round(this.metersPerPixel(this.zoom)),
-      cached: this._cache.size,
-      loading: this._loading,
-      loaded: this._stats.loaded,
-      failed: this._stats.failed,
+      loaded: this._stats.loaded, failed: this._stats.failed,
+      cached: this._cache.size, loading: this._loading,
     };
   },
-};
 
-/* =======================================================================
-   UJI MANDIRI — memastikan URL tile benar & sumber dapat diakses.
-   Dipanggil dari konsol: SURFACE_TILES.selfTest()
-   ======================================================================= */
-SURFACE_TILES.selfTest = function () {
-  const out = [];
-  for (let z = 0; z <= 6; z++) {
-    const t = this.tileFor(-6.2, 106.8, z);   /* Jakarta */
-    out.push({
-      zoom: z,
-      mPerPx: Math.round(this.metersPerPixel(z)),
-      tiles: t.cols + 'x' + t.rows,
-      jakartaTile: t.row + '/' + t.col,
-      url: this.tileUrl(z, t.row, t.col),
-    });
-  }
-  return out;
+  /* Uji mandiri: daftar URL untuk benda tertentu (untuk verifikasi manual). */
+  selfTest(bodyKey, lat, lon) {
+    const key = this.sourceKeyFor({ key: bodyKey, name: bodyKey });
+    if (!key) return { error: 'tidak ada sumber tile untuk ' + bodyKey };
+    const out = [];
+    for (let z = 0; z <= this.maxZoomOf(key); z++) {
+      const t = this.tileFor(key, lat, lon, z);
+      out.push({
+        zoom: z,
+        mPerPx: Math.round(this.metersPerPixel(key, z)),
+        tiles: t.cols + 'x' + t.rows,
+        tile: t.row + '/' + t.col,
+        url: this.tileUrl(key, z, t.row, t.col),
+      });
+    }
+    return { source: key, levels: out };
+  },
 };

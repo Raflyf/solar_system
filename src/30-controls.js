@@ -26,6 +26,23 @@ const _tmp3 = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
 
+/* =========================================================================
+   ZOOM POV — JANGKAUAN DIPERBESAR (permintaan "zoom in ala google earth")
+   -------------------------------------------------------------------------
+   Sebelumnya fov dibatasi 4..100°. Dengan fov 4° zoom optiknya hanya ~12x
+   — belum cukup untuk "masuk ke darat".
+
+   Sekarang 0,8..100°: fov 0,8° memberi zoom optik ~60x (setara lensa
+   telefoto kuat), sehingga detail wilayah kecil bisa terlihat. Batas
+   bawah 0,8° dipilih (bukan 0,1°) karena di bawah itu getaran kecil pada
+   azimut/elevasi membuat gambar terasa "gemetar".
+
+   Referensi: mata manusia ~50° (fov bawaan); lensa 200 mm ≈ 10°;
+   lensa 800 mm ≈ 2,5°.
+   ========================================================================= */
+const POV_FOV_MIN = 0.8;
+const POV_FOV_MAX = 100;
+
 function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
 
 function initControls(canvas) {
@@ -75,7 +92,7 @@ function initControls(canvas) {
     const k = Math.exp(-e.deltaY * 0.0013);
     /* POV Bumi: roda = zoom lensa (ubah fov), bukan ubah kecepatan */
     if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-      EARTH_VIEW.fov = clampf(EARTH_VIEW.fov / k, 4, 100);
+      EARTH_VIEW.fov = clampf(EARTH_VIEW.fov / k, POV_FOV_MIN, POV_FOV_MAX);
       return;
     }
     if (cameraState.target) {
@@ -213,7 +230,7 @@ function initControls(canvas) {
         const k = touchDist / d;
         if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
           /* POV Bumi: cubit melebar = zoom lensa masuk */
-          EARTH_VIEW.fov = clampf(EARTH_VIEW.fov * k, 4, 100);
+          EARTH_VIEW.fov = clampf(EARTH_VIEW.fov * k, POV_FOV_MIN, POV_FOV_MAX);
         } else if (cameraState.target) {
           /* mode ikuti: cubit = zoom jarak ke benda */
           const body = cameraState.target;

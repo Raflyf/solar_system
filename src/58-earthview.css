@@ -40,14 +40,65 @@
   font-size: 12px;
 }
 
-.evm-input {
-  background: rgba(255, 255, 255, 0.08);
+/* ==========================================================================
+   DROPDOWN (select) — TEMA GELAP, TERMASUK DAFTAR OPSINYA
+   --------------------------------------------------------------------------
+   KELUHAN USER: "dropdown ini nya putih semua".
+
+   PENYEBAB: <select> bisa di-style, tetapi POPUP DAFTAR OPSI dirender oleh
+   OS/browser. Tanpa aturan eksplisit untuk <option>, popup itu memakai
+   warna default sistem (putih) sehingga menabrak tema gelap aplikasi.
+
+   SOLUSI (dua lapis, karena tiap browser berbeda):
+     1. color-scheme: dark pada :root → memberi tahu browser bahwa aplikasi
+        bertema gelap, sehingga kontrol native (termasuk popup select,
+        scrollbar, date picker) dirender gelap. Ini cara RESMI & paling
+        andal (didukung Chrome 81+, Firefox 96+, Safari 13+).
+     2. Aturan eksplisit untuk option/optgroup → berlaku di browser yang
+        menghormati background/color pada option (Firefox, sebagian Chrome).
+   ========================================================================== */
+:root { color-scheme: dark; }
+
+select,
+.evm-input,
+#tzSelect,
+#evmBody,
+#evmCity {
+  background-color: rgba(14, 20, 34, 0.96);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: #fff;
   padding: 4px 8px;
   border-radius: 4px;
-  width: 140px;
   font-size: 12px;
+  /* panah dropdown dibuat sendiri agar warnanya konsisten di semua browser */
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, #8fa4bd 50%),
+                    linear-gradient(135deg, #8fa4bd 50%, transparent 50%);
+  background-position: calc(100% - 13px) 50%, calc(100% - 8px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 22px;
+}
+
+/* daftar opsi: dipaksa gelap supaya tidak putih */
+select option,
+select optgroup {
+  background-color: #0e1422;
+  color: #e8eef7;
+}
+select optgroup {
+  color: #8fa4bd;
+  font-weight: 600;
+}
+select option:checked,
+select option:hover {
+  background-color: #1d3557;
+  color: #ffffff;
+}
+
+.evm-input {
+  width: 140px;
 }
 
 .evm-btns {
@@ -67,3 +118,7 @@
   line-height: 1.3;
   text-align: center;
 }
+
+/* checkbox & input tanggal juga ikut tema gelap */
+input[type="checkbox"] { accent-color: #d9a441; }
+input[type="date"] { color-scheme: dark; }
