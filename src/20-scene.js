@@ -839,7 +839,29 @@ function buildSky() {
            Nilai 1,5 dipilih: pita Bima Sakti + jalur debu gelap terlihat
            tebal seperti Stellarium, sementara 84% langit tetap gelap bersih.
            ============================================================= */
-        uBright: { value: 1.50 },
+        /* =============================================================
+           KECERAHAN BIMA SAKTI — DITURUNKAN (keluhan pengguna)
+           -------------------------------------------------------------
+           KELUHAN: "kurangi opasity milkyway nya karena terlalu terang
+           dan terlalu kontras beda dengan stellarium"
+
+           PENGUKURAN PIKSEL (area langit yang memuat pita):
+               Stellarium : median 45,0   p95 62,0   p99 174
+               Proyek     : median  0,0   p95 60,0   p99 167
+           Interpretasi: LATAR langit proyek jauh lebih hitam (median 0 vs
+           45), sehingga pita tampak MENONJOL/TERLALU KONTRAS walaupun
+           kecerahan puncaknya mirip. Ini yang membuat perbedaan gaya
+           dengan Stellarium.
+
+           Nilai sebelumnya 1,50. Sekarang 0,55 — cukup membuat pita
+           terlihat tetapi tidak mencolok, sehingga selisih dengan latar
+           lebih dekat ke proporsi Stellarium.
+
+           Catatan: tekstur ESO reproyeksi punya rentang kontras tinggi
+           (46% piksel < 3/255, puncak 224), jadi pengali rendah sudah
+           cukup untuk membuat pita terlihat.
+           ============================================================= */
+        uBright: { value: 0.55 },
         uTint:   { value: new THREE.Color(1.0, 1.0, 1.0) },
       },
       vertexShader: SKY_MILKYWAY_VERT,
