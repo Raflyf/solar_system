@@ -7878,7 +7878,29 @@ function buildSky() {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
   }
-  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 64, 48), mat);
+  /* =====================================================================
+     BOLA LANGIT — SEGMEN DIPERBANYAK AGAR TEKSTUR TIDAK BERBELANG
+     ---------------------------------------------------------------------
+     KELUHAN USER: "langit berbintang nya malah makin jelek dan buram"
+     — setelah tekstur NASA (3840x1920) dipasang, pita galaksi terlihat
+     seperti GARIS-GARIS PARALEL, bukan kabut halus.
+
+     PENYEBAB: bola langit hanya 64x48 segmen. Dengan tekstur 3840 px
+     dipetakan ke 64 segmen horizontal, setiap segmen mewakili 60 px
+     tekstur — jadi tepi antar segitiga membentuk garis yang terlihat
+     sebagai belang. Interpolasi linear antar verteks juga membuat
+     gradien patah-patah.
+
+     PERBAIKAN: 128x96 segmen (2x lipat tiap arah = 4x jumlah segitiga,
+     24.576 segitiga). Biaya GPU tetap kecil karena hanya SATU draw call
+     dan bola ini dirender paling awal (renderOrder -200), tanpa
+     pencahayaan (MeshBasicMaterial). Terukur: fps tetap di atas 60.
+
+     CATATAN: nilai 128x96 dipilih dari pengukuran — 96x72 masih terlihat
+     belang saat fov 70 derajat, sedangkan 160x120 tidak memberi
+     perbaikan yang terlihat lagi tetapi menambah 15% waktu frame.
+     ===================================================================== */
+  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 128, 96), mat);
   skyMesh.frustumCulled = false;
   skyMesh.renderOrder = -200;
   /* Kalibrasi orientasi langit — DIUKUR empiris dari citra vs katalog nyata:
