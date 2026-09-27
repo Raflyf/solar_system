@@ -258,6 +258,8 @@ async function boot() {
     if (typeof SKY_LOD !== 'undefined') SKY_LOD.update();
     /* citra langit resolusi tinggi saat zoom masuk (Legacy Survey) */
     if (typeof SKY_TILES !== 'undefined') SKY_TILES.update();
+    /* citra langit NYATA dari DSS saat zoom masuk — sama seperti Stellarium */
+    if (typeof SKY_DSS !== 'undefined') SKY_DSS.update();
     updateOrbitLineVisibility();
     updateBeacons();
     updateHud();
