@@ -35,3 +35,21 @@ _dl3/
 # Tekstur HD mentah (ratusan MB) — sumber untuk assets/hi/. Unduh ulang
 # lewat tools/fetch_textures_hd.py bila perlu.
 _hi/
+
+# Berkas uji sementara (tidak perlu masuk repo)
+_L_*.jpg
+_t_*.jpg
+_uji*.jpg
+_sr.json
+_tree.json
+_wm*.json
+_s*.json
+_h*.json
+_sc.json
+_st.json
+_sg.json
+_m.json
+_d.json
+_core.json
+_stell.json
+_mt.xml
