@@ -21,3 +21,9 @@ assets_src/
 # katalog bintang mentah (13 MB, bisa diunduh ulang via tools/process_stars.py)
 assets_raw/hyg_v38.csv.gz
 _msg.txt
+
+# Aset mentah Blue Marble (21,8 MB) — sumber untuk pembuatan tile permukaan.
+# Tidak diikutkan ke repo; bisa diunduh ulang dari NASA Visible Earth
+# (URL tercatat di tools/fetch_bmng.py).
+_dl2/
+_dl/
