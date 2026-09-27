@@ -74,10 +74,29 @@ function initControls(canvas) {
     moved += Math.abs(dx) + Math.abs(dy);
     /* POV Bumi: putar pandangan dalam kerangka pengamat (azimut/elevasi),
        bukan kerangka dunia — supaya horizon tetap mendatar. */
+    /* =====================================================================
+       SENSITIVITAS DRAG POV — MENYESUAIKAN ZOOM (fov)
+       ---------------------------------------------------------------------
+       KELUHAN USER: "saat di zoom terus makin dekat zoom makin licin dan
+       susah untuk di pokuskan dan di arahkannya".
+
+       PENYEBAB: sensitivitas drag dahulu TETAP (0,0032 rad per piksel).
+       Saat fov masih 50°, gerakan 1 piksel menggeser pandangan 0,18° —
+       terasa wajar. Tetapi saat fov diperkecil ke 2° (zoom 25x), gerakan
+       yang sama menggeser 0,18° yang kini setara 9% lebar layar — jadi
+       pandangan melompat jauh dan sulit dibidikkan.
+
+       PRINSIP: dalam mode zoom, kecepatan sudut harus sebanding dengan
+       fov (standar di aplikasi 3D/planetarium & kamera nyata: makin
+       panjang lensa, makin kecil gerakan sudut untuk gerakan tangan yang
+       sama). Faktor = fov / 50 sehingga pada fov bawaan 50° sensitivitas
+       tetap seperti sebelumnya (tidak mengubah rasa di mode normal).
+       ===================================================================== */
+    const povSens = 0.0032 * Math.max(0.02, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
     if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-      EARTH_VIEW.az -= dx * 0.0032;
+      EARTH_VIEW.az -= dx * povSens;
       /* "pegang langit": seret ke bawah = pandangan naik */
-      EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0032, -1.40, 1.5533);
+      EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * povSens, -1.40, 1.5533);
     } else if (cameraState.target) {
       cameraState.followYaw -= dx * 0.0040;
       cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.0040, -1.45, 1.45);
@@ -202,10 +221,13 @@ function initControls(canvas) {
       const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += Math.abs(dx) + Math.abs(dy);
+      /* sensitivitas sentuh juga menyesuaikan zoom (lihat penjelasan di
+         handler mouse: makin sempit fov, makin halus gerakannya) */
+      const touchSens = 0.0035 * Math.max(0.02, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
       if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
         /* POV Bumi: satu jari = lihat sekeliling (pegang langit) */
-        EARTH_VIEW.az -= dx * 0.0035;
-        EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0035, -1.40, 1.5533);
+        EARTH_VIEW.az -= dx * touchSens;
+        EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * touchSens, -1.40, 1.5533);
       } else if (cameraState.target) {
         cameraState.followYaw -= dx * 0.006;
         cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.006, -1.45, 1.45);

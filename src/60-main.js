@@ -558,6 +558,24 @@ function buildUI() {
       const th = Math.ceil(tools.getBoundingClientRect().height);
       if (th > 0) document.documentElement.style.setProperty('--band-tools', (th + 10) + 'px');
     }
+    /* ======================================================================
+       UKUR BAWAH PANEL JUDUL → posisi sidebar
+       ----------------------------------------------------------------------
+       KELUHAN USER: "ui nya pada bertumpuk".
+       Panel judul (top 18 px) tingginya BERUBAH: subjudul bisa membungkus
+       dua baris dan badge peristiwa bisa muncul. Dengan sidebar di `top`
+       tetap (92 px), keduanya bertumpuk saat panel judul lebih tinggi.
+       Solusi: ukur tinggi nyatanya dan tulis --title-bottom; CSS sidebar
+       memakai nilai itu sebagai `top` sehingga tumpang tindih mustahil.
+       ====================================================================== */
+    const tp = $('titlePanel') || document.querySelector('.title-panel');
+    if (tp) {
+      const r = tp.getBoundingClientRect();
+      if (r.height > 0) {
+        /* +8 px: jarak lega antara panel judul dan sidebar */
+        document.documentElement.style.setProperty('--title-bottom', Math.ceil(r.bottom + 8) + 'px');
+      }
+    }
   };
   window.__measureBands = measureBands;
   /* ukur sekarang, lagi setelah frame berikutnya, dan lagi setelah

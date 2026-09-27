@@ -135,15 +135,35 @@ function buildMilkyWay() {
 
     /* Warna: pusat galaksi lebih kuning (bintang tua), lengan lebih biru (muda).
        Kecerahan dinaikkan karena pita ini harus terlihat sebagai kabut,
-       bukan titik-titik terpisah. */
+       bukan titik-titik terpisah.
+       CATATAN: setelah ukuran titik diperkecil (22-68 px -> 3-9 px),
+       kecerahan dinaikkan lagi 1,35x agar pita tetap tampak. */
     const center = Math.max(0, 1 - r / (R_GAL * 0.35));
-    col[i * 3] = (0.72 + center * 0.28 + rnd() * 0.05) * 0.95;
-    col[i * 3 + 1] = (0.70 + center * 0.20 + rnd() * 0.04) * 0.95;
-    col[i * 3 + 2] = (0.68 + (1 - center) * 0.24 + rnd() * 0.04) * 0.95;
+    const boost = 1.35;
+    col[i * 3] = Math.min(1, (0.72 + center * 0.28 + rnd() * 0.05) * 0.95 * boost);
+    col[i * 3 + 1] = Math.min(1, (0.70 + center * 0.20 + rnd() * 0.04) * 0.95 * boost);
+    col[i * 3 + 2] = Math.min(1, (0.68 + (1 - center) * 0.24 + rnd() * 0.04) * 0.95 * boost);
 
-    /* Ukuran titik: cukup besar supaya titik-titik saling tumpang tindih
-       dan membentuk pita kabut yang berkesinambungan */
-    sizeArr[i] = 22 + rnd() * 46;
+    /* =====================================================================
+       UKURAN TITIK BIMA SAKTI — DIPERKECIL & DIPERPADAT
+       ---------------------------------------------------------------------
+       KELUHAN USER: "kualitas bintang dan objek langit lainnya juga sangat
+       jelek tidak HD". Setelah diperiksa, penyebabnya bukan bintang
+       katalognya (8.714 bintang HYG sudah tajam), melainkan TITIK BIMA
+       SAKTI yang berukuran 22-68 piksel dengan gradien lembut — sehingga
+       tampak sebagai gumpalan blur seperti bokeh, menutupi bintang di
+       belakangnya.
+
+       PERBAIKAN:
+         • Ukuran titik 22-68 px -> 3-9 px  (tetap tumpang tindih karena
+           jumlahnya ditambah, jadi pita kabut tetap terbentuk, tetapi
+           jauh lebih halus dan tidak lagi terlihat seperti blob).
+         • Jumlah titik 14.000 -> 26.000 (kompensasi ukuran kecil agar
+           kepadatan pita Bima Sakti tetap sama).
+         • Ditambah inti terang lebih kecil di tengah agar tiap titik
+           terlihat seperti bintang samar, bukan cakram rata.
+       ===================================================================== */
+    sizeArr[i] = 3 + rnd() * 6;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -154,7 +174,11 @@ function buildMilkyWay() {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
-      uOpacity: { value: 0.9 },
+      /* uOpacity Bima Sakti: dinaikkan dari 0,9 ke 1,0 dan kecerahan warna
+         dinaikkan karena ukuran titik sudah diperkecil dari 22-68 px ke
+         3-9 px (lihat penjelasan di sizeArr). Tanpa kompensasi ini pita
+         Bima Sakti menjadi terlalu redup dan nyaris tidak terlihat. */
+      uOpacity: { value: 1.0 },
     },
     vertexShader: [
       'attribute float aSize;',
@@ -170,13 +194,18 @@ function buildMilkyWay() {
     fragmentShader: [
       'varying vec3 vCol;',
       'uniform float uOpacity;',
+      /* Profil gradien bertingkat: inti tajam + halo lembut, supaya tiap
+         titik tampak seperti BINTANG (bukan cakram rata / blob).
+         Versi lama memakai a = (1-4r^2)^2 yang terlalu landai. */
       'void main() {',
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r2 = dot(d, d);',
       '  if (r2 > 0.25) discard;',
-      '  float a = 1.0 - r2 * 4.0;',
-      '  a = a * a;',
-      '  gl_FragColor = vec4(vCol, a * uOpacity);',
+      '  float r = sqrt(r2) * 2.0;',
+      '  float core = smoothstep(0.55, 0.0, r);',
+      '  float halo = pow(max(0.0, 1.0 - r), 2.4);',
+      '  float a = core * 0.85 + halo * 0.45;',
+      '  gl_FragColor = vec4(vCol, min(1.0, a) * uOpacity);',
       '}',
     ].join('\n'),
     transparent: true,

@@ -122,6 +122,22 @@ html, body {
 /* ---------------- daftar benda ---------------- */
 .sidebar {
   top: 92px; left: 18px; width: 232px;
+  /* =====================================================================
+     POSISI SIDEBAR — DIUKUR DARI TINGGI PANEL JUDUL (bukan angka tebakan)
+     ---------------------------------------------------------------------
+     KELUHAN USER: "ui nya pada bertumpuk".
+     BUG: panel judul (top 18px) bisa setinggi ~100-130 px bila subjudulnya
+     membungkus dua baris atau badge peristiwa muncul, sedangkan sidebar
+     mulai di 92 px → panel judul MENIMPA sidebar.
+     Terbukti di screenshot pengguna: subjudul "Skala 1:1 - tekstur asli
+     NASA/USGS - Bumi bisa di-zoom sampai permukaan" tertutup sidebar.
+
+     SOLUSI: JS (measureBands) mengukur tinggi panel judul dan menulis
+     variabel --title-bottom. Sidebar memakai variabel itu sebagai `top`,
+     sehingga TIDAK MUNGKIN bertumpuk untuk ukuran layar/teks apa pun.
+     Nilai 92px tetap sebagai cadangan bila JS belum jalan.
+     ===================================================================== */
+  top: var(--title-bottom, 92px);
   max-height: calc(100vh - 210px);
   display: flex; flex-direction: column;
   transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .3s;
