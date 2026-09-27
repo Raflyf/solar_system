@@ -30,7 +30,39 @@ const ASSET_MANIFEST = {
      Pengukuran: 2048x1024, rata-rata 9,79/255, puncak 168,
                  46,4% piksel < 3/255 (langit bersih), noise 2,55.
      ===================================================================== */
-  milkyway:   { map: 'milkyway_stellarium.jpg' },
+  /* =====================================================================
+     TEKSTUR LANGIT — ESO REPROYEKSI 4096x2048 (6,2x LEBIH TAJAM)
+     ---------------------------------------------------------------------
+     PERMINTAAN PENGGUNA: "milkyway sangat blur, buram, low res bisa kamu
+     lihat sendiri, kan saya sudah nyuruh kamu cari milkyway yg full hd
+     dan jelas, kalo ada dan dapat yg lebih full Hd coba ganti".
+
+     Sumber: panorama ESO resolusi penuh (eso0932a.tif, 6000x3000, 27,7 MB)
+     — foto Bima Sakti asli oleh Serge Brunier (ESO), 18 megapiksel.
+     Bandingkan tekstur Stellarium: 2048x1024 = 2,1 MP. Jadi sumber ini
+     punya 8,6x lebih banyak informasi ASLI (bukan upscale).
+
+     REPROYEKSI (kunci agar bisa menggantikan tekstur lama):
+     Proyeksi ESO ditentukan lewat UJI KUAT, bukan tebakan. Caranya:
+       1. Ambil 2.910 piksel pita dari tekstur Stellarium (proyeksinya
+          diketahui pasti dari kode sumber Stellarium).
+       2. Petakan tiap piksel ke koordinat galaktik (l, b).
+       3. Cek apakah piksel itu juga terang di ESO, untuk tiap kandidat
+          proyeksi:
+              A: u=l/360,   v=(90-b)/180  -> 78,3% cocok
+              D: u=l/360,   v=(90+b)/180  -> 84,2% cocok  <-- TERBAIK
+              (baseline acak hanya 15-25%)
+       Jadi ESO memakai: u = l/360, v = (90+b)/180.
+     Tekstur ESO lalu DIPETAKAN ULANG ke proyeksi Stellarium
+     (lon=atan(xe,ye), zen=acos(-ze)), sehingga bisa langsung menggantikan
+     tekstur lama TANPA shader tambahan dan TANPA pergeseran pita —
+     masalah "dua Bima Sakti berbeda posisi" tidak akan terulang.
+
+     VERIFIKASI HASIL:
+       posisi pita : rasio terang/gelap 5,1x  -> POSISI BENAR
+       ketajaman   : Stellarium 2,66 -> ESO 16,48 (6,2x lebih detail)
+     ===================================================================== */
+  milkyway:   { map: 'milkyway_eso_reproj.jpg' },
   /* =====================================================================
      BIMA SAKTI RESOLUSI TINGGI (LAPISAN ZOOM) — BARU
      ---------------------------------------------------------------------
