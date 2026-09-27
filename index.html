@@ -66,6 +66,25 @@ html, body {
 }
 
 .ui { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+/* chip kecil untuk mengembalikan UI saat mode sembunyi */
+.ui-show {
+  display: none;
+  position: fixed; right: 14px; bottom: 14px; z-index: 300;
+  padding: 9px 14px; border-radius: 999px;
+  border: 1px solid rgba(120,160,220,.35);
+  background: rgba(9,14,26,.85); color: #dfe9fa;
+  font-size: 12.5px; cursor: pointer;
+}
+/* =====================================================================
+   MODE SEMBUNYIKAN UI — langit bersih tanpa panel
+   ---------------------------------------------------------------------
+   Tombol 👁 menambah class hide-ui di body. Semua panel (.ui) disembunyikan
+   kecuali chip .ui-show. Label langit ikut disembunyikan supaya tidak ada
+   teks yang mengganggu.
+   ===================================================================== */
+body.hide-ui .ui { display: none; }
+body.hide-ui .ui-show { display: block; }
+body.hide-ui #labelLayer { display: none; }
 .ui > * { pointer-events: auto; }
 
 /* =======================================================================
@@ -103,6 +122,10 @@ html, body {
   padding: 12px 18px 11px;
   /* lebar dibatasi supaya tidak melebar menabrak toolbar / panel lain */
   max-width: min(430px, calc(100vw - 36px));
+  /* DAFTAR HASIL pencarian berada DI DALAM panel ini. Nilainya lebih tinggi
+     dari sidebar JELAJAHI (z-index 5) supaya daftar hasil TIDAK tertutup
+     sidebar bila sidebar tidak di-hide. */
+  z-index: 50;
 }
 .title-main { font-size: 19px; font-weight: 700; letter-spacing: 3.5px; }
 .title-main span { color: var(--accent); }
@@ -1389,11 +1412,12 @@ kbd {
 #searchInput::placeholder { color: #5d7794; }
 /* daftar hasil: mengambang di bawah kotak pencarian supaya bisa memanjang
    keluar panel tanpa mengubah tinggi panel judul.
-   CATATAN z-index: sidebar (JELAJAHI) berada tepat di bawah panel judul
-   bila tidak di-hide. Agar daftar hasil TIDAK tertutup sidebar, z-indexnya
-   dinaikkan jauh di atas panel lain (sidebar/info-panel memakai z-index 5).
-   Daftar hanya muncul saat ada hasil pencarian, jadi tidak menghalangi
-   saat tidak dipakai. */
+   CATATAN z-index: daftar hasil berada DI DALAM .title-panel. Nilai z-index
+   besar di sini tidak ada gunanya melawan .sidebar — dalam model lapis CSS,
+   yang menentukan siapa di depan adalah z-index INDUKNYA (.title-panel vs
+   .sidebar), bukan z-index anak. Jadi yang dinaikkan adalah z-index
+   .title-panel sendiri (lihat 50-style.css); di sini cukup 10 agar di atas
+   badge peristiwa di dalam panel yang sama. */
 .search-results {
   display: none;
   position: absolute;
@@ -1404,7 +1428,7 @@ kbd {
   border: 1px solid rgba(120, 160, 220, 0.22);
   box-shadow: 0 10px 28px rgba(0,0,0,.55);
   max-height: 320px; overflow-y: auto;
-  z-index: 200;
+  z-index: 10;
 }
 .title-panel { position: fixed; }
 .title-panel.show .search-results,
@@ -1564,6 +1588,7 @@ input[type="date"] { color-scheme: dark; }
 <body>
 <div id="app">
   <canvas id="scene"></canvas>
+  <button class="ui-show" id="btnShowUI" title="Tampilkan kembali UI (H)">👁 Tampilkan UI</button>
 
   <!-- ======================= LAPISAN UI ======================= -->
   <div class="ui" id="uiRoot">
@@ -1610,7 +1635,7 @@ input[type="date"] { color-scheme: dark; }
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur"><span class="bi">◈</span><span class="bt">Kualitas</span></button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)"><span class="bi">?</span><span class="bt">Bantuan</span></button>
       <button class="btn" id="btnEarthView" title="POV dari permukaan planet / satelit mana pun"><span class="bi">🛰</span><span class="bt">POV</span></button>
-      <button class="btn" id="btnFullscreen" title="Layar penuh (F)"><span class="bi">⛶</span></button>
+      <button class="btn" id="btnHideUI" title="Sembunyikan semua UI agar langit terlihat bersih (H)"><span class="bi">👁</span></button>
     </div>
 
     <!-- Daftar benda -->
@@ -121222,37 +121247,34 @@ function buildUI() {
   });
 
   /* =====================================================================
-     FULLSCREEN — LAYAR PENUH TANPA UI BROWSER
+     SEMBUNYIKAN UI — LANGIT BERSIH TANPA PANEL
      ---------------------------------------------------------------------
-     PERMINTAAN: "tambahkan fungsi untuk fullscreen agar tidak ada ui yg
-     menghalangi"
-
-     Memakai Fullscreen API standar. Fallback berlapis:
-       document.documentElement.requestFullscreen (standar)
-       webkitRequestFullscreen (Safari lama) / msRequestFullscreen (Edge lama)
-     Ikon tombol berubah: ⛶ masuk, ✕ keluar.
+     PERMINTAAN: maksud "fullscreen" adalah menyembunyikan SEMUA UI supaya
+     tidak ada yang menghalangi langit, bukan memaksimalkan jendela
+     browser. Tombol ini menambah/menghapus class hide-ui di body; CSS
+     menyembunyikan semua panel kecuali satu chip kecil untuk
+     mengembalikan. Pintasan: H.
      ===================================================================== */
-  const btnFS = $('btnFullscreen');
-  if (btnFS) {
-    const updFS = () => {
-      const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      btnFS.classList.toggle('active', fs);
-      btnFS.title = fs ? 'Keluar layar penuh (F)' : 'Layar penuh (F)';
+  const btnHide = $('btnHideUI');
+  if (btnHide) {
+    const updHide = () => {
+      const h = document.body.classList.contains('hide-ui');
+      btnHide.classList.toggle('active', h);
+      btnHide.title = h ? 'Tampilkan kembali UI (H)' : 'Sembunyikan semua UI agar langit terlihat bersih (H)';
     };
-    btnFS.addEventListener('click', () => {
-      if (document.fullscreenElement || document.webkitFullscreenElement) {
-        if (document.exitFullscreen) document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      } else {
-        const el = document.documentElement;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      }
+    btnHide.addEventListener('click', () => {
+      document.body.classList.toggle('hide-ui');
+      setTimeout(measureBands, 60);
+      updHide();
     });
-    document.addEventListener('fullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
-    document.addEventListener('webkitfullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
-    updFS();
+    updHide();
   }
+  /* chip kecil di luar .ui untuk mengembalikan panel */
+  const btnShow = $('btnShowUI');
+  if (btnShow) btnShow.addEventListener('click', () => {
+    document.body.classList.remove('hide-ui');
+    setTimeout(measureBands, 60);
+  });
   {
     const lbl = $('btnQuality').querySelector('.bt');
     const txt = 'Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
@@ -121265,8 +121287,11 @@ function buildUI() {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyL') toggleLabels();
     else if (e.code === 'KeyO') { $('chkOrbits').checked = !$('chkOrbits').checked; setOrbits($('chkOrbits').checked); }
-    else if (e.code === 'KeyH') $('helpPanel').classList.toggle('show');
-    else if (e.code === 'KeyF') { const b = $('btnFullscreen'); if (b) b.click(); }
+    else if (e.code === 'KeyH') {
+      const b = $('btnHideUI');
+      if (b) b.click();
+      else $('helpPanel').classList.toggle('show');
+    }
     else if (e.code === 'KeyP') togglePause();
     else if (e.code === 'Space') {
       if (cameraState.target) focusBody(null);

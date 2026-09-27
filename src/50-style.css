@@ -38,6 +38,25 @@ html, body {
 }
 
 .ui { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+/* chip kecil untuk mengembalikan UI saat mode sembunyi */
+.ui-show {
+  display: none;
+  position: fixed; right: 14px; bottom: 14px; z-index: 300;
+  padding: 9px 14px; border-radius: 999px;
+  border: 1px solid rgba(120,160,220,.35);
+  background: rgba(9,14,26,.85); color: #dfe9fa;
+  font-size: 12.5px; cursor: pointer;
+}
+/* =====================================================================
+   MODE SEMBUNYIKAN UI — langit bersih tanpa panel
+   ---------------------------------------------------------------------
+   Tombol 👁 menambah class hide-ui di body. Semua panel (.ui) disembunyikan
+   kecuali chip .ui-show. Label langit ikut disembunyikan supaya tidak ada
+   teks yang mengganggu.
+   ===================================================================== */
+body.hide-ui .ui { display: none; }
+body.hide-ui .ui-show { display: block; }
+body.hide-ui #labelLayer { display: none; }
 .ui > * { pointer-events: auto; }
 
 /* =======================================================================
@@ -75,6 +94,10 @@ html, body {
   padding: 12px 18px 11px;
   /* lebar dibatasi supaya tidak melebar menabrak toolbar / panel lain */
   max-width: min(430px, calc(100vw - 36px));
+  /* DAFTAR HASIL pencarian berada DI DALAM panel ini. Nilainya lebih tinggi
+     dari sidebar JELAJAHI (z-index 5) supaya daftar hasil TIDAK tertutup
+     sidebar bila sidebar tidak di-hide. */
+  z-index: 50;
 }
 .title-main { font-size: 19px; font-weight: 700; letter-spacing: 3.5px; }
 .title-main span { color: var(--accent); }
