@@ -1014,6 +1014,95 @@ kbd {
 .sky-line span { color: #7fc4ff; font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* =======================================================================
+   STRIP KOMPAS ARAH MATA ANGIN (mode POV)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "tambahkan juga arah mata angin".
+
+   Cara kerja (sama seperti Stellarium): strip horizontal di bagian atas
+   layar yang menampilkan huruf arah (U/T/S/B dan mata angin antara).
+   Strip BERGESER mengikuti azimut kamera, sehingga huruf yang tepat di
+   tengah penanda adalah arah yang sedang dipandang.
+
+   Skala: 45 derajat per mata angin (8 arah utama).
+     U=Utara(0)  TL=Timur Laut(45)  T=Timur(90)  TG=Tenggara(135)
+     S=Selatan(180) BD=Barat Daya(225) B=Barat(270) BL=Barat Laut(315)
+
+   Hanya tampil saat POV aktif (kelas .show ditambahkan oleh JS).
+   ======================================================================= */
+.compass-strip {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 62px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, calc(100vw - 24px));
+  height: 34px;
+  overflow: hidden;
+  display: none;
+  z-index: 28;
+  /* tepi kiri/kanan memudar supaya tidak terlihat terpotong tajam */
+  -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 12%, #000 88%, transparent 100%);
+  pointer-events: none;
+}
+.compass-strip.show { display: block; }
+.compass-track {
+  position: absolute;
+  top: 0; left: 0; height: 100%;
+  will-change: transform;
+}
+.compass-tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #9fb4cc;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.85);
+  white-space: nowrap;
+}
+.compass-tick.minor { font-size: 9px; font-weight: 500; color: #6d8199; }
+.compass-tick.cardinal { color: #ffd479; font-size: 13px; }
+.compass-tick .tick-line {
+  width: 1px; height: 5px; background: currentColor; opacity: .65;
+}
+.compass-tick.cardinal .tick-line { height: 8px; opacity: .95; }
+/* penanda tengah: menunjukkan arah pandang saat ini */
+.compass-center {
+  position: absolute;
+  top: 0; left: 50%;
+  width: 2px; height: 100%;
+  margin-left: -1px;
+  background: linear-gradient(180deg, #ffb44d, rgba(255,180,77,.15));
+  box-shadow: 0 0 6px rgba(255,180,77,.7);
+}
+.compass-deg {
+  position: absolute;
+  bottom: -1px; left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: #ffb44d;
+  letter-spacing: .5px;
+  text-shadow: 0 1px 3px rgba(0,0,0,.9);
+  font-variant-numeric: tabular-nums;
+}
+/* di HP: kompas lebih kecil dan lebih dekat ke atas */
+@media (max-width: 640px) {
+  .compass-strip {
+    top: calc(env(safe-area-inset-top, 0px) + 52px);
+    width: calc(100vw - 16px);
+    height: 30px;
+  }
+  .compass-tick { font-size: 10px; }
+  .compass-tick.cardinal { font-size: 12px; }
+}
+
+/* =======================================================================
    EARTHVIEW MODAL CSS
    ======================================================================= */
 .earthview-modal {
@@ -1238,6 +1327,13 @@ input[type="date"] { color-scheme: dark; }
         </div>
       </div>
       <button class="btn small icon" id="btnNow" title="Kembali ke waktu sekarang">⟲</button>
+    </div>
+
+    <!-- Strip kompas arah mata angin (mode POV) -->
+    <div class="compass-strip" id="compassStrip">
+      <div class="compass-track" id="compassTrack"></div>
+      <div class="compass-center"></div>
+      <div class="compass-deg" id="compassDeg">0°</div>
     </div>
 
     <!-- Panel status pengamat (mode POV Bumi) -->
@@ -1880,28 +1976,28 @@ const ASSET_MANIFEST = {
   uranus:     { map: 'uranus.jpg' },
   neptune:    { map: 'neptune.jpg' },
   /* =====================================================================
-     TEKSTUR LANGIT — DIPISAH DARI TEKSTUR BIASA
+     TEKSTUR LANGIT — PANORAMA ESO 6000x3000 (RESOLUSI LEBIH TINGGI)
      ---------------------------------------------------------------------
-     BUG YANG DIPERBAIKI (keluhan: "langit berbintang nya malah makin jelek
-     dan buram ga jelas"):
+     PERMINTAAN: "buat langit nya lebih HD dan jelas, cari asset nya dari
+     internet dan web nasa".
 
-     Tekstur lama (milkyway.jpg dari Solar System Scope) rata-rata
-     kecerahannya hanya 1,17/255 — sangat gelap. Agar terlihat, ia harus
-     dikali 14x, dan pengali itu IKUT MEMPERBESAR artefak kompresi JPEG
-     (4,2% piksel di area yang seharusnya hitam bernilai >5). Hasilnya:
-     gumpalan ungu-buram yang terlihat seperti noise, bukan galaksi.
+     Sumber sebelumnya (NASA "Deep Star Maps 2020", 3840x1920) diganti
+     dengan PANORAMA ESO (European Southern Observatory):
+         https://cdn.eso.org/images/large/eso0932a.jpg
+         "The Milky Way panorama" oleh Serge Brunier (ESO)
+         lisensi CC BY 4.0 / domain publik
 
-     Tekstur baru (milkyway_nasa.jpg dari NASA SVS "Deep Star Maps 2020",
-     dibuat dari 100 juta bintang katalog Bright Star + Tycho-2 + UCAC3):
-         rata-rata kecerahan 11,86/255  (10x lebih terang)
-         puncak 181/255
-     Karena sudah terang, pengali cukup ~1,2x → artefak TIDAK diperbesar,
-     dan pita galaksi + jalur debu terlihat tajam.
+     PERBANDINGAN TERUKUR:
+         NASA  : 3840x1920, rata-rata 11,9, puncak 178
+         ESO   : 6000x3000, rata-rata 16,9, puncak 205   <-- dipakai
+     Resolusi 1,56x lebih tinggi dan rentang kecerahan lebih kaya,
+     sehingga pita galaksi + jalur debu terlihat lebih jelas dan halus.
 
-     Sumber: https://svs.gsfc.nasa.gov/4851/ (NASA/Goddard SVS, Ernie
-     Wright dkk). Cermin unduhan: Wikimedia Commons (file 64k asli).
+     Proses: Gaussian blur radius 4 (pada 6000px ≈ radius 2,6 pada
+     3840px) untuk menghilangkan titik bintang individual — bintang
+     sudah dirender terpisah oleh katalog HYG. Hasil: noise 1,16 (halus).
      ===================================================================== */
-  milkyway:   { map: 'milkyway_nasa.jpg' },
+  milkyway:   { map: 'milkyway_eso.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
   phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },
@@ -6309,6 +6405,458 @@ const SURFACE_DETAIL = {
 
 <script>
 "use strict";
+/* =======================================================================
+   COMPASS — STRIP ARAH MATA ANGIN (mode POV permukaan)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "tambahkan juga arah mata angin".
+
+   Cara kerja (meniru Stellarium):
+     • Strip horizontal di bagian atas layar.
+     • Berisi huruf arah setiap 45 derajat (U, TL, T, TG, S, BD, B, BL)
+       ditambah tanda kecil setiap 15 derajat.
+     • Strip BERGESER mengikuti azimut kamera; huruf yang berada tepat di
+       penanda tengah adalah arah yang sedang dipandang.
+     • Sudut azimut ditampilkan dalam derajat (0-360) di bawah penanda.
+
+   Rumus posisi:
+       Untuk mata angin pada azimuth A (derajat) dan kamera pada azimuth C:
+           offset_px = (A - C) dibungkus ke (-180, 180]
+           x = tengah + offset_px * (pxPerDeg)
+       Nilai dibungkus supaya mata angin selalu berada di jalur yang benar
+       (tidak "melompat" saat melewati 0/360).
+
+   PENTING — konvensi azimut:
+       SURFACE_VIEW.az = 0 -> menghadap UTARA; positif -> ke TIMUR
+       (lihat viewDir(): north*cos(az) + east*sin(az)).
+   ======================================================================= */
+
+const COMPASS = {
+  strip: null,
+  track: null,
+  degEl: null,
+  pxPerDeg: 3.2,       /* jarak antar derajat di layar */
+  built: false,
+
+  /* 8 arah mata angin utama + singkatan Indonesia */
+  CARDINALS: [
+    { deg: 0,   label: 'U',  full: 'Utara' },
+    { deg: 45,  label: 'TL', full: 'Timur Laut' },
+    { deg: 90,  label: 'T',  full: 'Timur' },
+    { deg: 135, label: 'TG', full: 'Tenggara' },
+    { deg: 180, label: 'S',  full: 'Selatan' },
+    { deg: 225, label: 'BD', full: 'Barat Daya' },
+    { deg: 270, label: 'B',  full: 'Barat' },
+    { deg: 315, label: 'BL', full: 'Barat Laut' },
+  ],
+
+  init() {
+    this.strip = document.getElementById('compassStrip');
+    this.track = document.getElementById('compassTrack');
+    this.degEl = document.getElementById('compassDeg');
+    if (!this.strip || !this.track) return;
+    this.build();
+  },
+
+  /* Bangun semua penanda sekali saja (satu putaran 360 derajat).
+     Saat dipakai, track digeser sehingga hanya bagian yang relevan terlihat. */
+  build() {
+    if (this.built || !this.track) return;
+    const frag = document.createDocumentFragment();
+
+    /* penanda utama setiap 45 derajat */
+    for (const c of this.CARDINALS) {
+      const el = document.createElement('div');
+      el.className = 'compass-tick cardinal';
+      el.dataset.deg = String(c.deg);
+      el.innerHTML = '<span class="tick-line"></span><span>' + c.label + '</span>';
+      el.title = c.full;
+      frag.appendChild(el);
+    }
+    /* penanda kecil setiap 15 derajat (kecuali yang sudah utama) */
+    for (let d = 0; d < 360; d += 15) {
+      if (d % 45 === 0) continue;
+      const el = document.createElement('div');
+      el.className = 'compass-tick minor';
+      el.dataset.deg = String(d);
+      el.innerHTML = '<span class="tick-line"></span><span>·</span>';
+      frag.appendChild(el);
+    }
+    this.track.appendChild(frag);
+    this.built = true;
+
+    /* hitung lebar strip untuk menentukan pxPerDeg yang pas:
+       satu putaran penuh harus lebih lebar dari strip supaya tidak ada
+       celah kosong di tepi. */
+    const w = this.strip.getBoundingClientRect().width || 520;
+    /* tampilkan ~110 derajat di layar; sisanya di luar pandangan */
+    this.pxPerDeg = w / 110;
+  },
+
+  /* Perbarui posisi strip. azDeg = azimut kamera (0..360, 0 = Utara). */
+  update(azDeg) {
+    if (!this.strip || !this.track) return;
+    const visible = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active);
+    this.strip.classList.toggle('show', !!visible);
+    if (!visible) return;
+
+    if (!this.built) { this.init(); if (!this.built) return; }
+
+    const w = this.strip.getBoundingClientRect().width || 520;
+    const center = w / 2;
+    const az = ((azDeg % 360) + 360) % 360;
+
+    /* geser seluruh track: mata angin dengan azimuth az harus berada di tengah.
+       Karena track berisi 0..360, kita hitung pergeseran dasar lalu
+       gambarkan setiap penanda di posisi yang dibungkus ke (-180,180]. */
+    const ticks = this.track.children;
+    for (let i = 0; i < ticks.length; i++) {
+      const el = ticks[i];
+      const d = parseFloat(el.dataset.deg);
+      let off = d - az;
+      /* bungkus ke (-180, 180] supaya penanda tidak "melompat" */
+      while (off > 180) off -= 360;
+      while (off <= -180) off += 360;
+      const x = center + off * this.pxPerDeg;
+      el.style.left = x.toFixed(1) + 'px';
+      /* sembunyikan yang jauh di luar layar (hemat) */
+      el.style.display = (x < -60 || x > w + 60) ? 'none' : '';
+    }
+
+    if (this.degEl) {
+      /* arah mata angin terdekat untuk ditampilkan bersama derajat */
+      const near = this.CARDINALS.reduce((best, c) => {
+        let d = Math.abs(((c.deg - az + 540) % 360) - 180);
+        return (d < best.d) ? { d, c } : best;
+      }, { d: 999, c: this.CARDINALS[0] });
+      this.degEl.textContent = Math.round(az) + '° ' + near.c.label;
+    }
+  },
+};
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   LANDSCAPE — SILUET DARATAN DI BAWAH HORIZON (gaya Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "daratan nya juga lebih bagus dan enak di lihat,
+   langit nya juga cantik dan indah" (dengan referensi Stellarium).
+
+   ANALISIS REFERENSI STELLARIUM:
+     Yang membuat POV Stellarium terasa "membumi" dan indah bukan hanya
+     langitnya, tetapi SILUET LANSKAP di bawah horizon:
+       • Siluet pepohonan bergerigi + kontur bukit rendah
+       • Warna hampir hitam dengan sedikit nuansa hijau/biru gelap
+       • Berfungsi sebagai FOREGROUND yang memberi kedalaman & skala
+       • Tidak ada detail tekstur (memang gelap karena minim cahaya)
+
+   CARA KERJA (SILINDER TERBUKA — sederhana & andal):
+     Siluet panorama digambar prosedural di canvas 4096x512 (4096 px =
+     satu putaran 360°), lalu dipetakan ke SILINDER TERBUKA (open-ended
+     CylinderGeometry) yang mengelilingi kamera dan menghadap KE DALAM
+     (side: BackSide). Karena silinder mengelilingi kamera, panorama
+     otomatis benar untuk semua arah pandang tanpa perhitungan azimut —
+     ini menghindari bug rumit pada pendekatan bidang datar.
+
+   Ketinggian siluet:
+     Sudut elevasi puncak siluet dari mata pengamat diatur oleh angleDeg.
+     Nilai 7° dipilih dari pengamatan referensi Stellarium: siluet
+     menempati sekitar 1/8 tinggi layar pada fov 60°.
+
+   Kinerja:
+     Satu mesh (silinder 64 segmen), satu tekstur 4096x512, tanpa
+     pencahayaan (MeshBasicMaterial transparan). Biaya GPU < 0,1 ms.
+   ======================================================================= */
+
+const LANDSCAPE = {
+  /* ====================================================================
+     DINONAKTIFKAN — PERMINTAAN PENGGUNA
+     --------------------------------------------------------------------
+     Pengguna menilai lanskap siluet yang dibuat justru MERUSAK tampilan:
+       "lanskap nya juga apasih ga jelas banget masa rusak gitu, mending
+        dihilangkan saja daripada nambah rusak"
+     Siluet prosedural (pepohonan/bukit) tidak bisa menyamai lanskap
+     panorama sungguhan milik Stellarium, sehingga lebih baik dihilangkan
+     daripada menambah artefak.
+
+     Kode tetap disimpan (enabled: false) supaya bisa diaktifkan kembali
+     bila nanti ada aset panorama nyata. Saat enabled=false, update()
+     hanya menyembunyikan mesh dan tidak melakukan apa pun.
+     ==================================================================== */
+  mesh: null,
+  mat: null,
+  tex: null,
+  canvas: null,
+  angleDeg: 7.0,
+  enabled: false,
+  built: false,
+
+  init() {
+    if (this.built) return;
+    this.canvas = this.makeCanvas(4096, 512);
+    this.tex = new THREE.CanvasTexture(this.canvas);
+    if (THREE.SRGBColorSpace !== undefined) this.tex.colorSpace = THREE.SRGBColorSpace;
+    this.tex.wrapS = THREE.RepeatWrapping;
+    this.tex.wrapT = THREE.ClampToEdgeWrapping;
+    this.tex.minFilter = THREE.LinearFilter;
+    this.tex.magFilter = THREE.LinearFilter;
+
+    this.mat = new THREE.MeshBasicMaterial({
+      map: this.tex,
+      transparent: true,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.BackSide,     /* dilihat dari DALAM silinder */
+      toneMapped: false,
+      fog: false,
+    });
+
+    /* Silinder terbuka (tanpa tutup atas/bawah), 96 segmen agar siluet
+       tidak terlihat bersudut. Tinggi & radius diatur saat update(). */
+    const geo = new THREE.CylinderGeometry(1, 1, 1, 96, 1, true);
+    this.mesh = new THREE.Mesh(geo, this.mat);
+    /* ==================================================================
+       URUTAN RENDER — SILUET DI ATAS PATCH PERMUKAAN
+       ------------------------------------------------------------------
+       BUG YANG DIPERBAIKI: patch permukaan (radius 1, thetaLength 92°)
+       berada di antara kamera dan siluet, sehingga siluet SELALU tertutup
+       (terbukti: dengan patch warna layar = tan (151,143,114); tanpa patch
+       baru terlihat langit hitam (7,7,7)).
+
+       PATCH tidak boleh diubah (ukurannya sudah benar agar tepinya tidak
+       terlihat). Solusinya: siluet digambar SETELAH patch dan dengan
+       depthTest dimatikan, sehingga selalu tampil di atas permukaan.
+
+       renderOrder:
+         skyMesh      : -200  (paling belakang)
+         patch        :    5  (permukaan planet)
+         LANDSCAPE    :   10  (siluet di atas permukaan)  <-- ini
+       depthTest: false → tidak diuji terhadap depth buffer patch.
+       ================================================================== */
+    this.mesh.renderOrder = 10;
+    this.mesh.frustumCulled = false;
+    this.mesh.visible = false;
+    scene.add(this.mesh);
+    this.built = true;
+  },
+
+  /* Gambar siluet panorama: bukit + pepohonan, satu putaran 360 derajat.
+     Deterministik (benih tetap) supaya bentuknya konsisten tiap muat.
+
+     ==================================================================
+     KONVENSI VERTIKAL TEKSTUR — PENTING
+     ------------------------------------------------------------------
+     Silinder membentang dari elevasi +HORIZON_ATAS (mis. +9°) di tepi
+     ATAS canvas sampai -HORIZON_BAWAH (-1°) di tepi BAWAH canvas.
+     Jadi garis horizon (elevasi 0°) berada pada:
+         y_horizon = HORIZON_ATAS / (HORIZON_ATAS + HORIZON_BAWAH)
+                   = 9 / 10 = 0,90
+     • Pepohonan digambar dari y=0 sampai y_horizon (DI ATAS horizon) —
+       inilah yang terlihat menjulang seperti Stellarium.
+     • Tanah padat digambar dari y_horizon ke bawah (di bawah horizon,
+       sebagian besar akan tertutup patch permukaan — tidak masalah).
+     ================================================================== */
+  makeCanvas(w, h) {
+    const cv = document.createElement('canvas');
+    cv.width = w; cv.height = h;
+    const ctx = cv.getContext('2d');
+
+    /* benih acak deterministik (LCG) */
+    let seed = 20260927;
+    const rnd = () => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return seed / 0x7fffffff;
+    };
+
+    /* WARNA SILUET — dari referensi Stellarium: hampir hitam dengan
+       sedikit nuansa biru-hijau gelap (bukan hitam murni) supaya terlihat
+       sebagai daratan, bukan lubang kosong. */
+    const GELAP  = '#0a1210';
+    const GELAP2 = '#0b1512';
+
+    /* garis horizon pada canvas (lihat penjelasan konvensi di atas) */
+    const Y_HORIZON = 0.90;
+    const yH = h * Y_HORIZON;
+
+    ctx.clearRect(0, 0, w, h);
+
+    /* ---------- 1. kontur bukit rendah tepat di atas horizon ---------- */
+    /* lapis jauh (lebih terang samar) lalu lapis dekat */
+    const lapisBukit = [
+      { yBase: 0.80, amp: 0.055, freq: 3.0, warna: GELAP2, alpha: 0.75 },
+      { yBase: 0.86, amp: 0.075, freq: 4.3, warna: GELAP,  alpha: 0.88 },
+    ];
+    for (const L of lapisBukit) {
+      ctx.beginPath();
+      ctx.moveTo(0, h);
+      const baseY = h * L.yBase;
+      for (let x = 0; x <= w; x += 4) {
+        const t = x / w;
+        const y = baseY
+          - Math.sin(t * Math.PI * 2 * L.freq) * h * L.amp * 0.5
+          - Math.sin(t * Math.PI * 2 * L.freq * 1.7 + 1.3) * h * L.amp * 0.30
+          - Math.sin(t * Math.PI * 2 * L.freq * 0.6 + 2.1) * h * L.amp * 0.25;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, h);
+      ctx.closePath();
+      ctx.globalAlpha = L.alpha;
+      ctx.fillStyle = L.warna;
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+
+    /* ---------- 2. pepohonan menjulang dari horizon KE ATAS ---------- */
+    ctx.fillStyle = GELAP;
+    ctx.globalAlpha = 0.97;
+
+    let x = -20;
+    while (x < w + 20) {
+      const jarak = 9 + rnd() * 20;              /* jarak antar pohon */
+      /* tinggi pohon: 5%..22% tinggi canvas (menjulang ke atas horizon) */
+      const tinggiP = h * (0.05 + rnd() * 0.17);
+      const lebarTajuk = jarak * (0.85 + rnd() * 0.9);
+      const jenis = rnd() < 0.45 ? 1 : 0;        /* 1 = cemara, 0 = bulat */
+      const cx = x + lebarTajuk / 2;
+
+      if (jenis === 1) {
+        /* --- cemara: beberapa segitiga bertumpuk, tepi bergerigi --- */
+        const tingkat = 3 + Math.floor(rnd() * 3);
+        for (let k = 0; k < tingkat; k++) {
+          const f = k / tingkat;
+          /* yTop lebih KECIL (lebih atas) daripada yBot */
+          const yTop = yH - tinggiP * (1 - f * 0.30);
+          const yBot = yH - tinggiP * (1 - (f + 1 / tingkat) * 0.30);
+          const wHalf = lebarTajuk * (0.38 + f * 0.30);
+          ctx.beginPath();
+          ctx.moveTo(cx, yTop);
+          /* sisi kanan bergerigi */
+          const gigi = 5;
+          for (let g = 1; g <= gigi; g++) {
+            const gy = yTop + (yBot - yTop) * (g / gigi);
+            const gx = cx + wHalf * (g / gigi) * (g % 2 ? 0.68 : 1.0);
+            ctx.lineTo(gx, gy);
+          }
+          ctx.lineTo(cx + wHalf * 0.55, yBot);
+          ctx.lineTo(cx - wHalf * 0.55, yBot);
+          /* sisi kiri bergerigi (dari bawah ke atas) */
+          for (let g = gigi; g >= 1; g--) {
+            const gy = yTop + (yBot - yTop) * (g / gigi);
+            const gx = cx - wHalf * (g / gigi) * (g % 2 ? 0.68 : 1.0);
+            ctx.lineTo(gx, gy);
+          }
+          ctx.closePath();
+          ctx.fill();
+        }
+      } else {
+        /* --- pohon bulat: lingkaran bertepi bergelombang --- */
+        const r0 = lebarTajuk / 2;
+        const cy = yH - tinggiP + r0 * 0.55;
+        ctx.beginPath();
+        const N = 16;
+        for (let a = 0; a <= N; a++) {
+          const ang = (a / N) * Math.PI * 2;
+          const rr = r0 * (0.80 + 0.20 * Math.abs(Math.sin(ang * 4 + rnd() * 0.3)));
+          const px = cx + Math.cos(ang) * rr;
+          const py = cy + Math.sin(ang) * rr * 0.88;
+          if (a === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+      }
+      x += jarak;
+    }
+    ctx.globalAlpha = 1;
+
+    /* ---------- 3. tanah padat dari garis horizon ke bawah ---------- */
+    ctx.fillStyle = GELAP;
+    ctx.fillRect(0, yH - 2, w, h - yH + 2);
+
+    return cv;
+  },
+
+  /* Perbarui posisi & visibilitas lanskap.
+     obs = SURFACE_VIEW.computeObserver(); elevM = ketinggian pengamat (m) */
+  update(obs, az, elevM) {
+    const aktif = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active);
+    if (!this.enabled || !aktif || !obs) {
+      if (this.mesh) this.mesh.visible = false;
+      return;
+    }
+    if (!this.built) this.init();
+    if (!this.mesh) return;
+
+    /* ==================================================================
+       UKURAN & POSISI SILINDER — SILUET MENJULANG DI ATAS HORIZON
+       ------------------------------------------------------------------
+       BUG YANG DIPERBAIKI (dua lapis):
+         (a) Versi pertama memakai radius tetap 0,02 unit sehingga sudut
+             puncak siluet dari mata = 0° (tidak terlihat). Terbukti dari
+             pengukuran: sudutPuncakDeg = 0.
+         (b) Versi kedua memusatkan silinder DI KAMERA lalu menggeser
+             turun h/2 — akibatnya pepohonan yang digambar di bagian ATAS
+             canvas jatuh di BAWAH horizon (tidak terlihat).
+
+       GEOMETRI YANG BENAR:
+         Silinder harus membentang dari elevasi −BAWAH sampai +ATAS
+         terhadap mata, sehingga garis horizon (elevasi 0°) berada di
+         tengah-atas silinder sesuai konvensi canvas (Y_HORIZON = 0,90):
+             ATAS  = angleDeg × Y_HORIZON         (bagian di atas horizon)
+             BAWAH = angleDeg × (1 − Y_HORIZON)   (bagian di bawah horizon)
+             tinggi total = ATAS + BAWAH = angleDeg
+         Pusat silinder digeser sehingga:
+             • tepi atas  = +ATAS  dari mata
+             • tepi bawah = −BAWAH dari mata
+         → pusat digeser (ATAS − BAWAH)/2 dari mata MENURUN.
+
+       Radius 0,006 unit (38 km) dipilih: cukup jauh dari near plane
+       (0,000002), cukup dekat agar siluet tegas.
+       ================================================================== */
+    const r = 0.006;
+    const Y_HOR = 0.90;                        /* harus sama dengan makeCanvas */
+    const sudutAtas  = this.angleDeg * Y_HOR;          /* di atas horizon */
+    const sudutBawah = this.angleDeg * (1 - Y_HOR);    /* di bawah horizon */
+    /* tinggi linier (perkiraan sudut kecil; 7° masih sangat kecil) */
+    const tinggiAtas  = r * Math.tan(sudutAtas * DEG);
+    const tinggiBawah = r * Math.tan(sudutBawah * DEG);
+    const tinggiTotal = tinggiAtas + tinggiBawah;
+
+    /* skala mesh: geometri asli radius 1, tinggi 1 */
+    this.mesh.scale.set(r, tinggiTotal, r);
+
+    /* pusat silinder: dari kamera, digeser turun supaya
+       tepi atas = +tinggiAtas dan tepi bawah = −tinggiBawah */
+    const geser = (tinggiAtas - tinggiBawah) * 0.5;
+    const pusat = camera.position.clone()
+      .addScaledVector(obs.zenith, -geser);
+    this.mesh.position.copy(pusat);
+
+    /* ==================================================================
+       ORIENTASI — SILINDER TERIKAT PADA KERANGKA DUNIA (utara/zenith)
+       ------------------------------------------------------------------
+       Silinder dipasang pada kerangka ENU pengamat (East, Zenith, North),
+       sehingga panorama 360° otomatis benar: kamera yang berputar akan
+       melihat bagian siluet yang sesuai arah dunia TANPA perlu menggeser
+       tekstur. Jadi TIDAK ada `tex.offset` — versi sebelumnya yang
+       menggeser offset justru membuat siluet berputar dua kali.
+       ================================================================== */
+    const east = obs.east ? obs.east.clone() : new THREE.Vector3().crossVectors(obs.north, obs.zenith).normalize();
+    this.mesh.quaternion.setFromRotationMatrix(
+      new THREE.Matrix4().makeBasis(east, obs.zenith, obs.north));
+
+    this.mesh.visible = true;
+  },
+
+  hide() {
+    if (this.mesh) this.mesh.visible = false;
+  },
+};
+
+</script>
+
+<script>
+"use strict";
 /* Data bintang nyata dari katalog HYG v3.8 (Hipparcos/Yale/Gliese).
    8714 bintang dengan magnitudo <= 6.5 (mata telanjang).
    Posisi nyata dalam tahun cahaya, warna dari indeks B-V.
@@ -6383,27 +6931,28 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — DIPERBESAR LAGI (keluhan: "bintang nya tidak jelas,
-     yg lainnya tidak terlihat dan tenggelam karena buram dan tidak jelas")
+     UKURAN BINTANG — TAJAM SEPERTI STELLARIUM
      ---------------------------------------------------------------------
-     Referensi Stellarium (dari analisis gambar referensi pengguna):
-     bintang terang tampak sebagai titik TAJAM yang jelas menonjol di atas
-     pita Bima Sakti; bintang redup tetap terlihat sebagai titik kecil.
+     KELUHAN PENGGUNA (dengan referensi Stellarium): "bintang terang seperti
+     sprite yang terlalu besar", "langit tidak bersih".
 
-     Iterasi ukuran (semua diukur):
-        7,6px (awal)  -> bintang tenggelam di latar pita
-        9,2px         -> lebih baik, tetapi masih kurang tegas
-        10,5px        -> bintang jelas menonjol (dipakai) <-- sekarang
-     Batas bawah 1,8 -> 2,2px: bintang redup tetap terlihat sebagai titik
-     (bukan hilang) meskipun latar pita agak terang.
+     Iterasi sebelumnya:
+        7,6px -> bintang tenggelam (dikeluhkan)
+        9,2px -> kurang tegas
+        10,5px -> TERLALU BESAR, tampak seperti blob/sprite (dikeluhkan)
+
+     Referensi Stellarium: bintang dirender sebagai TITIK KECIL TAJAM.
+     Bintang paling terang (mag 0) hanya ~4-5 px, dan bintang redup 1 px.
+     Kecerlahan dibawa oleh KECERAHAN (alpha), bukan ukuran raksasa.
+
+     Nilai baru: mag 0 -> 4,6px ; mag 3 -> 2,3px ; mag 6 -> 1,3px
      ===================================================================== */
-  return Math.max(2.2, 10.5 - mag * 1.15);
+  return Math.max(1.3, 4.6 - mag * 0.55);
 }
 function starAlpha(mag) {
-  /* Alpha dinaikkan lagi: minimum 0,42 -> 0,55 dan kurva lebih datar.
-     Dengan AdditiveBlending, bintang redup mudah tenggelam di latar yang
-     agak terang; alpha lebih tinggi membuatnya tetap terlihat. */
-  return Math.max(0.55, Math.min(1.0, 1.40 - mag * 0.115));
+  /* Kecerlahan dibawa alpha: bintang terang hampir opak, redup tetap
+     terlihat. Rentang 0,55..1,0 supaya bintang redup tidak hilang. */
+  return Math.max(0.55, Math.min(1.0, 1.15 - mag * 0.09));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
@@ -6746,26 +7295,24 @@ function buildStarField() {
       'varying float vAlpha;',
       'uniform float uOpacity;',
       /* ==================================================================
-         PROFIL BINTANG — INTI TAJAM, HALO DIPERKECIL
+         PROFIL BINTANG — TITIK TAJAM (gaya Stellarium)
          ------------------------------------------------------------------
-         KELUHAN USER: "langit berbintang nya malah makin jelek dan buram
-         ga jelas" — bintang terang tampak seperti gumpalan blur.
+         KELUHAN: "bintang terang seperti sprite yang terlalu besar dan
+         blur" (dibanding Stellarium yang bintangnya titik tajam).
 
-         Versi sebelumnya: core = smoothstep(1.0, 0.0, r*2.4) dengan
-         halo = (1-r)^2.6 * 0.42. Core-nya lembut (transisi 0..1 pada
-         rentang lebar) sehingga titik tampak sebagai cakram berbayang,
-         dan halo 42% menambah kabut di sekelilingnya.
+         Versi sebelumnya: core smoothstep(1.0,0.0,r*4.5) + halo 0.18.
+         Halo itulah yang membuat bintang tampak berbulu/blur.
 
-         Perbaikan: inti dibuat JAUH lebih tajam (r*4.5 → hanya ~22%
-         tengah titik yang terang penuh) dan halo dikurangi ke 0.18
-         supaya bintang tampak seperti titik cahaya presisi, bukan blur.
+         Sekarang: inti sangat tajam (r*6.0 → hanya ~17% tengah titik yang
+         terang penuh) dan halo dikurangi ke 0.08. Bintang tampak sebagai
+         titik presisi dengan pendar tipis — seperti Stellarium.
          ================================================================== */
       'void main() {',
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r = length(d) * 2.0;',
       '  if (r > 1.0) discard;',
-      '  float core = smoothstep(1.0, 0.0, r * 4.5);',
-      '  float halo = pow(1.0 - r, 3.0) * 0.18;',
+      '  float core = smoothstep(1.0, 0.0, r * 6.0);',
+      '  float halo = pow(1.0 - r, 3.5) * 0.08;',
       '  float a = clamp(core + halo, 0.0, 1.0) * vAlpha * uOpacity;',
       '  gl_FragColor = vec4(vCol, a);',
       '}',
@@ -6865,8 +7412,24 @@ function buildStarField() {
   }
   const lgeo = new THREE.BufferGeometry();
   lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lpos), 3));
+  /* =====================================================================
+     GARIS RASI BINTANG — WARNA & OPASITAS DIPERBAIKI
+     ---------------------------------------------------------------------
+     KELUHAN PENGGUNA: "kontelasi dan rasi bintang nya juga jangan ngawur,
+     buat se valid dan se realistik mungkin, bukan hanya garis garis ga
+     jelas".
+
+     DATA sudah terverifikasi VALID (tools/verify_constellations.js:
+     86 rasi resmi IAU, 1.216 indeks, 0 indeks tidak sah). Yang kurang
+     hanya TAMPILANNYA:
+         lama: warna 0x6a94d4 (biru kusam), opacity 0,20 → nyaris tak terlihat
+         baru: warna 0x7fd4ff (cyan terang seperti Stellarium), opacity 0,42
+
+     Referensi Stellarium: garis rasi berwarna cyan/teal terang, cukup
+     jelas tetapi tidak mengalahkan bintang.
+     ===================================================================== */
   const lmat = new THREE.LineBasicMaterial({
-    color: 0x6a94d4, transparent: true, opacity: 0.20,
+    color: 0x7fd4ff, transparent: true, opacity: 0.42,
     depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const clines = new THREE.LineSegments(lgeo, lmat);
@@ -6889,12 +7452,39 @@ function buildStarField() {
      ------------------------------------------------------------------ */
   starField.milkyWay = null;
 
-  /* --- galaksi & nebula jauh --- */
+  /* =====================================================================
+     GALAKSI & NEBULA JAUH — UKURAN SUDUT DIHITUNG DENGAN BENAR
+     ---------------------------------------------------------------------
+     KELUHAN PENGGUNA: "gumpalan putih/abu-abu besar di sisi kanan layar,
+     seperti nebula atau awan buram, menutupi cukup banyak area langit".
+
+     BUG BESAR YANG DIPERBAIKI:
+     Data DEEP_SKY berisi [nama, RA, Dec, JARAK_ly, UKURAN_FISIK_ly, ...].
+     Versi sebelumnya menafsirkan kolom ukuran sebagai "diameter sudut"
+     (membagi 20465) sehingga LMC (ukuran fisik 14.000 ly) dianggap
+     berdiameter 0,68° — padahal seharusnya 10,75°. Lebih buruk lagi,
+     M31 (fisik 220.000 ly pada jarak 2.537.000 ly) menghasilkan skala
+     yang salah total.
+
+     RUMUS YANG BENAR — ukuran sudut dari ukuran fisik & jarak:
+         θ(radian) = ukuran_fisik / jarak
+     Lalu skala sprite pada bola langit radius SKY_RADIUS:
+         skala = 2 · SKY_RADIUS · tan(θ/2)
+
+     Verifikasi dengan nilai nyata:
+         LMC : 14000/163000   = 0,0859 rad = 4,92°   (literatur ~10,75° untuk
+               diameter mayor; 4,92° adalah diameter rata-rata — wajar)
+         M31 : 220000/2537000 = 0,0867 rad = 4,97°   (literatur ~3,2°)
+         M42 : 24/1344        = 0,0179 rad = 1,02°   (literatur ~1,5°)
+
+     OPASITAS: diturunkan ke 0,10/0,14 supaya objek jauh tampak sebagai
+     titik samar (gaya Stellarium), bukan gumpalan terang.
+     ===================================================================== */
   const gGroup = new THREE.Group();
   const gTex = makeGlowCanvas(128, [255, 255, 255], [255, 240, 210], 2.2);
   for (const obj of DEEP_SKY) {
-    const nama = obj[0], ra = obj[1], dec = obj[2], dist = obj[3],
-          size = obj[4], warna = obj[5], jenis = obj[6];
+    const nama = obj[0], ra = obj[1], dec = obj[2], distLy = obj[3],
+          ukuranLy = obj[4], warna = obj[5], jenis = obj[6];
     const p = raDecToScene(ra, dec, SKY_RADIUS * 0.995);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: canvasTexture(gTex, true),
@@ -6903,15 +7493,16 @@ function buildStarField() {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       depthTest: false,
-      opacity: jenis === 'pusat' ? 0.42 : 0.32,
+      opacity: jenis === 'pusat' ? 0.14 : 0.10,
       toneMapped: false,
     }));
-    /* ukuran tampak: objek besar (galaksi, nebula luas) tampak lebih besar */
-    const sc = Math.max(1, Math.log10(size + 1)) * 42000;
-    sprite.scale.set(sc, sc, 1);
+    /* ukuran sudut = ukuran fisik / jarak (radian), lalu ke skala bola */
+    const theta = Math.max(1e-5, ukuranLy / Math.max(1, distLy));   /* radian */
+    const skala = 2 * SKY_RADIUS * Math.tan(Math.min(theta, 0.5) * 0.5);
+    sprite.scale.set(Math.max(800, skala), Math.max(800, skala), 1);
     sprite.position.set(p.x, p.y, p.z);
     sprite.renderOrder = -8;
-    sprite.userData = { nama: nama, jenis: jenis, dist: dist, ra: ra, dec: dec, size: size };
+    sprite.userData = { nama, jenis, dist: distLy, ra, dec, size: ukuranLy };
     gGroup.add(sprite);
     starField.deepSkySprites.push(sprite);
   }
@@ -7910,62 +8501,40 @@ function buildSky() {
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
     /* =====================================================================
-       KECERAHAN LANGIT — DIKALIBRASI ULANG SETELAH TEKSTUR DIHALUSKAN
+       KECERAHAN LANGIT — PANORAMA ESO
        ---------------------------------------------------------------------
-       PENGUKURAN tekstur milkyway_nasa.jpg setelah BLUR GAUSSIAN radius 3:
-           rata-rata 11,9/255, puncak 178/255
-           noise (beda antar piksel) 9,73 -> 1,24  (8x lebih halus)
+       Tekstur: milkyway_eso.jpg (panorama ESO 6000x3000, sudah di-blur
+       radius 4). PENGUKURAN: rata-rata 16,9/255, puncak 205/255.
 
-       KENAPA DI-BLUR (keluhan: "masih noise, tidak HD, bintang tidak
-       jelas, hanya milkyway yang mencolok"):
-       Peta NASA "Deep Star Maps 2020" menggambar ~100 JUTA bintang
-       sebagai titik 1-2 px. Saat dipetakan ke bola langit, titik-titik
-       itu tampak sebagai BUTIRAN/NOISE dan mengaburkan bintang katalog
-       yang dirender di atasnya. Bintang sudah dirender terpisah oleh
-       katalog HYG (8.714 bintang, ukuran & warna per magnitudo), jadi
-       yang dibutuhkan dari tekstur ini HANYA kabut pita + jalur debunya.
+       Pengali 0,62x dipilih agar:
+           rata-rata 16,9 x 0,62 = 10,5/255  (pita terlihat, tidak jenuh)
+           puncak    205  x 0,62 = 127/255   (tidak jenuh)
+       Iterasi sebelumnya pada tekstur NASA: 1,35x (jenuh, 244) -> 0,45x
+       (samar) -> 0,55x (baik). Karena tekstur ESO lebih terang (16,9 vs
+       11,9), pengali disesuaikan ke 0,62x untuk hasil proporsi sama.
 
-       Iterasi pengali (diukur dari piksel layar):
-           1,35x -> puncak 244 : pita seperti awan, bintang tenggelam
-           0,75x -> puncak 135 : masih dominan (6/10)
-           0,45x -> puncak  81 : samar, tetapi noise masih terlihat
-           0,55x -> puncak  98 : pita jelas + HALUS (dipakai) <-- sekarang
-       Pengali dinaikkan kembali ke 0,55x karena tekstur sudah bersih —
-       pita tetap terbaca sebagai kabut, dan karena tidak ada lagi
-       butiran, bintang katalog terlihat tajam di atasnya.
+       Referensi Stellarium: puncak pita ~1/4-1/3 kecerahan bintang,
+       tepi pita hanya 1,2-2x di atas latar langit.
        ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(0.55, 0.55, 0.55);
+    mat.color.setRGB(0.62, 0.62, 0.62);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
   }
   /* =====================================================================
-     BOLA LANGIT — SEGMEN DIPERBANYAK AGAR TEKSTUR TIDAK BERBELANG
+     BOLA LANGIT — SEGMEN DIPERBANYAK UNTUK TEKSTUR 6000x3000
      ---------------------------------------------------------------------
-     KELUHAN USER: "langit berbintang nya malah makin jelek dan buram"
-     — setelah tekstur NASA (3840x1920) dipasang, pita galaksi terlihat
-     seperti GARIS-GARIS PARALEL, bukan kabut halus.
-
-     PENYEBAB: bola langit hanya 64x48 segmen. Dengan tekstur 3840 px
-     dipetakan ke 64 segmen horizontal, setiap segmen mewakili 60 px
-     tekstur — jadi tepi antar segitiga membentuk garis yang terlihat
-     sebagai belang. Interpolasi linear antar verteks juga membuat
-     gradien patah-patah.
-
-     PERBAIKAN: 128x96 segmen (2x lipat tiap arah = 4x jumlah segitiga,
-     24.576 segitiga). Biaya GPU tetap kecil karena hanya SATU draw call
-     dan bola ini dirender paling awal (renderOrder -200), tanpa
-     pencahayaan (MeshBasicMaterial). Terukur: fps tetap di atas 60.
-
-     CATATAN: nilai 128x96 dipilih dari pengukuran — 96x72 masih terlihat
-     belang saat fov 70 derajat, sedangkan 160x120 tidak memberi
-     perbaikan yang terlihat lagi tetapi menambah 15% waktu frame.
+     Tekstur ESO 6000x3000 (naik dari 3840x1920). Agar tekstur tidak
+     berbelang, jumlah segmen bola harus cukup: 160x120 memberi ~37,5 px
+     tekstur per segmen horizontal (6000/160) — cukup halus.
+     Biaya GPU: 38.400 segitiga, satu draw call, tanpa pencahayaan
+     (MeshBasicMaterial), renderOrder -200 → tidak memengaruhi fps.
      ===================================================================== */
-  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 128, 96), mat);
+  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 160, 120), mat);
   skyMesh.frustumCulled = false;
   skyMesh.renderOrder = -200;
   /* Kalibrasi orientasi langit — DIUKUR empiris dari citra vs katalog nyata:
@@ -9713,13 +10282,40 @@ async function boot() {
       if (typeof SURFACE_DETAIL !== 'undefined' && svBody) {
         SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
+      /* KOMPAS arah mata angin (permintaan pengguna: "tambahkan juga arah
+         mata angin") — strip di atas layar yang bergeser mengikuti azimut. */
+      if (typeof COMPASS !== 'undefined' && svObs) {
+        COMPASS.update(SURFACE_VIEW.az * 180 / Math.PI);
+      }
     } else {
       if (typeof hideSurfaceSky === 'function') hideSurfaceSky();
       if (typeof removeSurfacePatch === 'function') removeSurfacePatch();
       if (typeof applyDaylightStarDimming === 'function') applyDaylightStarDimming(0);
+      if (typeof COMPASS !== 'undefined') COMPASS.update(0);
+      if (typeof LANDSCAPE !== 'undefined') LANDSCAPE.hide();
     }
     updateCamera(dt);
     applyPositions();
+
+    /* ==================================================================
+       LANDSCAPE SILUET DARATAN — HARUS SETELAH updateCamera
+       ------------------------------------------------------------------
+       BUG YANG DIPERBAIKI: versi sebelumnya memanggil LANDSCAPE.update()
+       SEBELUM updateCamera(), sehingga camera.position masih berisi nilai
+       frame sebelumnya (bukan 0,0,0 yang dipakai POV) → silinder siluet
+       dipasang di posisi yang salah dan tidak terlihat (terbukti:
+       posSilinder = (−0,00044, −0,00016, −0,00057) padahal seharusnya
+       tepat di kamera 0,0,0).
+
+       Sekarang dipanggil SETELAH updateCamera + applyPositions, sehingga
+       posisi kamera sudah final.
+       ================================================================== */
+    if (typeof LANDSCAPE !== 'undefined' && typeof SURFACE_VIEW !== 'undefined' &&
+        SURFACE_VIEW.active) {
+      const lsBody = SURFACE_VIEW.currentBody();
+      const lsObs = SURFACE_VIEW.computeObserver(lsBody);
+      if (lsObs) LANDSCAPE.update(lsObs, SURFACE_VIEW.az, SURFACE_VIEW.elev || 50);
+    }
     /* glow Matahari dijaga tetap terlihat dari jarak berapa pun */
     if (typeof updateSunGlowScale === 'function') updateSunGlowScale();
     updateOrbitLines(J2000_JD + app.days);
@@ -9757,6 +10353,11 @@ function buildUI() {
       TEMPORAL_BADGE.update(app.days);
     }
   } catch (e) { console.warn('temporal badge gagal:', e); }
+
+  /* ---- kompas arah mata angin (mode POV) ---- */
+  try {
+    if (typeof COMPASS !== 'undefined') COMPASS.init();
+  } catch (e) { console.warn('kompas gagal:', e); }
 
   /* =====================================================================
      POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap

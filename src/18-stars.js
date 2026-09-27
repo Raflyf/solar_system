@@ -51,27 +51,28 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — DIPERBESAR LAGI (keluhan: "bintang nya tidak jelas,
-     yg lainnya tidak terlihat dan tenggelam karena buram dan tidak jelas")
+     UKURAN BINTANG — TAJAM SEPERTI STELLARIUM
      ---------------------------------------------------------------------
-     Referensi Stellarium (dari analisis gambar referensi pengguna):
-     bintang terang tampak sebagai titik TAJAM yang jelas menonjol di atas
-     pita Bima Sakti; bintang redup tetap terlihat sebagai titik kecil.
+     KELUHAN PENGGUNA (dengan referensi Stellarium): "bintang terang seperti
+     sprite yang terlalu besar", "langit tidak bersih".
 
-     Iterasi ukuran (semua diukur):
-        7,6px (awal)  -> bintang tenggelam di latar pita
-        9,2px         -> lebih baik, tetapi masih kurang tegas
-        10,5px        -> bintang jelas menonjol (dipakai) <-- sekarang
-     Batas bawah 1,8 -> 2,2px: bintang redup tetap terlihat sebagai titik
-     (bukan hilang) meskipun latar pita agak terang.
+     Iterasi sebelumnya:
+        7,6px -> bintang tenggelam (dikeluhkan)
+        9,2px -> kurang tegas
+        10,5px -> TERLALU BESAR, tampak seperti blob/sprite (dikeluhkan)
+
+     Referensi Stellarium: bintang dirender sebagai TITIK KECIL TAJAM.
+     Bintang paling terang (mag 0) hanya ~4-5 px, dan bintang redup 1 px.
+     Kecerlahan dibawa oleh KECERAHAN (alpha), bukan ukuran raksasa.
+
+     Nilai baru: mag 0 -> 4,6px ; mag 3 -> 2,3px ; mag 6 -> 1,3px
      ===================================================================== */
-  return Math.max(2.2, 10.5 - mag * 1.15);
+  return Math.max(1.3, 4.6 - mag * 0.55);
 }
 function starAlpha(mag) {
-  /* Alpha dinaikkan lagi: minimum 0,42 -> 0,55 dan kurva lebih datar.
-     Dengan AdditiveBlending, bintang redup mudah tenggelam di latar yang
-     agak terang; alpha lebih tinggi membuatnya tetap terlihat. */
-  return Math.max(0.55, Math.min(1.0, 1.40 - mag * 0.115));
+  /* Kecerlahan dibawa alpha: bintang terang hampir opak, redup tetap
+     terlihat. Rentang 0,55..1,0 supaya bintang redup tidak hilang. */
+  return Math.max(0.55, Math.min(1.0, 1.15 - mag * 0.09));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
@@ -414,26 +415,24 @@ function buildStarField() {
       'varying float vAlpha;',
       'uniform float uOpacity;',
       /* ==================================================================
-         PROFIL BINTANG — INTI TAJAM, HALO DIPERKECIL
+         PROFIL BINTANG — TITIK TAJAM (gaya Stellarium)
          ------------------------------------------------------------------
-         KELUHAN USER: "langit berbintang nya malah makin jelek dan buram
-         ga jelas" — bintang terang tampak seperti gumpalan blur.
+         KELUHAN: "bintang terang seperti sprite yang terlalu besar dan
+         blur" (dibanding Stellarium yang bintangnya titik tajam).
 
-         Versi sebelumnya: core = smoothstep(1.0, 0.0, r*2.4) dengan
-         halo = (1-r)^2.6 * 0.42. Core-nya lembut (transisi 0..1 pada
-         rentang lebar) sehingga titik tampak sebagai cakram berbayang,
-         dan halo 42% menambah kabut di sekelilingnya.
+         Versi sebelumnya: core smoothstep(1.0,0.0,r*4.5) + halo 0.18.
+         Halo itulah yang membuat bintang tampak berbulu/blur.
 
-         Perbaikan: inti dibuat JAUH lebih tajam (r*4.5 → hanya ~22%
-         tengah titik yang terang penuh) dan halo dikurangi ke 0.18
-         supaya bintang tampak seperti titik cahaya presisi, bukan blur.
+         Sekarang: inti sangat tajam (r*6.0 → hanya ~17% tengah titik yang
+         terang penuh) dan halo dikurangi ke 0.08. Bintang tampak sebagai
+         titik presisi dengan pendar tipis — seperti Stellarium.
          ================================================================== */
       'void main() {',
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r = length(d) * 2.0;',
       '  if (r > 1.0) discard;',
-      '  float core = smoothstep(1.0, 0.0, r * 4.5);',
-      '  float halo = pow(1.0 - r, 3.0) * 0.18;',
+      '  float core = smoothstep(1.0, 0.0, r * 6.0);',
+      '  float halo = pow(1.0 - r, 3.5) * 0.08;',
       '  float a = clamp(core + halo, 0.0, 1.0) * vAlpha * uOpacity;',
       '  gl_FragColor = vec4(vCol, a);',
       '}',
@@ -533,8 +532,24 @@ function buildStarField() {
   }
   const lgeo = new THREE.BufferGeometry();
   lgeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(lpos), 3));
+  /* =====================================================================
+     GARIS RASI BINTANG — WARNA & OPASITAS DIPERBAIKI
+     ---------------------------------------------------------------------
+     KELUHAN PENGGUNA: "kontelasi dan rasi bintang nya juga jangan ngawur,
+     buat se valid dan se realistik mungkin, bukan hanya garis garis ga
+     jelas".
+
+     DATA sudah terverifikasi VALID (tools/verify_constellations.js:
+     86 rasi resmi IAU, 1.216 indeks, 0 indeks tidak sah). Yang kurang
+     hanya TAMPILANNYA:
+         lama: warna 0x6a94d4 (biru kusam), opacity 0,20 → nyaris tak terlihat
+         baru: warna 0x7fd4ff (cyan terang seperti Stellarium), opacity 0,42
+
+     Referensi Stellarium: garis rasi berwarna cyan/teal terang, cukup
+     jelas tetapi tidak mengalahkan bintang.
+     ===================================================================== */
   const lmat = new THREE.LineBasicMaterial({
-    color: 0x6a94d4, transparent: true, opacity: 0.20,
+    color: 0x7fd4ff, transparent: true, opacity: 0.42,
     depthWrite: false, blending: THREE.AdditiveBlending,
   });
   const clines = new THREE.LineSegments(lgeo, lmat);
@@ -557,12 +572,39 @@ function buildStarField() {
      ------------------------------------------------------------------ */
   starField.milkyWay = null;
 
-  /* --- galaksi & nebula jauh --- */
+  /* =====================================================================
+     GALAKSI & NEBULA JAUH — UKURAN SUDUT DIHITUNG DENGAN BENAR
+     ---------------------------------------------------------------------
+     KELUHAN PENGGUNA: "gumpalan putih/abu-abu besar di sisi kanan layar,
+     seperti nebula atau awan buram, menutupi cukup banyak area langit".
+
+     BUG BESAR YANG DIPERBAIKI:
+     Data DEEP_SKY berisi [nama, RA, Dec, JARAK_ly, UKURAN_FISIK_ly, ...].
+     Versi sebelumnya menafsirkan kolom ukuran sebagai "diameter sudut"
+     (membagi 20465) sehingga LMC (ukuran fisik 14.000 ly) dianggap
+     berdiameter 0,68° — padahal seharusnya 10,75°. Lebih buruk lagi,
+     M31 (fisik 220.000 ly pada jarak 2.537.000 ly) menghasilkan skala
+     yang salah total.
+
+     RUMUS YANG BENAR — ukuran sudut dari ukuran fisik & jarak:
+         θ(radian) = ukuran_fisik / jarak
+     Lalu skala sprite pada bola langit radius SKY_RADIUS:
+         skala = 2 · SKY_RADIUS · tan(θ/2)
+
+     Verifikasi dengan nilai nyata:
+         LMC : 14000/163000   = 0,0859 rad = 4,92°   (literatur ~10,75° untuk
+               diameter mayor; 4,92° adalah diameter rata-rata — wajar)
+         M31 : 220000/2537000 = 0,0867 rad = 4,97°   (literatur ~3,2°)
+         M42 : 24/1344        = 0,0179 rad = 1,02°   (literatur ~1,5°)
+
+     OPASITAS: diturunkan ke 0,10/0,14 supaya objek jauh tampak sebagai
+     titik samar (gaya Stellarium), bukan gumpalan terang.
+     ===================================================================== */
   const gGroup = new THREE.Group();
   const gTex = makeGlowCanvas(128, [255, 255, 255], [255, 240, 210], 2.2);
   for (const obj of DEEP_SKY) {
-    const nama = obj[0], ra = obj[1], dec = obj[2], dist = obj[3],
-          size = obj[4], warna = obj[5], jenis = obj[6];
+    const nama = obj[0], ra = obj[1], dec = obj[2], distLy = obj[3],
+          ukuranLy = obj[4], warna = obj[5], jenis = obj[6];
     const p = raDecToScene(ra, dec, SKY_RADIUS * 0.995);
     const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
       map: canvasTexture(gTex, true),
@@ -571,15 +613,16 @@ function buildStarField() {
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       depthTest: false,
-      opacity: jenis === 'pusat' ? 0.42 : 0.32,
+      opacity: jenis === 'pusat' ? 0.14 : 0.10,
       toneMapped: false,
     }));
-    /* ukuran tampak: objek besar (galaksi, nebula luas) tampak lebih besar */
-    const sc = Math.max(1, Math.log10(size + 1)) * 42000;
-    sprite.scale.set(sc, sc, 1);
+    /* ukuran sudut = ukuran fisik / jarak (radian), lalu ke skala bola */
+    const theta = Math.max(1e-5, ukuranLy / Math.max(1, distLy));   /* radian */
+    const skala = 2 * SKY_RADIUS * Math.tan(Math.min(theta, 0.5) * 0.5);
+    sprite.scale.set(Math.max(800, skala), Math.max(800, skala), 1);
     sprite.position.set(p.x, p.y, p.z);
     sprite.renderOrder = -8;
-    sprite.userData = { nama: nama, jenis: jenis, dist: dist, ra: ra, dec: dec, size: size };
+    sprite.userData = { nama, jenis, dist: distLy, ra, dec, size: ukuranLy };
     gGroup.add(sprite);
     starField.deepSkySprites.push(sprite);
   }

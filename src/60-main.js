@@ -208,13 +208,40 @@ async function boot() {
       if (typeof SURFACE_DETAIL !== 'undefined' && svBody) {
         SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
+      /* KOMPAS arah mata angin (permintaan pengguna: "tambahkan juga arah
+         mata angin") — strip di atas layar yang bergeser mengikuti azimut. */
+      if (typeof COMPASS !== 'undefined' && svObs) {
+        COMPASS.update(SURFACE_VIEW.az * 180 / Math.PI);
+      }
     } else {
       if (typeof hideSurfaceSky === 'function') hideSurfaceSky();
       if (typeof removeSurfacePatch === 'function') removeSurfacePatch();
       if (typeof applyDaylightStarDimming === 'function') applyDaylightStarDimming(0);
+      if (typeof COMPASS !== 'undefined') COMPASS.update(0);
+      if (typeof LANDSCAPE !== 'undefined') LANDSCAPE.hide();
     }
     updateCamera(dt);
     applyPositions();
+
+    /* ==================================================================
+       LANDSCAPE SILUET DARATAN — HARUS SETELAH updateCamera
+       ------------------------------------------------------------------
+       BUG YANG DIPERBAIKI: versi sebelumnya memanggil LANDSCAPE.update()
+       SEBELUM updateCamera(), sehingga camera.position masih berisi nilai
+       frame sebelumnya (bukan 0,0,0 yang dipakai POV) → silinder siluet
+       dipasang di posisi yang salah dan tidak terlihat (terbukti:
+       posSilinder = (−0,00044, −0,00016, −0,00057) padahal seharusnya
+       tepat di kamera 0,0,0).
+
+       Sekarang dipanggil SETELAH updateCamera + applyPositions, sehingga
+       posisi kamera sudah final.
+       ================================================================== */
+    if (typeof LANDSCAPE !== 'undefined' && typeof SURFACE_VIEW !== 'undefined' &&
+        SURFACE_VIEW.active) {
+      const lsBody = SURFACE_VIEW.currentBody();
+      const lsObs = SURFACE_VIEW.computeObserver(lsBody);
+      if (lsObs) LANDSCAPE.update(lsObs, SURFACE_VIEW.az, SURFACE_VIEW.elev || 50);
+    }
     /* glow Matahari dijaga tetap terlihat dari jarak berapa pun */
     if (typeof updateSunGlowScale === 'function') updateSunGlowScale();
     updateOrbitLines(J2000_JD + app.days);
@@ -252,6 +279,11 @@ function buildUI() {
       TEMPORAL_BADGE.update(app.days);
     }
   } catch (e) { console.warn('temporal badge gagal:', e); }
+
+  /* ---- kompas arah mata angin (mode POV) ---- */
+  try {
+    if (typeof COMPASS !== 'undefined') COMPASS.init();
+  } catch (e) { console.warn('kompas gagal:', e); }
 
   /* =====================================================================
      POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap
