@@ -696,32 +696,29 @@ function buildSky() {
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
     /* =====================================================================
-       KECERAHAN LANGIT — DITURUNKAN AGAR TIDAK MENJADI "GUMPALAN"
+       KECERAHAN LANGIT — DIKALIBRASI DENGAN TEKSTUR BARU
        ---------------------------------------------------------------------
-       KELUHAN PENGGUNA: "malah makin rusak semua asset nya ga jelas blur
-       buran noise jelek" + "gumpalan putih/abu-abu besar".
+       Tekstur ESO diproses ulang (lihat tools: GaussianBlur 3 + kontras
+       1,35x + cutoff level hitam 10):
+           rata-rata 9,03/255, puncak 255
+           67,3% piksel < 3/255 (area antar-pita BENAR-BENAR gelap)
+       Tujuan: langit tampak BERSIH (tidak kabur merata) tetapi pita
+       Bima Sakti + jalur debunya tetap terlihat.
 
-       PENGUKURAN KONTRIBUSI LAPISAN (memisahkan sumber gumpalan):
-           semua lapisan     : 9 10 10 11 13 11 19 28 40 31 18 25 20 12 7 6
-           tanpa Bima Sakti   : 0  0  0  0  0  0  0  0  0  0  0  5 10  3 0 0
-           tanpa surfaceSky  : (identik dengan 'semua' — tidak berpengaruh)
-           tanpa deep-sky    : (hanya sedikit berbeda di 2 titik)
-       → SUMBER GUMPALAN ADALAH TEKSTUR BIMA SAKTI (skyMesh), bukan yang lain.
+       Pengukuran kontribusi lapisan membuktikan sumber "gumpalan" adalah
+       tekstur ini, bukan surfaceSky atau deep-sky:
+           semua lapisan    : 9 10 10 11 13 11 19 28 40 31 18 25 20 12 7 6
+           tanpa Bima Sakti  : 0  0  0  0  0  0  0  0  0  0  0  5 10  3 0 0
 
-       Penyebab: pengali 0,62x membuat kabut pita mencapai 40-127/255 —
-       terlalu terang sehingga terlihat sebagai gumpalan abu-abu, bukan
-       pita samar. Referensi Stellarium: tepi pita hanya 1,2-2x di atas
-       latar langit (bukan 5-10x).
-
-       Pengali 0,28x dipilih:
-           rata-rata 16,9 x 0,28 = 4,7/255   (tepi pita samar)
-           puncak    205  x 0,28 =  57/255   (inti galaksi tetap terlihat)
+       Pengali 0,42x:
+           rata-rata 9,03 x 0,42 = 3,8/255  (area gelap tetap gelap)
+           puncak   255   x 0,42 = 107/255  (inti galaksi terlihat, tidak jenuh)
        ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(0.28, 0.28, 0.28);
+    mat.color.setRGB(0.42, 0.42, 0.42);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });

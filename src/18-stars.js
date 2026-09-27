@@ -663,13 +663,28 @@ function applyDaylightStarDimming(sunAltDeg) {
   const want = (starField._userVisible !== false) && dim > 0.02;
   starField.visible = want;
   starField.group.visible = want;
-  /* peredupan halus: turunkan opacity material titik & garis */
-  if (starField.points && starField.points.material) {
-    starField.points.material.opacity = dim;
-    starField.points.material.transparent = true;
+  /* =====================================================================
+     BUG YANG DIPERBAIKI — BINTANG TIDAK TERLIHAT SAAT POV
+     ---------------------------------------------------------------------
+     Versi sebelumnya menyetel `starField.points.material.opacity = dim`.
+     Tetapi material bintang adalah ShaderMaterial kustom yang TIDAK punya
+     properti `opacity` — kecerlahan diatur oleh uniform `uOpacity`.
+     Akibatnya baris itu tidak berpengaruh, DAN `material.transparent=true`
+     memaksa bintang melewati jalur transparan tanpa alpha yang benar —
+     bintang tampak sangat redup/hilang (terbukti dari verifikasi visual:
+     "di area Cygnus dan Lyra hampir tidak ada bintang menonjol").
+
+     PERBAIKAN: setel uniform `uOpacity` (yang memang dipakai shader),
+     dan JANGAN ubah `transparent` (sudah diatur saat pembuatan material).
+     ===================================================================== */
+  if (starField.points && starField.points.material &&
+      starField.points.material.uniforms &&
+      starField.points.material.uniforms.uOpacity) {
+    starField.points.material.uniforms.uOpacity.value = dim;
   }
-  if (starField.lines && starField.lines.material) {
-    starField.lines.material.opacity = dim * 0.6;
+  /* garis rasi: material LineBasicMaterial (punya opacity) */
+  if (starField.constellationLines && starField.constellationLines.material) {
+    starField.constellationLines.material.opacity = 0.42 * dim;
   }
 }
 function setConstellationLines(v) {
