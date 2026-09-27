@@ -149,8 +149,24 @@ html, body {
    supaya sidebar tidak menutupi subjudul (terbukti di uji 1280x800:
    panel judul 100 px tinggi sementara sidebar mulai di 92 px). */
 @media (min-width: 641px) and (max-width: 1180px) {
-  .sidebar { top: 122px; max-height: calc(100vh - 240px); }
-  .info-panel { top: 122px; }
+  /* ====================================================================
+     BUG YANG DIPERBAIKI — ANGKA TETAP 122px MENIMPA POSISI TERUKUR
+     --------------------------------------------------------------------
+     KELUHAN PENGGUNA: "masih bertumpuk tapi beda tumpukan" (panel JELAJAHI
+     menimpa kotak pencarian).
+
+     AKAR MASALAH: media query ini memaksa `top: 122px` dengan ANGKA TETAP,
+     sementara aturan utama memakai `top: var(--title-bottom, 150px)` yang
+     diukur otomatis dari tinggi panel judul + pencarian. Karena CSS di
+     dalam media query datang BELAKANGAN, angka 122px MENIMPA hasil ukur —
+     dan 122px terlalu kecil sekarang (panel judul berisi kotak pencarian,
+     tingginya ~150px). Akibatnya sidebar naik menimpa kotak pencarian.
+
+     PERBAIKAN: pakai variabel yang sama seperti aturan utama, sehingga
+     posisi selalu mengikuti hasil pengukuran (tidak mungkin bertumpuk).
+     ==================================================================== */
+  .sidebar { top: var(--title-bottom, 150px); max-height: calc(100vh - 240px); }
+  .info-panel { top: var(--title-bottom, 150px); }
 }
 .sidebar.hidden { transform: translateX(-260px); opacity: 0; pointer-events: none; }
 .sidebar-head {
@@ -676,8 +692,16 @@ kbd {
   .title-panel .event-badge { display: none; }
   .title-panel { padding: 9px 14px 8px; }
   .title-main { font-size: 16px; }
-  .sidebar { top: 74px; max-height: calc(100vh - 170px); }
-  .info-panel { top: 74px; max-height: calc(100vh - 190px); overflow-y: auto; }
+  /* ==================================================================
+     BUG YANG DIPERBAIKI — ANGKA TETAP 74px MENIMPA POSISI TERUKUR
+     ------------------------------------------------------------------
+     Sama seperti media query 641-1180px: angka tetap 74px menimpa
+     `var(--title-bottom)` yang diukur otomatis, sehingga sidebar naik dan
+     menimpa kotak pencarian (keluhan "masih bertumpuk tapi beda tumpukan").
+     Sekarang memakai variabel yang sama -> selalu mengikuti hasil ukur.
+     ================================================================== */
+  .sidebar { top: var(--title-bottom, 150px); max-height: calc(100vh - 170px); }
+  .info-panel { top: var(--title-bottom, 150px); max-height: calc(100vh - 190px); overflow-y: auto; }
 }
 
 /* --- HP sangat sempit (<=374 px): perkecil toolbar sedikit supaya

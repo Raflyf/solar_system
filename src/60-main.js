@@ -153,6 +153,24 @@ async function boot() {
   $('loader').classList.add('done');
   setTimeout(() => { const l = $('loader'); if (l) l.style.display = 'none'; }, 800);
 
+  /* ======================================================================
+     BANGUN LABEL BINTANG SETELAH ASET SIAP
+     ----------------------------------------------------------------------
+     BUG YANG DIPERBAIKI: `buildStarLabels()` hanya dipanggil saat checkbox
+     DIUBAH — tidak pernah dipanggil setelah katalog bintang selesai
+     dimuat. Akibatnya daftar label kosong dan nama bintang TIDAK MUNCUL
+     walau "Nama bintang & galaksi" sudah dicentang. Inilah keluhan
+     pengguna: "nama bintang nya tidak muncul".
+     Sekarang dipanggil di sini, saat starField.labeled sudah terisi.
+     ====================================================================== */
+  try {
+    if (typeof buildStarLabels === 'function') buildStarLabels();
+    if (typeof CONSTELLATION_LABELS !== 'undefined') {
+      CONSTELLATION_LABELS.build();
+      CONSTELLATION_LABELS.update($('chkConst') ? $('chkConst').checked : false);
+    }
+  } catch (e) { console.warn('label langit gagal dibangun:', e); }
+
   let last = performance.now();
   let acc = 0, frames = 0;
   function loop(now) {
@@ -371,6 +389,52 @@ function buildUI() {
     setStarNames(e.target.checked);
     buildStarLabels();
   });
+  /* ======================================================================
+     BUG YANG DIPERBAIKI — STATE AWAL TIDAK DIBACA DARI CHECKBOX
+     ----------------------------------------------------------------------
+     KELUHAN PENGGUNA: "cekbox nya sudah benar tapi tidak sesuai dengan
+     hasil nya masih ada garis rasi dan nama bintang nya tidak muncul"
+
+     AKAR MASALAH: handler `change` hanya bekerja saat pengguna MENGUBAH
+     checkbox. Saat halaman dimuat, aplikasi memakai nilai default internal:
+         constellationLinesOn = undefined -> dianggap ON  (garis rasi muncul)
+         starNamesOn           = false     -> nama bintang tidak muncul
+     Padahal HTML sudah menyetel:
+         chkConst     = TIDAK dicentang  (garis rasi seharusnya MATI)
+         chkStarNames = dicentang        (nama bintang seharusnya NYALA)
+     Jadi tampilan tidak cocok dengan checkbox — persis keluhan pengguna.
+
+     PERBAIKAN: setelah seluruh handler terpasang, state dibaca DARI
+     checkbox (HTML) sebagai sumber kebenaran tunggal, lalu diterapkan.
+     ====================================================================== */
+  try {
+    if ($('chkStars')) setStarFieldVisible($('chkStars').checked);
+    if ($('chkConst')) setConstellationLines($('chkConst').checked);
+    if ($('chkMilkyWay')) {
+      const on = $('chkMilkyWay').checked;
+      if (typeof skyMesh !== 'undefined' && skyMesh) skyMesh.visible = on;
+      window.MILKY_WAY_ON = on;
+    }
+    if ($('chkStarNames')) setStarNames($('chkStarNames').checked);
+    if ($('chkOrbits')) setOrbits($('chkOrbits').checked);
+    if ($('chkLabels2')) setLabels($('chkLabels2').checked);
+  } catch (e) { console.warn('inisialisasi checkbox gagal:', e); }
+
+  /* ======================================================================
+     BANGUN LABEL BINTANG SETELAH SELURUH DATA SIAP
+     ----------------------------------------------------------------------
+     KENAPA DIPISAH: `buildStarLabels()` memerlukan `starField.labeled`
+     (katalog bintang) dan `starField.deepSkySprites` yang baru terisi
+     setelah aset selesai dimuat. Bila dipanggil saat buildUI() (sebelum
+     aset siap), daftarnya kosong sehingga TIDAK ADA label yang dibuat —
+     itulah sebabnya nama bintang tidak muncul walau checkbox dicentang.
+
+     Solusi: bangun sekarang (bila sudah siap) DAN sekali lagi setelah
+     aset selesai dimuat (lihat pemanggilan di onAllAssetsLoaded).
+     ====================================================================== */
+  if (typeof starField !== 'undefined' && starField.labeled && starField.labeled.length) {
+    buildStarLabels();
+  }
   if ($('starCount')) {
     $('starCount').textContent = '(' + (STARS_LABELED.length + STARS_OTHER.length) + ')';
   }

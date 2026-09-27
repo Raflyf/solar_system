@@ -177,8 +177,24 @@ html, body {
    supaya sidebar tidak menutupi subjudul (terbukti di uji 1280x800:
    panel judul 100 px tinggi sementara sidebar mulai di 92 px). */
 @media (min-width: 641px) and (max-width: 1180px) {
-  .sidebar { top: 122px; max-height: calc(100vh - 240px); }
-  .info-panel { top: 122px; }
+  /* ====================================================================
+     BUG YANG DIPERBAIKI — ANGKA TETAP 122px MENIMPA POSISI TERUKUR
+     --------------------------------------------------------------------
+     KELUHAN PENGGUNA: "masih bertumpuk tapi beda tumpukan" (panel JELAJAHI
+     menimpa kotak pencarian).
+
+     AKAR MASALAH: media query ini memaksa `top: 122px` dengan ANGKA TETAP,
+     sementara aturan utama memakai `top: var(--title-bottom, 150px)` yang
+     diukur otomatis dari tinggi panel judul + pencarian. Karena CSS di
+     dalam media query datang BELAKANGAN, angka 122px MENIMPA hasil ukur —
+     dan 122px terlalu kecil sekarang (panel judul berisi kotak pencarian,
+     tingginya ~150px). Akibatnya sidebar naik menimpa kotak pencarian.
+
+     PERBAIKAN: pakai variabel yang sama seperti aturan utama, sehingga
+     posisi selalu mengikuti hasil pengukuran (tidak mungkin bertumpuk).
+     ==================================================================== */
+  .sidebar { top: var(--title-bottom, 150px); max-height: calc(100vh - 240px); }
+  .info-panel { top: var(--title-bottom, 150px); }
 }
 .sidebar.hidden { transform: translateX(-260px); opacity: 0; pointer-events: none; }
 .sidebar-head {
@@ -704,8 +720,16 @@ kbd {
   .title-panel .event-badge { display: none; }
   .title-panel { padding: 9px 14px 8px; }
   .title-main { font-size: 16px; }
-  .sidebar { top: 74px; max-height: calc(100vh - 170px); }
-  .info-panel { top: 74px; max-height: calc(100vh - 190px); overflow-y: auto; }
+  /* ==================================================================
+     BUG YANG DIPERBAIKI — ANGKA TETAP 74px MENIMPA POSISI TERUKUR
+     ------------------------------------------------------------------
+     Sama seperti media query 641-1180px: angka tetap 74px menimpa
+     `var(--title-bottom)` yang diukur otomatis, sehingga sidebar naik dan
+     menimpa kotak pencarian (keluhan "masih bertumpuk tapi beda tumpukan").
+     Sekarang memakai variabel yang sama -> selalu mengikuti hasil ukur.
+     ================================================================== */
+  .sidebar { top: var(--title-bottom, 150px); max-height: calc(100vh - 170px); }
+  .info-panel { top: var(--title-bottom, 150px); max-height: calc(100vh - 190px); overflow-y: auto; }
 }
 
 /* --- HP sangat sempit (<=374 px): perkecil toolbar sedikit supaya
@@ -120435,6 +120459,24 @@ async function boot() {
   $('loader').classList.add('done');
   setTimeout(() => { const l = $('loader'); if (l) l.style.display = 'none'; }, 800);
 
+  /* ======================================================================
+     BANGUN LABEL BINTANG SETELAH ASET SIAP
+     ----------------------------------------------------------------------
+     BUG YANG DIPERBAIKI: `buildStarLabels()` hanya dipanggil saat checkbox
+     DIUBAH — tidak pernah dipanggil setelah katalog bintang selesai
+     dimuat. Akibatnya daftar label kosong dan nama bintang TIDAK MUNCUL
+     walau "Nama bintang & galaksi" sudah dicentang. Inilah keluhan
+     pengguna: "nama bintang nya tidak muncul".
+     Sekarang dipanggil di sini, saat starField.labeled sudah terisi.
+     ====================================================================== */
+  try {
+    if (typeof buildStarLabels === 'function') buildStarLabels();
+    if (typeof CONSTELLATION_LABELS !== 'undefined') {
+      CONSTELLATION_LABELS.build();
+      CONSTELLATION_LABELS.update($('chkConst') ? $('chkConst').checked : false);
+    }
+  } catch (e) { console.warn('label langit gagal dibangun:', e); }
+
   let last = performance.now();
   let acc = 0, frames = 0;
   function loop(now) {
@@ -120653,6 +120695,52 @@ function buildUI() {
     setStarNames(e.target.checked);
     buildStarLabels();
   });
+  /* ======================================================================
+     BUG YANG DIPERBAIKI — STATE AWAL TIDAK DIBACA DARI CHECKBOX
+     ----------------------------------------------------------------------
+     KELUHAN PENGGUNA: "cekbox nya sudah benar tapi tidak sesuai dengan
+     hasil nya masih ada garis rasi dan nama bintang nya tidak muncul"
+
+     AKAR MASALAH: handler `change` hanya bekerja saat pengguna MENGUBAH
+     checkbox. Saat halaman dimuat, aplikasi memakai nilai default internal:
+         constellationLinesOn = undefined -> dianggap ON  (garis rasi muncul)
+         starNamesOn           = false     -> nama bintang tidak muncul
+     Padahal HTML sudah menyetel:
+         chkConst     = TIDAK dicentang  (garis rasi seharusnya MATI)
+         chkStarNames = dicentang        (nama bintang seharusnya NYALA)
+     Jadi tampilan tidak cocok dengan checkbox — persis keluhan pengguna.
+
+     PERBAIKAN: setelah seluruh handler terpasang, state dibaca DARI
+     checkbox (HTML) sebagai sumber kebenaran tunggal, lalu diterapkan.
+     ====================================================================== */
+  try {
+    if ($('chkStars')) setStarFieldVisible($('chkStars').checked);
+    if ($('chkConst')) setConstellationLines($('chkConst').checked);
+    if ($('chkMilkyWay')) {
+      const on = $('chkMilkyWay').checked;
+      if (typeof skyMesh !== 'undefined' && skyMesh) skyMesh.visible = on;
+      window.MILKY_WAY_ON = on;
+    }
+    if ($('chkStarNames')) setStarNames($('chkStarNames').checked);
+    if ($('chkOrbits')) setOrbits($('chkOrbits').checked);
+    if ($('chkLabels2')) setLabels($('chkLabels2').checked);
+  } catch (e) { console.warn('inisialisasi checkbox gagal:', e); }
+
+  /* ======================================================================
+     BANGUN LABEL BINTANG SETELAH SELURUH DATA SIAP
+     ----------------------------------------------------------------------
+     KENAPA DIPISAH: `buildStarLabels()` memerlukan `starField.labeled`
+     (katalog bintang) dan `starField.deepSkySprites` yang baru terisi
+     setelah aset selesai dimuat. Bila dipanggil saat buildUI() (sebelum
+     aset siap), daftarnya kosong sehingga TIDAK ADA label yang dibuat —
+     itulah sebabnya nama bintang tidak muncul walau checkbox dicentang.
+
+     Solusi: bangun sekarang (bila sudah siap) DAN sekali lagi setelah
+     aset selesai dimuat (lihat pemanggilan di onAllAssetsLoaded).
+     ====================================================================== */
+  if (typeof starField !== 'undefined' && starField.labeled && starField.labeled.length) {
+    buildStarLabels();
+  }
   if ($('starCount')) {
     $('starCount').textContent = '(' + (STARS_LABELED.length + STARS_OTHER.length) + ')';
   }
