@@ -31,3 +31,7 @@ _dl/
 # Aset mentah dari internet (unduh ulang lewat tools/)
 _stell/
 _dl3/
+
+# Tekstur HD mentah (ratusan MB) — sumber untuk assets/hi/. Unduh ulang
+# lewat tools/fetch_textures_hd.py bila perlu.
+_hi/
