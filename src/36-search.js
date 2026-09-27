@@ -227,22 +227,83 @@ const SEARCH = {
     }
   },
 
-  /* Arahkan pandangan pengamat (mode POV) ke RA/Dec tertentu. */
+  /* Arahkan pandangan ke RA/Dec tertentu — BEKERJA DI KEDUA MODE.
+     ======================================================================
+     BUG YANG DIPERBAIKI
+     ----------------------------------------------------------------------
+     KELUHAN: "fungsi search masih belum sepenuh nya jalan, hanya bisa
+     search planet dan satelite saja, search bintang, rasi bitang, galaxy
+     dan lainnya tidak berfungsi"
+
+     AKAR MASALAH: versi sebelumnya hanya bekerja bila mode POV aktif:
+         if (typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) {
+           showToast('Aktifkan mode POV...'); return;
+         }
+     Planet & satelit memakai focusBody() (tidak butuh POV), jadi mereka
+     BEKERJA. Tetapi bintang, rasi, galaksi, dan nebula butuh mengarahkan
+     PANDANGAN — dan di mode orbit fungsi ini langsung keluar tanpa
+     melakukan apa pun. Itulah sebabnya terasa "tidak berfungsi".
+
+     PERBAIKAN:
+       • Mode POV   : arahkan azimut/elevasi pengamat (seperti sebelumnya).
+       • Mode orbit : arahkan KAMERA ke arah benda itu dengan memindahkan
+         titik pandang kamera (yaw/pitch) — sehingga bintang/rasi/galaksi
+         terlihat di tengah layar tanpa perlu masuk POV.
+     ====================================================================== */
   arahkanKe(raDeg, decDeg) {
-    if (typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) {
-      /* bukan POV: tidak bisa diarahkan — beri tahu pengguna */
-      if (typeof showToast === 'function') {
-        showToast('Aktifkan mode POV untuk mengarahkan pandangan ke objek langit');
-      }
-      return;
-    }
     if (typeof raDecToScene !== 'function') return;
+
+    /* hitung vektor arah di kerangka scene */
     const p = raDecToScene(raDeg / 15, decDeg, 1);
     const v = new THREE.Vector3(p.x, p.y, p.z).normalize();
-    const obs = SURFACE_VIEW.computeObserver(SURFACE_VIEW.currentBody());
-    if (!obs) return;
-    SURFACE_VIEW.el = Math.asin(Math.max(-1, Math.min(1, v.dot(obs.zenith))));
-    SURFACE_VIEW.az = Math.atan2(v.dot(obs.east), v.dot(obs.north));
+
+    /* ---------- MODE POV: arahkan pengamat ---------- */
+    if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
+      const obs = SURFACE_VIEW.computeObserver(SURFACE_VIEW.currentBody());
+      if (!obs) return;
+      SURFACE_VIEW.el = Math.asin(Math.max(-1, Math.min(1, v.dot(obs.zenith))));
+      SURFACE_VIEW.az = Math.atan2(v.dot(obs.east), v.dot(obs.north));
+      return;
+    }
+
+    /* ---------- MODE ORBIT: arahkan kamera ----------
+       ==================================================================
+       CATATAN PENTING tentang struktur transisi di proyek ini:
+       `cameraState.transition` yang sudah ada HANYA menginterpolasi
+       POSISI kamera (fromPos -> posisi benda), bukan sudut pandang.
+       Karena itu kita TIDAK memakai transisi di sini; cukup set yaw/pitch
+       langsung. Perubahan sudut langsung terasa responsif dan tidak
+       mengganggu (pengguna baru saja memilih dari daftar pencarian).
+       ================================================================== */
+    if (typeof cameraState === 'undefined') return;
+
+    /* hitung sudut pandang yang mengarah ke benda.
+       Konvensi kamera proyek ini (lihat dirFromAngles di 30-controls.js):
+         fwd.x = cos(pitch) * sin(yaw)
+         fwd.y = sin(pitch)
+         fwd.z = cos(pitch) * cos(yaw)
+       Jadi: yaw = atan2(x, z), pitch = asin(y). */
+    const targetYaw = Math.atan2(v.x, v.z);
+    const targetPitch = Math.asin(Math.max(-1, Math.min(1, v.y)));
+
+    /* pemendekan sudut: putar lewat jalur terdekat, bukan memutar jauh */
+    let dYaw = targetYaw - cameraState.yaw;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+
+    cameraState.yaw += dYaw;
+    cameraState.pitch = Math.max(-1.45, Math.min(1.45, targetPitch));
+
+    /* bila kamera sedang mengikuti benda (target), hentikan dulu supaya
+       arah pandang tidak langsung ditimpa oleh updateCamera */
+    if (cameraState.target) {
+      cameraState.target = null;
+      cameraState.followAutoFit = false;
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('Pandangan diarahkan ke koordinat langit');
+    }
   },
 
   /* ---------------- panel UI ---------------- */
@@ -310,11 +371,11 @@ const SEARCH = {
     this.daftar.innerHTML = html;
     this.terbuka = true;
     this.daftar.classList.add('show');
-    /* klik pada hasil */
+    /* klik pada hasil (klik mouse + tap sentuh HP) */
     this.daftar.querySelectorAll('.sr-item').forEach(el => {
-      el.addEventListener('click', () => {
-        this.pilih(this.hasil[parseInt(el.dataset.i, 10)]);
-      });
+      const pick = () => this.pilih(this.hasil[parseInt(el.dataset.i, 10)]);
+      el.addEventListener('click', pick);
+      el.addEventListener('touchend', (e) => { e.preventDefault(); pick(); }, { passive: false });
     });
   },
 

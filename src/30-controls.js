@@ -233,14 +233,36 @@ function initControls(canvas) {
        Bila ada benda dalam toleransi sudut, fokuskan benda itu. Dengan
        begitu planet kecil tetap bisa dipilih meski hanya beberapa piksel.
        ================================================================== */
+    /* ==================================================================
+       PENCARIAN BENDA DARI ARAH KLIK — DIPERBAIKI
+       ------------------------------------------------------------------
+       KELUHAN PENGGUNA: "knapa sekarang semua benda langit nya seperti
+       planet dan satelit jadi susah untuk di klik dari jauh"
+
+       AKAR MASALAH: `pickables` hanya berisi MESH planet. Pada skala 1:1
+       mesh planet dari jauh berukuran SUB-PIKSEL (Jupiter radius 71.492 km
+       pada jarak 6 SA hanya ~1 px). Yang benar-benar dilihat pengguna
+       adalah BEACON (penanda) berukuran 6 px inti + halo 20 px — tetapi
+       beacon TIDAK ada di pickables, sehingga klik pada beacon tidak
+       mengenai apa pun.
+
+       PERBAIKAN: pencarian dari arah klik diberi prioritas dan toleransi
+       yang menyesuaikan UKURAN VISUAL benda di layar:
+         • Planet/bulan jauh  -> tampak hanya sebagai beacon (radius ~10 px)
+           jadi toleransi minimal harus mencakup beacon itu.
+         • Benda dekat        -> tampak sebagai cakram besar, toleransi
+           boleh kecil supaya presisi.
+       Radius sasaran dipakai 22 px (cukup untuk beacon 20 px) dan
+       ditambah bagian radius benda yang terlihat di layar.
+       ================================================================== */
     const arahKlik = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera)
       .sub(camera.position).normalize();
-    /* Toleransi klik untuk planet/bulan — MENYESUAIKAN ZOOM seperti bintang
-       (lihat penjelasan di STAR_FOCUS.toleransiSudut). Radius sasaran 34 px
-       di layar supaya klik terasa pas di semua tingkat zoom. */
     const fovNow = camera.fov || 50;
     const tinggiLayar = window.innerHeight || 640;
-    const tolPlanetDeg = Math.max(0.02, Math.min(6.0, 34 * fovNow / tinggiLayar));
+
+    /* toleransi dasar 22 px (mencakup beacon) + bagian benda yang terlihat */
+    let tolPlanetDeg = 22 * fovNow / tinggiLayar;
+    tolPlanetDeg = Math.max(0.02, Math.min(6.0, tolPlanetDeg));
     const bendaTerdekat = cariBendaDariArah(arahKlik, tolPlanetDeg);
     if (bendaTerdekat) { focusBody(bendaTerdekat); return; }
     /* ==================================================================

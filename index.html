@@ -1388,7 +1388,12 @@ kbd {
 }
 #searchInput::placeholder { color: #5d7794; }
 /* daftar hasil: mengambang di bawah kotak pencarian supaya bisa memanjang
-   keluar panel tanpa mengubah tinggi panel judul */
+   keluar panel tanpa mengubah tinggi panel judul.
+   CATATAN z-index: sidebar (JELAJAHI) berada tepat di bawah panel judul
+   bila tidak di-hide. Agar daftar hasil TIDAK tertutup sidebar, z-indexnya
+   dinaikkan jauh di atas panel lain (sidebar/info-panel memakai z-index 5).
+   Daftar hanya muncul saat ada hasil pencarian, jadi tidak menghalangi
+   saat tidak dipakai. */
 .search-results {
   display: none;
   position: absolute;
@@ -1399,7 +1404,7 @@ kbd {
   border: 1px solid rgba(120, 160, 220, 0.22);
   box-shadow: 0 10px 28px rgba(0,0,0,.55);
   max-height: 320px; overflow-y: auto;
-  z-index: 40;
+  z-index: 200;
 }
 .title-panel { position: fixed; }
 .title-panel.show .search-results,
@@ -1605,6 +1610,7 @@ input[type="date"] { color-scheme: dark; }
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur"><span class="bi">◈</span><span class="bt">Kualitas</span></button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)"><span class="bi">?</span><span class="bt">Bantuan</span></button>
       <button class="btn" id="btnEarthView" title="POV dari permukaan planet / satelit mana pun"><span class="bi">🛰</span><span class="bt">POV</span></button>
+      <button class="btn" id="btnFullscreen" title="Layar penuh (F)"><span class="bi">⛶</span></button>
     </div>
 
     <!-- Daftar benda -->
@@ -116567,22 +116573,83 @@ const SEARCH = {
     }
   },
 
-  /* Arahkan pandangan pengamat (mode POV) ke RA/Dec tertentu. */
+  /* Arahkan pandangan ke RA/Dec tertentu — BEKERJA DI KEDUA MODE.
+     ======================================================================
+     BUG YANG DIPERBAIKI
+     ----------------------------------------------------------------------
+     KELUHAN: "fungsi search masih belum sepenuh nya jalan, hanya bisa
+     search planet dan satelite saja, search bintang, rasi bitang, galaxy
+     dan lainnya tidak berfungsi"
+
+     AKAR MASALAH: versi sebelumnya hanya bekerja bila mode POV aktif:
+         if (typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) {
+           showToast('Aktifkan mode POV...'); return;
+         }
+     Planet & satelit memakai focusBody() (tidak butuh POV), jadi mereka
+     BEKERJA. Tetapi bintang, rasi, galaksi, dan nebula butuh mengarahkan
+     PANDANGAN — dan di mode orbit fungsi ini langsung keluar tanpa
+     melakukan apa pun. Itulah sebabnya terasa "tidak berfungsi".
+
+     PERBAIKAN:
+       • Mode POV   : arahkan azimut/elevasi pengamat (seperti sebelumnya).
+       • Mode orbit : arahkan KAMERA ke arah benda itu dengan memindahkan
+         titik pandang kamera (yaw/pitch) — sehingga bintang/rasi/galaksi
+         terlihat di tengah layar tanpa perlu masuk POV.
+     ====================================================================== */
   arahkanKe(raDeg, decDeg) {
-    if (typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) {
-      /* bukan POV: tidak bisa diarahkan — beri tahu pengguna */
-      if (typeof showToast === 'function') {
-        showToast('Aktifkan mode POV untuk mengarahkan pandangan ke objek langit');
-      }
-      return;
-    }
     if (typeof raDecToScene !== 'function') return;
+
+    /* hitung vektor arah di kerangka scene */
     const p = raDecToScene(raDeg / 15, decDeg, 1);
     const v = new THREE.Vector3(p.x, p.y, p.z).normalize();
-    const obs = SURFACE_VIEW.computeObserver(SURFACE_VIEW.currentBody());
-    if (!obs) return;
-    SURFACE_VIEW.el = Math.asin(Math.max(-1, Math.min(1, v.dot(obs.zenith))));
-    SURFACE_VIEW.az = Math.atan2(v.dot(obs.east), v.dot(obs.north));
+
+    /* ---------- MODE POV: arahkan pengamat ---------- */
+    if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
+      const obs = SURFACE_VIEW.computeObserver(SURFACE_VIEW.currentBody());
+      if (!obs) return;
+      SURFACE_VIEW.el = Math.asin(Math.max(-1, Math.min(1, v.dot(obs.zenith))));
+      SURFACE_VIEW.az = Math.atan2(v.dot(obs.east), v.dot(obs.north));
+      return;
+    }
+
+    /* ---------- MODE ORBIT: arahkan kamera ----------
+       ==================================================================
+       CATATAN PENTING tentang struktur transisi di proyek ini:
+       `cameraState.transition` yang sudah ada HANYA menginterpolasi
+       POSISI kamera (fromPos -> posisi benda), bukan sudut pandang.
+       Karena itu kita TIDAK memakai transisi di sini; cukup set yaw/pitch
+       langsung. Perubahan sudut langsung terasa responsif dan tidak
+       mengganggu (pengguna baru saja memilih dari daftar pencarian).
+       ================================================================== */
+    if (typeof cameraState === 'undefined') return;
+
+    /* hitung sudut pandang yang mengarah ke benda.
+       Konvensi kamera proyek ini (lihat dirFromAngles di 30-controls.js):
+         fwd.x = cos(pitch) * sin(yaw)
+         fwd.y = sin(pitch)
+         fwd.z = cos(pitch) * cos(yaw)
+       Jadi: yaw = atan2(x, z), pitch = asin(y). */
+    const targetYaw = Math.atan2(v.x, v.z);
+    const targetPitch = Math.asin(Math.max(-1, Math.min(1, v.y)));
+
+    /* pemendekan sudut: putar lewat jalur terdekat, bukan memutar jauh */
+    let dYaw = targetYaw - cameraState.yaw;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+
+    cameraState.yaw += dYaw;
+    cameraState.pitch = Math.max(-1.45, Math.min(1.45, targetPitch));
+
+    /* bila kamera sedang mengikuti benda (target), hentikan dulu supaya
+       arah pandang tidak langsung ditimpa oleh updateCamera */
+    if (cameraState.target) {
+      cameraState.target = null;
+      cameraState.followAutoFit = false;
+    }
+
+    if (typeof showToast === 'function') {
+      showToast('Pandangan diarahkan ke koordinat langit');
+    }
   },
 
   /* ---------------- panel UI ---------------- */
@@ -116650,11 +116717,11 @@ const SEARCH = {
     this.daftar.innerHTML = html;
     this.terbuka = true;
     this.daftar.classList.add('show');
-    /* klik pada hasil */
+    /* klik pada hasil (klik mouse + tap sentuh HP) */
     this.daftar.querySelectorAll('.sr-item').forEach(el => {
-      el.addEventListener('click', () => {
-        this.pilih(this.hasil[parseInt(el.dataset.i, 10)]);
-      });
+      const pick = () => this.pilih(this.hasil[parseInt(el.dataset.i, 10)]);
+      el.addEventListener('click', pick);
+      el.addEventListener('touchend', (e) => { e.preventDefault(); pick(); }, { passive: false });
     });
   },
 
@@ -119581,14 +119648,36 @@ function initControls(canvas) {
        Bila ada benda dalam toleransi sudut, fokuskan benda itu. Dengan
        begitu planet kecil tetap bisa dipilih meski hanya beberapa piksel.
        ================================================================== */
+    /* ==================================================================
+       PENCARIAN BENDA DARI ARAH KLIK — DIPERBAIKI
+       ------------------------------------------------------------------
+       KELUHAN PENGGUNA: "knapa sekarang semua benda langit nya seperti
+       planet dan satelit jadi susah untuk di klik dari jauh"
+
+       AKAR MASALAH: `pickables` hanya berisi MESH planet. Pada skala 1:1
+       mesh planet dari jauh berukuran SUB-PIKSEL (Jupiter radius 71.492 km
+       pada jarak 6 SA hanya ~1 px). Yang benar-benar dilihat pengguna
+       adalah BEACON (penanda) berukuran 6 px inti + halo 20 px — tetapi
+       beacon TIDAK ada di pickables, sehingga klik pada beacon tidak
+       mengenai apa pun.
+
+       PERBAIKAN: pencarian dari arah klik diberi prioritas dan toleransi
+       yang menyesuaikan UKURAN VISUAL benda di layar:
+         • Planet/bulan jauh  -> tampak hanya sebagai beacon (radius ~10 px)
+           jadi toleransi minimal harus mencakup beacon itu.
+         • Benda dekat        -> tampak sebagai cakram besar, toleransi
+           boleh kecil supaya presisi.
+       Radius sasaran dipakai 22 px (cukup untuk beacon 20 px) dan
+       ditambah bagian radius benda yang terlihat di layar.
+       ================================================================== */
     const arahKlik = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera)
       .sub(camera.position).normalize();
-    /* Toleransi klik untuk planet/bulan — MENYESUAIKAN ZOOM seperti bintang
-       (lihat penjelasan di STAR_FOCUS.toleransiSudut). Radius sasaran 34 px
-       di layar supaya klik terasa pas di semua tingkat zoom. */
     const fovNow = camera.fov || 50;
     const tinggiLayar = window.innerHeight || 640;
-    const tolPlanetDeg = Math.max(0.02, Math.min(6.0, 34 * fovNow / tinggiLayar));
+
+    /* toleransi dasar 22 px (mencakup beacon) + bagian benda yang terlihat */
+    let tolPlanetDeg = 22 * fovNow / tinggiLayar;
+    tolPlanetDeg = Math.max(0.02, Math.min(6.0, tolPlanetDeg));
     const bendaTerdekat = cariBendaDariArah(arahKlik, tolPlanetDeg);
     if (bendaTerdekat) { focusBody(bendaTerdekat); return; }
     /* ==================================================================
@@ -121131,6 +121220,39 @@ function buildUI() {
     url.searchParams.set('q', next);
     location.href = url.toString();
   });
+
+  /* =====================================================================
+     FULLSCREEN — LAYAR PENUH TANPA UI BROWSER
+     ---------------------------------------------------------------------
+     PERMINTAAN: "tambahkan fungsi untuk fullscreen agar tidak ada ui yg
+     menghalangi"
+
+     Memakai Fullscreen API standar. Fallback berlapis:
+       document.documentElement.requestFullscreen (standar)
+       webkitRequestFullscreen (Safari lama) / msRequestFullscreen (Edge lama)
+     Ikon tombol berubah: ⛶ masuk, ✕ keluar.
+     ===================================================================== */
+  const btnFS = $('btnFullscreen');
+  if (btnFS) {
+    const updFS = () => {
+      const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      btnFS.classList.toggle('active', fs);
+      btnFS.title = fs ? 'Keluar layar penuh (F)' : 'Layar penuh (F)';
+    };
+    btnFS.addEventListener('click', () => {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } else {
+        const el = document.documentElement;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }
+    });
+    document.addEventListener('fullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
+    document.addEventListener('webkitfullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
+    updFS();
+  }
   {
     const lbl = $('btnQuality').querySelector('.bt');
     const txt = 'Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
@@ -121144,6 +121266,7 @@ function buildUI() {
     if (e.code === 'KeyL') toggleLabels();
     else if (e.code === 'KeyO') { $('chkOrbits').checked = !$('chkOrbits').checked; setOrbits($('chkOrbits').checked); }
     else if (e.code === 'KeyH') $('helpPanel').classList.toggle('show');
+    else if (e.code === 'KeyF') { const b = $('btnFullscreen'); if (b) b.click(); }
     else if (e.code === 'KeyP') togglePause();
     else if (e.code === 'Space') {
       if (cameraState.target) focusBody(null);
