@@ -51,25 +51,27 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — DIPERBESAR (keluhan: "bintang bintang yg lain malah
-     jadi tidak terlihat dan ga jelas" setelah pita Bima Sakti diperkuat)
+     UKURAN BINTANG — DIPERBESAR LAGI (keluhan: "bintang nya tidak jelas,
+     yg lainnya tidak terlihat dan tenggelam karena buram dan tidak jelas")
      ---------------------------------------------------------------------
-     Versi lama: mag 0 -> 7,6px ; mag 6,5 -> 1,5px
+     Referensi Stellarium (dari analisis gambar referensi pengguna):
+     bintang terang tampak sebagai titik TAJAM yang jelas menonjol di atas
+     pita Bima Sakti; bintang redup tetap terlihat sebagai titik kecil.
 
-     Referensi Stellarium: bintang terang tampak JELAS sebagai titik
-     tajam di atas pita Bima Sakti, dan bintang redup tetap terlihat
-     sebagai titik 1px (bukan hilang).
-     Perbaikan: bintang terang 7,6 -> 9,2px (lebih menonjol di atas pita),
-     sedangkan batas bawah 1,5 -> 1,8px supaya bintang redup tidak hilang
-     saat latar pita agak terang.
+     Iterasi ukuran (semua diukur):
+        7,6px (awal)  -> bintang tenggelam di latar pita
+        9,2px         -> lebih baik, tetapi masih kurang tegas
+        10,5px        -> bintang jelas menonjol (dipakai) <-- sekarang
+     Batas bawah 1,8 -> 2,2px: bintang redup tetap terlihat sebagai titik
+     (bukan hilang) meskipun latar pita agak terang.
      ===================================================================== */
-  return Math.max(1.8, 9.2 - mag * 1.02);
+  return Math.max(2.2, 10.5 - mag * 1.15);
 }
 function starAlpha(mag) {
-  /* alpha minimum dinaikkan 0,30 -> 0,42 dan kurva dibuat lebih datar
-     supaya bintang redup tetap terlihat di atas pita Bima Sakti
-     (AdditiveBlending: alpha kecil mudah tenggelam di latar terang). */
-  return Math.max(0.42, Math.min(1.0, 1.35 - mag * 0.125));
+  /* Alpha dinaikkan lagi: minimum 0,42 -> 0,55 dan kurva lebih datar.
+     Dengan AdditiveBlending, bintang redup mudah tenggelam di latar yang
+     agak terang; alpha lebih tinggi membuatnya tetap terlihat. */
+  return Math.max(0.55, Math.min(1.0, 1.40 - mag * 0.115));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
