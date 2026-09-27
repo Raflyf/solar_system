@@ -827,37 +827,34 @@ function buildUI() {
   });
 
   /* =====================================================================
-     FULLSCREEN — LAYAR PENUH TANPA UI BROWSER
+     SEMBUNYIKAN UI — LANGIT BERSIH TANPA PANEL
      ---------------------------------------------------------------------
-     PERMINTAAN: "tambahkan fungsi untuk fullscreen agar tidak ada ui yg
-     menghalangi"
-
-     Memakai Fullscreen API standar. Fallback berlapis:
-       document.documentElement.requestFullscreen (standar)
-       webkitRequestFullscreen (Safari lama) / msRequestFullscreen (Edge lama)
-     Ikon tombol berubah: ⛶ masuk, ✕ keluar.
+     PERMINTAAN: maksud "fullscreen" adalah menyembunyikan SEMUA UI supaya
+     tidak ada yang menghalangi langit, bukan memaksimalkan jendela
+     browser. Tombol ini menambah/menghapus class hide-ui di body; CSS
+     menyembunyikan semua panel kecuali satu chip kecil untuk
+     mengembalikan. Pintasan: H.
      ===================================================================== */
-  const btnFS = $('btnFullscreen');
-  if (btnFS) {
-    const updFS = () => {
-      const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      btnFS.classList.toggle('active', fs);
-      btnFS.title = fs ? 'Keluar layar penuh (F)' : 'Layar penuh (F)';
+  const btnHide = $('btnHideUI');
+  if (btnHide) {
+    const updHide = () => {
+      const h = document.body.classList.contains('hide-ui');
+      btnHide.classList.toggle('active', h);
+      btnHide.title = h ? 'Tampilkan kembali UI (H)' : 'Sembunyikan semua UI agar langit terlihat bersih (H)';
     };
-    btnFS.addEventListener('click', () => {
-      if (document.fullscreenElement || document.webkitFullscreenElement) {
-        if (document.exitFullscreen) document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-      } else {
-        const el = document.documentElement;
-        if (el.requestFullscreen) el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-      }
+    btnHide.addEventListener('click', () => {
+      document.body.classList.toggle('hide-ui');
+      setTimeout(measureBands, 60);
+      updHide();
     });
-    document.addEventListener('fullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
-    document.addEventListener('webkitfullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
-    updFS();
+    updHide();
   }
+  /* chip kecil di luar .ui untuk mengembalikan panel */
+  const btnShow = $('btnShowUI');
+  if (btnShow) btnShow.addEventListener('click', () => {
+    document.body.classList.remove('hide-ui');
+    setTimeout(measureBands, 60);
+  });
   {
     const lbl = $('btnQuality').querySelector('.bt');
     const txt = 'Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
@@ -870,8 +867,11 @@ function buildUI() {
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyL') toggleLabels();
     else if (e.code === 'KeyO') { $('chkOrbits').checked = !$('chkOrbits').checked; setOrbits($('chkOrbits').checked); }
-    else if (e.code === 'KeyH') $('helpPanel').classList.toggle('show');
-    else if (e.code === 'KeyF') { const b = $('btnFullscreen'); if (b) b.click(); }
+    else if (e.code === 'KeyH') {
+      const b = $('btnHideUI');
+      if (b) b.click();
+      else $('helpPanel').classList.toggle('show');
+    }
     else if (e.code === 'KeyP') togglePause();
     else if (e.code === 'Space') {
       if (cameraState.target) focusBody(null);
