@@ -116487,38 +116487,40 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — DIPERBESAR AGAR BINTANG TERANG TERLIHAT JELAS
+     UKURAN BINTANG — DIPERBESAR SECARA UNIVERSAL
      ---------------------------------------------------------------------
-     KELUHAN PENGGUNA: "sekarang coba buat bintang terang nya seperti
-     stellarium ini terlihat jelas dan besar. karna yg di proyek itu sama
-     sekali tidak terlihat hanya titik kecil ga jelas"
+     KELUHAN PENGGUNA (terbaru): "bintang terang nya masih sangat kecil dan
+     tidak terlihat, jauh dari kata terlihat jelas, hanya titik seperti
+     1 pixel saja" + "ubah semua secara universal semua bintang terang agar
+     lebih jelas besar dan terlihat"
 
-     PENGUKURAN SEBELUMNYA (terlalu kecil):
-         mag 0  -> 5,0 px
-         mag 1  -> 4,5 px
-         mag 6  -> 2,0 px
-         mag 8  -> 1,1 px
-     Bintang paling terang (Sirius, mag -1,44) hanya ~5 px — praktis tak
-     terlihat sebagai bintang terang.
+     PERJALANAN NILAI (dari keluhan-keluhan sebelumnya):
+         Awal   : 7,6 - mag x 0,94   (terlalu kecil)
+         Lalu   : 5,0 - mag x 0,50   (makin kecil)
+         Lalu   : 11,0 - mag x 1,15  (2x lebih besar)
+     Namun keluhan tetap muncul karena MASALAH SEBENARNYA ada di shader:
+     `core = smoothstep(1.0, 0.0, r * 6.0)` membuat hanya ~17% tengah titik
+     yang terang. Jadi ukuran 12 px hanya tampak ~2 px. Shader sudah
+     diperbaiki di berkas ini.
 
-     ACUAN STELLARIUM: bintang terang tampil jauh lebih besar dengan
-     halo lembut + inti tajam. Ukuran bintang mengikuti magnitudo dengan
-     rentang yang LEBAR:
-         mag -1,5 (Sirius) -> ~14 px
-         mag  0            -> ~11 px
-         mag  1            ->  ~9 px
-         mag  3            ->  ~6 px
-         mag  6            ->  ~3 px
-         mag  8            -> ~2,4 px
-     Rumus: ukuran = 11 - 1,15 x mag, minimum 2,2 px.
+     Sekarang ukuran dinaikkan SEKALI LAGI agar bintang terang benar-benar
+     besar dan jelas:
+         mag -1,5 (Sirius)     -> ~17 px
+         mag  0                -> ~14 px
+         mag  1                -> ~12 px
+         mag  3                ->  ~8 px
+         mag  6                ->  ~4 px
+         mag  8 (batas katalog)->  ~3 px
+     Rumus: ukuran = 14,0 - mag x 1,45, minimum 3,0 px.
+     Batas minimum dinaikkan 2,2 -> 3,0 px supaya bintang redup pun tetap
+     terlihat (bukan titik 1 piksel).
      ===================================================================== */
-  return Math.max(2.2, 11.0 - mag * 1.15);
+  return Math.max(3.0, 14.0 - mag * 1.45);
 }
 function starAlpha(mag) {
-  /* Alpha: bintang terang hampir opak, redup tetap terlihat.
-     Rentang 0,30..1,0 dipertahankan supaya bintang redup (mag 7-8)
-     tetap muncul sebagai titik samar — medan bintang tetap padat. */
-  return Math.max(0.30, Math.min(1.0, 1.10 - mag * 0.085));
+  /* Alpha dinaikkan agar bintang redup lebih terlihat.
+     Minimum 0,30 -> 0,45; bintang terang tetap 1,0 (opak penuh). */
+  return Math.max(0.45, Math.min(1.0, 1.15 - mag * 0.085));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
@@ -116894,26 +116896,51 @@ function buildStarField() {
       'varying float vAlpha;',
       'uniform float uOpacity;',
       /* ==================================================================
-         PROFIL BINTANG — TITIK TAJAM (gaya Stellarium)
+         PROFIL BINTANG — DIPERBAIKI TOTAL (keluhan pengguna)
          ------------------------------------------------------------------
-         KELUHAN: "bintang terang seperti sprite yang terlalu besar dan
-         blur" (dibanding Stellarium yang bintangnya titik tajam).
+         KELUHAN TERBARU: "bintang terang nya masih sangat kecil dan tidak
+         terlihat, jauh dari kata terlihat jelas, hanya titik seperti
+         1 pixel saja" + "ubah semua secara universal semua bintang terang
+         agar lebih jelas besar dan terlihat"
 
-         Versi sebelumnya: core smoothstep(1.0,0.0,r*4.5) + halo 0.18.
-         Halo itulah yang membuat bintang tampak berbulu/blur.
+         AKAR MASALAH (terukur dari kode):
+             core = smoothstep(1.0, 0.0, r * 6.0)
+         Faktor `r * 6.0` membuat hanya ~17% bagian tengah titik yang
+         terang penuh. Jadi walaupun ukuran titik sudah 12 px, bagian yang
+         TERLIHAT hanya ~2 px. Ditambah halo hanya 0,08, bintang terang
+         tetap tampak seperti titik 1-2 piksel.
 
-         Sekarang: inti sangat tajam (r*6.0 → hanya ~17% tengah titik yang
-         terang penuh) dan halo dikurangi ke 0.08. Bintang tampak sebagai
-         titik presisi dengan pendar tipis — seperti Stellarium.
+         Riwayat: profil ini dibuat untuk mengatasi keluhan LAMA "sprite
+         terlalu besar dan blur". Penyesuaiannya kebablasan — bintang jadi
+         terlalu kecil. Sekarang diperbaiki dengan keseimbangan baru.
+
+         PROFIL BARU (universal, untuk SEMUA bintang):
+             inti : smoothstep(0.85, 0.0, r)   -> terang penuh sampai
+                                                  r~0,5 (setengah titik),
+                                                  lalu menurun ke tepi
+             halo : pow(1-r, 2.2) * 0.40       -> pendar lembut yang
+                                                  membuat bintang terang
+                                                  tampak "bersinar"
+             spike: 4 garis difraksi, hanya untuk bintang sangat terang
+         Hasil: bintang terang tampak BESAR dan JELAS dengan pendar,
+         sementara bintang redup tetap titik kecil tajam (karena ukuran
+         titiknya memang kecil — lihat starSize).
          ================================================================== */
       'void main() {',
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r = length(d) * 2.0;',
       '  if (r > 1.0) discard;',
-      '  float core = smoothstep(1.0, 0.0, r * 6.0);',
-      '  float halo = pow(1.0 - r, 3.5) * 0.08;',
-      '  float a = clamp(core + halo, 0.0, 1.0) * vAlpha * uOpacity;',
-      '  gl_FragColor = vec4(vCol, a);',
+      '  float core = smoothstep(0.85, 0.0, r);',
+      '  float halo = pow(max(0.0, 1.0 - r), 2.2) * 0.40;',
+      /* spike difraksi: hanya muncul pada bintang yang sangat terang
+         (vAlpha mendekati 1). Dihitung dari kecuraman sumbu x/y. */
+      '  float ax = abs(d.x), ay = abs(d.y);',
+      '  float spike = (smoothstep(0.05, 0.0, ax) + smoothstep(0.05, 0.0, ay))',
+      '              * smoothstep(1.0, 0.1, r) * 0.45;',
+      '  float a = clamp(core + halo + spike * smoothstep(0.75, 1.0, vAlpha), 0.0, 1.0)',
+      '          * vAlpha * uOpacity;',
+      '  vec3 col = vCol * (1.0 + 0.30 * core);',
+      '  gl_FragColor = vec4(col, a);',
       '}',
     ].join('\n'),
     transparent: true,
