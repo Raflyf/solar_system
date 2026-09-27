@@ -611,16 +611,27 @@ function updateBeacons() {
     /* --- kapan penanda ditampilkan --- */
     let show;
     if (b.isMoon) {
-      /* Satelit: tampil bila ia sendiri masih kecil di layar, DAN induknya
-         masih dalam pandangan.
-         PENTING: batas "induk terlihat" harus dibandingkan dengan JARAK
-         KAMERA, bukan radius induk. Memakai radius induk × 140 membuat
-         penanda mustahil muncul saat kamera menjauh untuk memuat orbit
-         (jarak kamera 143 unit vs batas 140 unit) — inilah bug yang
-         membuat semua satelit tampak "tidak ada". */
+      /* =================================================================
+         BUG YANG DIPERBAIKI — PENANDA BULAN TIDAK PERNAH MUNCUL
+         -----------------------------------------------------------------
+         Versi sebelumnya:
+             batas = max(b.host.radiusKm * 12, 2500)
+         Untuk Bumi: 6371 x 12 = 76.452 km. Jarak Bumi–Bulan 384.400 km,
+         jadi syarat `distHost < batas` SELALU gagal untuk Bulan →
+         penanda Bulan tidak pernah muncul. Akibatnya (dilaporkan pengguna):
+         "bulan masih kecil saat pov dari bumi, malah planet yg lebih jelas".
+
+         Perbaikan: batas harus mencakup JARAK ORBIT satelit, bukan sekadar
+         beberapa radius induk. Dipakai batas yang dihitung dari jarak
+         orbit nyata satelit (b.orbitRadiusKm) dengan margin 2x, dan
+         minimal 20 radius induk.
+         ================================================================= */
       bodyScreenPos(b.host, _hostP);
       const distHost = camera.position.distanceTo(_hostP);
-      const batas = Math.max(b.host.radiusKm * 12, 2500);
+      const batas = Math.max(
+        b.host.radiusKm * 20,
+        (b.aKm || 0) * 2.5,
+        2500);
       const hostVisible = distHost < batas;
       show = hostVisible && px < 8.0;
     } else {

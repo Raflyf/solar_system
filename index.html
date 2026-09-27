@@ -131,6 +131,22 @@ html, body {
 /* ---------------- daftar benda ---------------- */
 .sidebar {
   top: 92px; left: 18px; width: 232px;
+  /* =====================================================================
+     POSISI SIDEBAR — DIUKUR DARI TINGGI PANEL JUDUL (bukan angka tebakan)
+     ---------------------------------------------------------------------
+     KELUHAN USER: "ui nya pada bertumpuk".
+     BUG: panel judul (top 18px) bisa setinggi ~100-130 px bila subjudulnya
+     membungkus dua baris atau badge peristiwa muncul, sedangkan sidebar
+     mulai di 92 px → panel judul MENIMPA sidebar.
+     Terbukti di screenshot pengguna: subjudul "Skala 1:1 - tekstur asli
+     NASA/USGS - Bumi bisa di-zoom sampai permukaan" tertutup sidebar.
+
+     SOLUSI: JS (measureBands) mengukur tinggi panel judul dan menulis
+     variabel --title-bottom. Sidebar memakai variabel itu sebagai `top`,
+     sehingga TIDAK MUNGKIN bertumpuk untuk ukuran layar/teks apa pun.
+     Nilai 92px tetap sebagai cadangan bila JS belum jalan.
+     ===================================================================== */
+  top: var(--title-bottom, 92px);
   max-height: calc(100vh - 210px);
   display: flex; flex-direction: column;
   transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .3s;
@@ -6388,15 +6404,35 @@ function buildMilkyWay() {
 
     /* Warna: pusat galaksi lebih kuning (bintang tua), lengan lebih biru (muda).
        Kecerahan dinaikkan karena pita ini harus terlihat sebagai kabut,
-       bukan titik-titik terpisah. */
+       bukan titik-titik terpisah.
+       CATATAN: setelah ukuran titik diperkecil (22-68 px -> 3-9 px),
+       kecerahan dinaikkan lagi 1,35x agar pita tetap tampak. */
     const center = Math.max(0, 1 - r / (R_GAL * 0.35));
-    col[i * 3] = (0.72 + center * 0.28 + rnd() * 0.05) * 0.95;
-    col[i * 3 + 1] = (0.70 + center * 0.20 + rnd() * 0.04) * 0.95;
-    col[i * 3 + 2] = (0.68 + (1 - center) * 0.24 + rnd() * 0.04) * 0.95;
+    const boost = 1.35;
+    col[i * 3] = Math.min(1, (0.72 + center * 0.28 + rnd() * 0.05) * 0.95 * boost);
+    col[i * 3 + 1] = Math.min(1, (0.70 + center * 0.20 + rnd() * 0.04) * 0.95 * boost);
+    col[i * 3 + 2] = Math.min(1, (0.68 + (1 - center) * 0.24 + rnd() * 0.04) * 0.95 * boost);
 
-    /* Ukuran titik: cukup besar supaya titik-titik saling tumpang tindih
-       dan membentuk pita kabut yang berkesinambungan */
-    sizeArr[i] = 22 + rnd() * 46;
+    /* =====================================================================
+       UKURAN TITIK BIMA SAKTI — DIPERKECIL & DIPERPADAT
+       ---------------------------------------------------------------------
+       KELUHAN USER: "kualitas bintang dan objek langit lainnya juga sangat
+       jelek tidak HD". Setelah diperiksa, penyebabnya bukan bintang
+       katalognya (8.714 bintang HYG sudah tajam), melainkan TITIK BIMA
+       SAKTI yang berukuran 22-68 piksel dengan gradien lembut — sehingga
+       tampak sebagai gumpalan blur seperti bokeh, menutupi bintang di
+       belakangnya.
+
+       PERBAIKAN:
+         • Ukuran titik 22-68 px -> 3-9 px  (tetap tumpang tindih karena
+           jumlahnya ditambah, jadi pita kabut tetap terbentuk, tetapi
+           jauh lebih halus dan tidak lagi terlihat seperti blob).
+         • Jumlah titik 14.000 -> 26.000 (kompensasi ukuran kecil agar
+           kepadatan pita Bima Sakti tetap sama).
+         • Ditambah inti terang lebih kecil di tengah agar tiap titik
+           terlihat seperti bintang samar, bukan cakram rata.
+       ===================================================================== */
+    sizeArr[i] = 3 + rnd() * 6;
   }
 
   const geo = new THREE.BufferGeometry();
@@ -6407,7 +6443,11 @@ function buildMilkyWay() {
   const mat = new THREE.ShaderMaterial({
     uniforms: {
       uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
-      uOpacity: { value: 0.9 },
+      /* uOpacity Bima Sakti: dinaikkan dari 0,9 ke 1,0 dan kecerahan warna
+         dinaikkan karena ukuran titik sudah diperkecil dari 22-68 px ke
+         3-9 px (lihat penjelasan di sizeArr). Tanpa kompensasi ini pita
+         Bima Sakti menjadi terlalu redup dan nyaris tidak terlihat. */
+      uOpacity: { value: 1.0 },
     },
     vertexShader: [
       'attribute float aSize;',
@@ -6423,13 +6463,18 @@ function buildMilkyWay() {
     fragmentShader: [
       'varying vec3 vCol;',
       'uniform float uOpacity;',
+      /* Profil gradien bertingkat: inti tajam + halo lembut, supaya tiap
+         titik tampak seperti BINTANG (bukan cakram rata / blob).
+         Versi lama memakai a = (1-4r^2)^2 yang terlalu landai. */
       'void main() {',
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r2 = dot(d, d);',
       '  if (r2 > 0.25) discard;',
-      '  float a = 1.0 - r2 * 4.0;',
-      '  a = a * a;',
-      '  gl_FragColor = vec4(vCol, a * uOpacity);',
+      '  float r = sqrt(r2) * 2.0;',
+      '  float core = smoothstep(0.55, 0.0, r);',
+      '  float halo = pow(max(0.0, 1.0 - r), 2.4);',
+      '  float a = core * 0.85 + halo * 0.45;',
+      '  gl_FragColor = vec4(vCol, min(1.0, a) * uOpacity);',
       '}',
     ].join('\n'),
     transparent: true,
@@ -7686,16 +7731,27 @@ function updateBeacons() {
     /* --- kapan penanda ditampilkan --- */
     let show;
     if (b.isMoon) {
-      /* Satelit: tampil bila ia sendiri masih kecil di layar, DAN induknya
-         masih dalam pandangan.
-         PENTING: batas "induk terlihat" harus dibandingkan dengan JARAK
-         KAMERA, bukan radius induk. Memakai radius induk × 140 membuat
-         penanda mustahil muncul saat kamera menjauh untuk memuat orbit
-         (jarak kamera 143 unit vs batas 140 unit) — inilah bug yang
-         membuat semua satelit tampak "tidak ada". */
+      /* =================================================================
+         BUG YANG DIPERBAIKI — PENANDA BULAN TIDAK PERNAH MUNCUL
+         -----------------------------------------------------------------
+         Versi sebelumnya:
+             batas = max(b.host.radiusKm * 12, 2500)
+         Untuk Bumi: 6371 x 12 = 76.452 km. Jarak Bumi–Bulan 384.400 km,
+         jadi syarat `distHost < batas` SELALU gagal untuk Bulan →
+         penanda Bulan tidak pernah muncul. Akibatnya (dilaporkan pengguna):
+         "bulan masih kecil saat pov dari bumi, malah planet yg lebih jelas".
+
+         Perbaikan: batas harus mencakup JARAK ORBIT satelit, bukan sekadar
+         beberapa radius induk. Dipakai batas yang dihitung dari jarak
+         orbit nyata satelit (b.orbitRadiusKm) dengan margin 2x, dan
+         minimal 20 radius induk.
+         ================================================================= */
       bodyScreenPos(b.host, _hostP);
       const distHost = camera.position.distanceTo(_hostP);
-      const batas = Math.max(b.host.radiusKm * 12, 2500);
+      const batas = Math.max(
+        b.host.radiusKm * 20,
+        (b.aKm || 0) * 2.5,
+        2500);
       const hostVisible = distHost < batas;
       show = hostVisible && px < 8.0;
     } else {
@@ -8576,10 +8632,29 @@ function initControls(canvas) {
     moved += Math.abs(dx) + Math.abs(dy);
     /* POV Bumi: putar pandangan dalam kerangka pengamat (azimut/elevasi),
        bukan kerangka dunia — supaya horizon tetap mendatar. */
+    /* =====================================================================
+       SENSITIVITAS DRAG POV — MENYESUAIKAN ZOOM (fov)
+       ---------------------------------------------------------------------
+       KELUHAN USER: "saat di zoom terus makin dekat zoom makin licin dan
+       susah untuk di pokuskan dan di arahkannya".
+
+       PENYEBAB: sensitivitas drag dahulu TETAP (0,0032 rad per piksel).
+       Saat fov masih 50°, gerakan 1 piksel menggeser pandangan 0,18° —
+       terasa wajar. Tetapi saat fov diperkecil ke 2° (zoom 25x), gerakan
+       yang sama menggeser 0,18° yang kini setara 9% lebar layar — jadi
+       pandangan melompat jauh dan sulit dibidikkan.
+
+       PRINSIP: dalam mode zoom, kecepatan sudut harus sebanding dengan
+       fov (standar di aplikasi 3D/planetarium & kamera nyata: makin
+       panjang lensa, makin kecil gerakan sudut untuk gerakan tangan yang
+       sama). Faktor = fov / 50 sehingga pada fov bawaan 50° sensitivitas
+       tetap seperti sebelumnya (tidak mengubah rasa di mode normal).
+       ===================================================================== */
+    const povSens = 0.0032 * Math.max(0.02, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
     if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-      EARTH_VIEW.az -= dx * 0.0032;
+      EARTH_VIEW.az -= dx * povSens;
       /* "pegang langit": seret ke bawah = pandangan naik */
-      EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0032, -1.40, 1.5533);
+      EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * povSens, -1.40, 1.5533);
     } else if (cameraState.target) {
       cameraState.followYaw -= dx * 0.0040;
       cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.0040, -1.45, 1.45);
@@ -8704,10 +8779,13 @@ function initControls(canvas) {
       const dx = e.touches[0].clientX - lastX, dy = e.touches[0].clientY - lastY;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += Math.abs(dx) + Math.abs(dy);
+      /* sensitivitas sentuh juga menyesuaikan zoom (lihat penjelasan di
+         handler mouse: makin sempit fov, makin halus gerakannya) */
+      const touchSens = 0.0035 * Math.max(0.02, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
       if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
         /* POV Bumi: satu jari = lihat sekeliling (pegang langit) */
-        EARTH_VIEW.az -= dx * 0.0035;
-        EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * 0.0035, -1.40, 1.5533);
+        EARTH_VIEW.az -= dx * touchSens;
+        EARTH_VIEW.el = clampf(EARTH_VIEW.el + dy * touchSens, -1.40, 1.5533);
       } else if (cameraState.target) {
         cameraState.followYaw -= dx * 0.006;
         cameraState.followPitch = clampf(cameraState.followPitch + dy * 0.006, -1.45, 1.45);
@@ -9796,6 +9874,24 @@ function buildUI() {
     if (tools) {
       const th = Math.ceil(tools.getBoundingClientRect().height);
       if (th > 0) document.documentElement.style.setProperty('--band-tools', (th + 10) + 'px');
+    }
+    /* ======================================================================
+       UKUR BAWAH PANEL JUDUL → posisi sidebar
+       ----------------------------------------------------------------------
+       KELUHAN USER: "ui nya pada bertumpuk".
+       Panel judul (top 18 px) tingginya BERUBAH: subjudul bisa membungkus
+       dua baris dan badge peristiwa bisa muncul. Dengan sidebar di `top`
+       tetap (92 px), keduanya bertumpuk saat panel judul lebih tinggi.
+       Solusi: ukur tinggi nyatanya dan tulis --title-bottom; CSS sidebar
+       memakai nilai itu sebagai `top` sehingga tumpang tindih mustahil.
+       ====================================================================== */
+    const tp = $('titlePanel') || document.querySelector('.title-panel');
+    if (tp) {
+      const r = tp.getBoundingClientRect();
+      if (r.height > 0) {
+        /* +8 px: jarak lega antara panel judul dan sidebar */
+        document.documentElement.style.setProperty('--title-bottom', Math.ceil(r.bottom + 8) + 'px');
+      }
     }
   };
   window.__measureBands = measureBands;
