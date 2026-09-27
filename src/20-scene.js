@@ -789,11 +789,36 @@ function buildSky() {
   let mat;
   const t = TEX.milkyway || {};
   if (t.map) {
-    /* Tekstur Stellarium dipakai dengan shader proyeksi khusus di atas,
-       bukan sphere UV biasa — supaya orientasi pita galaksi PERSIS sama
-       dengan Stellarium. */
+    /* ====================================================================
+       BUG BESAR YANG DIPERBAIKI — LANGIT TERBALIK UTARA-SELATAN
+       --------------------------------------------------------------------
+       KELUHAN PENGGUNA: "bisa di lihat perbandingan milky way nya ini sama
+       di jakarta, menghadap ke timur dan letak milkyway nya sangat berbeda"
+       + "dan arah nyapun beda"
+
+       UJI YANG MEMBUKTIKAN: 6 objek dengan posisi pasti diperiksa:
+           LMC   (belahan SELATAN) -> ditemukan di v=0,112 (ATAS)  SALAH
+           SMC   (belahan SELATAN) -> ditemukan di v=0,096 (ATAS)  SALAH
+           Pusat galaksi (SELATAN) -> ditemukan di v=0,339 (ATAS)  SALAH
+           M31 Andromeda (UTARA)   -> ditemukan di v=0,729 (BAWAH) SALAH
+           Kutub langit UTARA      -> ditemukan di v=0,999 (BAWAH) SALAH
+           Kutub langit SELATAN    -> ditemukan di v=0,001 (ATAS)  SALAH
+       Skor 0/6 — SELURUH langit terbalik utara-selatan.
+
+       PENYEBAB: Three.js memuat tekstur dengan `flipY = true` (default),
+       sehingga koordinat v pada shader DIBALIK terhadap isi berkas gambar.
+       Shader memakai konvensi v = zen/π (v=0 di kutub UTARA, sesuai
+       proyeksi Stellarium), sementara flipY membuat v=0 dibaca dari baris
+       BAWAH gambar — dan baris bawah gambar adalah kutub SELATAN.
+       Akibatnya utara dan selatan tertukar.
+
+       PERBAIKAN: `t.map.flipY = false` supaya koordinat v shader cocok
+       langsung dengan baris gambar (v=0 = baris atas = kutub utara).
+       ==================================================================== */
+    t.map.flipY = false;
     t.map.wrapS = THREE.RepeatWrapping;
     t.map.wrapT = THREE.ClampToEdgeWrapping;
+    t.map.needsUpdate = true;
     mat = new THREE.ShaderMaterial({
       uniforms: {
         uMap:    { value: t.map },
