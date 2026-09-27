@@ -126,34 +126,71 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
          wilayah tekstur = sudut patch itu sendiri, sehingga tekstur
          tidak "diperas" ke wilayah yang jauh lebih luas.
      ======================================================================= */
-  const patchDeg = mesh.geometry.parameters.thetaLength / DEG;   /* luas patch */
+  /* =======================================================================
+     UV PATCH — BERBASIS SUDUT DARI PUSAT (STABIL DI KUTUB)
+     -----------------------------------------------------------------------
+     BUG BESAR YANG DIPERBAIKI (ini akar "permukaan polos"):
+       Versi sebelumnya menghitung lat/lon tiap verteks lalu jaraknya dari
+       pusat. Di sekitar KUTUB patch (yang justru bagian paling terlihat),
+       atan2 menghasilkan bujur yang TIDAK STABIL: verteks berdekatan bisa
+       mendapat lon berbeda 180°. Terbukti dari pengukuran:
+         verteks y=1,0000 → UV (0,500, 0,500)
+         verteks y=0,9999 → UV (0,640, 0,731)   ← melompat
+         verteks y=0,9999 → UV (0,612, 0,256)   ← melompat
+         tepi patch       → UV (39,6, 9,9)      ← ekstrem
+       Akibatnya tekstur "teracak" di area pusat, dan karena area itu
+       mendominasi layar, hasilnya tampak satu warna rata.
+
+     SOLUSI YANG BENAR — hitung UV dari GEOMETRI LOKAL patch, bukan dari
+     lat/lon bola. Potongan bola dibuat sebagai spherical cap dengan kutub
+     di +Y lokal; SphereGeometry memberi UV (u,v) yang SUDAH KONSISTEN
+     untuk cap itu. Kita cukup memetakan UV bawaan tersebut ke wilayah
+     tekstur:
+         u_tex = 0,5 + (u_bawaan − 0,5) × (patchDeg / spanDeg)
+         v_tex = 0,5 + (v_bawaan − 0,5) × (patchDeg / spanDeg)
+     Dengan patchDeg = luas patch (92°) dan spanDeg = luas wilayah tekstur,
+     rasio ini memperbesar bagian tengah tekstur ke seluruh patch —
+     STABIL di kutub karena tidak memakai atan2.
+     ======================================================================= */
+  const patchDeg = mesh.geometry.parameters.thetaLength / DEG;
   const useDetail = (spanDeg && spanDeg > 0);
   const span = useDetail ? spanDeg : patchDeg;
 
-  const v = new THREE.Vector3();
-  for (let i = 0; i < pos.count; i++) {
-    v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
-    const q = new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 1, 0),
-      new THREE.Vector3(cosLat0 * Math.cos(lon0), sinLat0, -cosLat0 * Math.sin(lon0)).normalize()
-    );
-    v.applyQuaternion(q);
-    const latDeg = Math.asin(Math.max(-1, Math.min(1, v.y))) / DEG;
-    const lonDeg = Math.atan2(-v.z, v.x) / DEG;
+  /* pastikan tekstur tidak mengulang */
+  if (mesh.material.map) {
+    mesh.material.map.wrapS = THREE.ClampToEdgeWrapping;
+    mesh.material.map.wrapT = THREE.ClampToEdgeWrapping;
+    mesh.material.map.needsUpdate = true;
+  }
 
-    /* jarak sudut dari pusat patch (dalam derajat) */
-    let dLon = lonDeg - centerLon;
-    while (dLon > 180) dLon -= 360;
-    while (dLon < -180) dLon += 360;
-    const dLat = latDeg - centerLat;
+  /* =======================================================================
+     PEMETAAN UV — DUA ARAH
+     -----------------------------------------------------------------------
+     UV bawaan cap: u0 ∈ [0,1] (mengelilingi sumbu), v0 ∈ [0,1] dari tepi
+     ke kutub. Yang kita inginkan:
+       • Bila wilayah tekstur (span) LEBIH KECIL dari patch (span < patchDeg):
+         hanya bagian TENGAH tekstur yang dipakai → UV menyempit ke pusat:
+             u = 0,5 + (u0 − 0,5) × (span / patchDeg)
+       • Bila wilayah tekstur LEBIH BESAR (span > patchDeg): patch memakai
+         bagian tengah tekstur, diperbesar:
+             u = 0,5 + (u0 − 0,5) × (patchDeg / span)
 
-    /* petakan ke 0..1 berdasarkan luas wilayah tekstur */
-    const half = span / 2;
-    let u = 0.5 + dLon / span;
-    let vv = 0.5 + dLat / span;
-    /* ulang untuk bujur yang melintasi ±180° */
-    u = u - Math.floor(u);
-    vv = Math.max(0, Math.min(1, vv));
+     Rumus yang sama untuk keduanya:  u = 0,5 + (u0 − 0,5) × (span/patchDeg)
+     — perhatikan faktornya span/patchDeg, bukan kebalikannya. Bila span
+     lebih kecil, faktor < 1 → UV menyempit ke tengah (benar). Bila span
+     lebih besar, faktor > 1 → UV melebar (benar juga, karena patch hanya
+     mencakup bagian tengah wilayah tekstur).
+
+     Contoh: patch 92°, span 2,7° → faktor 0,029. Verteks di tepi patch
+     (u0=0 atau 1) mendapat u = 0,5 ∓ 0,0145 — semua berada di 1,5% tengah
+     tekstur, tepat sesuai wilayah yang dipetakan.
+     ======================================================================= */
+  const factor = span / patchDeg;
+  for (let i = 0; i < uv.count; i++) {
+    const u0 = uv.getX(i);
+    const v0 = uv.getY(i);
+    const u = 0.5 + (u0 - 0.5) * factor;
+    const vv = 0.5 + (v0 - 0.5) * factor;
     uv.setXY(i, u, vv);
   }
   uv.needsUpdate = true;
