@@ -51,28 +51,18 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — TAJAM SEPERTI STELLARIUM
+     UKURAN BINTANG — TAJAM & TEGAS (gaya Stellarium)
      ---------------------------------------------------------------------
-     KELUHAN PENGGUNA (dengan referensi Stellarium): "bintang terang seperti
-     sprite yang terlalu besar", "langit tidak bersih".
-
-     Iterasi sebelumnya:
-        7,6px -> bintang tenggelam (dikeluhkan)
-        9,2px -> kurang tegas
-        10,5px -> TERLALU BESAR, tampak seperti blob/sprite (dikeluhkan)
-
      Referensi Stellarium: bintang dirender sebagai TITIK KECIL TAJAM.
-     Bintang paling terang (mag 0) hanya ~4-5 px, dan bintang redup 1 px.
-     Kecerlahan dibawa oleh KECERAHAN (alpha), bukan ukuran raksasa.
-
-     Nilai baru: mag 0 -> 4,6px ; mag 3 -> 2,3px ; mag 6 -> 1,3px
+     Bintang paling terang (mag 0) sekitar 4-5 px; redup 1 px. Kecerlahan
+     dibawa oleh alpha, bukan ukuran raksasa.
      ===================================================================== */
-  return Math.max(1.3, 4.6 - mag * 0.55);
+  return Math.max(1.2, 4.2 - mag * 0.50);
 }
 function starAlpha(mag) {
-  /* Kecerlahan dibawa alpha: bintang terang hampir opak, redup tetap
-     terlihat. Rentang 0,55..1,0 supaya bintang redup tidak hilang. */
-  return Math.max(0.55, Math.min(1.0, 1.15 - mag * 0.09));
+  /* Alpha: bintang terang hampir opak, redup tetap terlihat.
+     Rentang 0,55..1,0. */
+  return Math.max(0.55, Math.min(1.0, 1.12 - mag * 0.085));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
