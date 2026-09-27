@@ -1103,6 +1103,40 @@ kbd {
 }
 
 /* =======================================================================
+   LABEL NAMA RASI BINTANG (gaya Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "mana kontelasi yg lain seperti stellarium knapa
+   pada tidak ada?"
+   Nama rasi ditampilkan sebagai teks kecil di posisi pusat rasi, mirip
+   label rasi di Stellarium. Warnanya cyan lembut agar selaras dengan
+   garis rasi, tidak mencolok.
+   ======================================================================= */
+.constellation-labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12;
+  overflow: hidden;
+}
+.constellation-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.9px;
+  color: #8fd8ff;
+  opacity: 0.62;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .8);
+  white-space: nowrap;
+  pointer-events: none;
+  text-transform: uppercase;
+  font-variant: small-caps;
+}
+@media (max-width: 640px) {
+  .constellation-label { font-size: 9px; letter-spacing: 0.6px; }
+}
+
+/* =======================================================================
    EARTHVIEW MODAL CSS
    ======================================================================= */
 .earthview-modal {
@@ -1416,6 +1450,8 @@ input[type="date"] { color-scheme: dark; }
     </div>
 
     <!-- Label benda (diposisikan oleh JS) -->
+    <!-- Lapisan label nama rasi bintang (diisi oleh 31-constellation-labels.js) -->
+    <div id="constellationLabels" class="constellation-labels"></div>
     <div id="labelLayer"></div>
 
     <!-- Tombol lepas fokus (mobile: pengganti tombol Esc) -->
@@ -6879,6 +6915,164 @@ const CONSTELLATIONS = [{"nama":"Psc","segments":[[82,88,84,81],[84,98,113,135,1
 <script>
 "use strict";
 /* =======================================================================
+   NAMA RASI BINTANG — LABEL NAMA RASI DI LANGIT (gaya Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "mana kontelasi yg lain seperti stellarium knapa
+   pada tidak ada?" + "kontelasi dan rasi bintang nya juga jangan ngawur,
+   buat se valid dan se realistik mungkin".
+
+   Yang membuat Stellarium terasa lengkap adalah LABEL NAMA RASI
+   (PEGASUS, CASSIOPEIA, ORION, ...) di posisi pusat tiap rasi.
+
+   DATA: nama singkatan 3 huruf dari CONSTELLATIONS (86 rasi resmi IAU),
+   dipetakan ke nama Indonesia/Latin lengkap. Pusat rasi dihitung sebagai
+   rata-rata posisi semua bintang anggotanya (bukan tebakan).
+
+   Kinerja: label berupa elemen DOM (div), diperbarui tiap frame dengan
+   proyeksi ke layar. Hanya rasi yang terlihat di layar yang di-render.
+   ======================================================================= */
+
+/* Nama lengkap 86 rasi resmi IAU (singkatan -> nama) */
+const CONSTELLATION_NAMES = {
+  And: 'Andromeda', Ant: 'Antlia', Aps: 'Apus', Aqr: 'Aquarius',
+  Aql: 'Aquila', Ara: 'Ara', Ari: 'Aries', Aur: 'Auriga',
+  Boo: 'Boötes', Cae: 'Caelum', Cam: 'Camelopardalis', Cnc: 'Cancer',
+  CVn: 'Canes Venatici', CMa: 'Canis Major', CMi: 'Canis Minor',
+  Cap: 'Capricornus', Car: 'Carina', Cas: 'Cassiopeia', Cen: 'Centaurus',
+  Cep: 'Cepheus', Cet: 'Cetus', Cha: 'Chamaeleon', Cir: 'Circinus',
+  Col: 'Columba', Com: 'Coma Berenices', CrA: 'Corona Australis',
+  CrB: 'Corona Borealis', Crv: 'Corvus', Crt: 'Crater', Cru: 'Crux',
+  Cyg: 'Cygnus', Del: 'Delphinus', Dor: 'Dorado', Dra: 'Draco',
+  Equ: 'Equuleus', Eri: 'Eridanus', For: 'Fornax', Gem: 'Gemini',
+  Gru: 'Grus', Her: 'Hercules', Hor: 'Horologium', Hya: 'Hydra',
+  Hyi: 'Hydrus', Ind: 'Indus', Lac: 'Lacerta', Leo: 'Leo',
+  LMi: 'Leo Minor', Lep: 'Lepus', Lib: 'Libra', Lup: 'Lupus',
+  Lyn: 'Lynx', Lyr: 'Lyra', Men: 'Mensa', Mic: 'Microscopium',
+  Mon: 'Monoceros', Mus: 'Musca', Nor: 'Norma', Oct: 'Octans',
+  Oph: 'Ophiuchus', Ori: 'Orion', Pav: 'Pavo', Peg: 'Pegasus',
+  Per: 'Perseus', Phe: 'Phoenix', Pic: 'Pictor', Psc: 'Pisces',
+  PsA: 'Piscis Austrinus', Pup: 'Puppis', Pyx: 'Pyxis', Ret: 'Reticulum',
+  Sge: 'Sagitta', Sgr: 'Sagittarius', Sco: 'Scorpius', Scl: 'Sculptor',
+  Sct: 'Scutum', Ser: 'Serpens', Sex: 'Sextans', Tau: 'Taurus',
+  Tel: 'Telescopium', Tri: 'Triangulum', TrA: 'Triangulum Australe',
+  Tuc: 'Tucana', UMa: 'Ursa Major', UMi: 'Ursa Minor', Vel: 'Vela',
+  Vir: 'Virgo', Vol: 'Volans', Vul: 'Vulpecula',
+};
+
+const CONSTELLATION_LABELS = {
+  layer: null,
+  items: [],        /* { el, x, y, z (vektor satuan scene) } */
+  built: false,
+
+  init() {
+    this.layer = document.getElementById('constellationLabels');
+    if (!this.layer) {
+      /* buat lapisan sendiri bila belum ada di HTML */
+      this.layer = document.createElement('div');
+      this.layer.id = 'constellationLabels';
+      this.layer.className = 'constellation-labels';
+      const host = document.getElementById('labelLayer') || document.body;
+      host.appendChild(this.layer);
+    }
+    /* build() dipanggil terlambat (dari render loop) karena butuh
+       eqVecToScene & SKY_RADIUS yang didefinisikan di 18-stars.js —
+       file ini dimuat SEBELUM-nya. Lihat komentar di build(). */
+  },
+
+  /* Hitung pusat setiap rasi = rata-rata arah semua bintang anggotanya.
+     Arah (bukan posisi rata-rata) dipakai supaya pusat selalu berada di
+     bola langit. */
+  build() {
+    if (this.built) return;
+    if (typeof CONSTELLATIONS === 'undefined' || typeof STARS_LABELED === 'undefined') return;
+    /* butuh eqVecToScene & SKY_RADIUS dari 18-stars.js; kalau belum
+       tersedia, tunda (dipanggil ulang dari render loop). */
+    if (typeof eqVecToScene !== 'function' || typeof SKY_RADIUS === 'undefined') return;
+    const all = STARS_LABELED.concat(STARS_OTHER);
+    if (!all.length) return;
+
+    /* pastikan lapisan DOM ada — dipanggil di sini (bukan hanya init)
+       supaya tetap bekerja walau init() terlewat. */
+    if (!this.layer) {
+      this.layer = document.getElementById('constellationLabels');
+      if (!this.layer) {
+        this.layer = document.createElement('div');
+        this.layer.id = 'constellationLabels';
+        this.layer.className = 'constellation-labels';
+        const host = document.getElementById('labelLayer') || document.body;
+        host.appendChild(this.layer);
+      }
+    }
+    /* kosongkan dulu supaya build ulang tidak menggandakan label */
+    this.items.length = 0;
+    this.layer.innerHTML = '';
+
+    for (const c of CONSTELLATIONS) {
+      const nama = c.nama;
+      const full = CONSTELLATION_NAMES[nama] || nama;
+      /* rata-rata arah bintang anggota */
+      let sx = 0, sy = 0, sz = 0, n = 0;
+      const seen = new Set();
+      for (const seg of c.segments) {
+        for (const idx of seg) {
+          if (seen.has(idx)) continue;
+          seen.add(idx);
+          const s = all[idx];
+          if (!s) continue;
+          const d = Math.sqrt(s[4] ** 2 + s[5] ** 2 + s[6] ** 2) || 1;
+          sx += s[4] / d; sy += s[5] / d; sz += s[6] / d;
+          n++;
+        }
+      }
+      if (n === 0) continue;
+      const len = Math.sqrt(sx * sx + sy * sy + sz * sz) || 1;
+      const ux = sx / len, uy = sy / len, uz = sz / len;
+      /* ke kerangka scene (sama dengan bintang & planet) */
+      const p = eqVecToScene(ux, uy, uz, SKY_RADIUS * 0.98);
+
+      const el = document.createElement('div');
+      el.className = 'constellation-label';
+      el.textContent = full;
+      el.title = nama + ' — ' + full;
+      this.layer.appendChild(el);
+      this.items.push({ el, x: p.x, y: p.y, z: p.z, nama });
+    }
+    this.built = true;
+  },
+
+  /* Perbarui posisi label di layar.
+     Dipanggil dari render loop saat label rasi aktif. */
+  update(show) {
+    if (!this.built) this.build();
+    if (!this.layer) return;
+    if (!this.built) return;
+    if (!show) {
+      if (this.layer.style.display !== 'none') this.layer.style.display = 'none';
+      return;
+    }
+    this.layer.style.display = '';
+    const W = window.innerWidth, H = window.innerHeight;
+    const v = new THREE.Vector3();
+    for (const it of this.items) {
+      v.set(it.x, it.y, it.z).project(camera);
+      const visible = (v.z > -1 && v.z < 1 &&
+                       Math.abs(v.x) < 0.98 && Math.abs(v.y) < 0.98);
+      if (!visible) {
+        if (it.el.style.display !== 'none') it.el.style.display = 'none';
+        continue;
+      }
+      it.el.style.display = '';
+      it.el.style.left = ((v.x * 0.5 + 0.5) * W).toFixed(0) + 'px';
+      it.el.style.top = ((-v.y * 0.5 + 0.5) * H).toFixed(0) + 'px';
+    }
+  },
+};
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
    LANGIT NYATA — bintang, rasi bintang, Bima Sakti, galaksi
    ----------------------------------------------------------------------
    Semua posisi NYATA, bukan hiasan.
@@ -6931,28 +7125,18 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — TAJAM SEPERTI STELLARIUM
+     UKURAN BINTANG — TAJAM & TEGAS (gaya Stellarium)
      ---------------------------------------------------------------------
-     KELUHAN PENGGUNA (dengan referensi Stellarium): "bintang terang seperti
-     sprite yang terlalu besar", "langit tidak bersih".
-
-     Iterasi sebelumnya:
-        7,6px -> bintang tenggelam (dikeluhkan)
-        9,2px -> kurang tegas
-        10,5px -> TERLALU BESAR, tampak seperti blob/sprite (dikeluhkan)
-
      Referensi Stellarium: bintang dirender sebagai TITIK KECIL TAJAM.
-     Bintang paling terang (mag 0) hanya ~4-5 px, dan bintang redup 1 px.
-     Kecerlahan dibawa oleh KECERAHAN (alpha), bukan ukuran raksasa.
-
-     Nilai baru: mag 0 -> 4,6px ; mag 3 -> 2,3px ; mag 6 -> 1,3px
+     Bintang paling terang (mag 0) sekitar 4-5 px; redup 1 px. Kecerlahan
+     dibawa oleh alpha, bukan ukuran raksasa.
      ===================================================================== */
-  return Math.max(1.3, 4.6 - mag * 0.55);
+  return Math.max(1.2, 4.2 - mag * 0.50);
 }
 function starAlpha(mag) {
-  /* Kecerlahan dibawa alpha: bintang terang hampir opak, redup tetap
-     terlihat. Rentang 0,55..1,0 supaya bintang redup tidak hilang. */
-  return Math.max(0.55, Math.min(1.0, 1.15 - mag * 0.09));
+  /* Alpha: bintang terang hampir opak, redup tetap terlihat.
+     Rentang 0,55..1,0. */
+  return Math.max(0.55, Math.min(1.0, 1.12 - mag * 0.085));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
@@ -8501,26 +8685,32 @@ function buildSky() {
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
     /* =====================================================================
-       KECERAHAN LANGIT — PANORAMA ESO
+       KECERAHAN LANGIT — DITURUNKAN AGAR TIDAK MENJADI "GUMPALAN"
        ---------------------------------------------------------------------
-       Tekstur: milkyway_eso.jpg (panorama ESO 6000x3000, sudah di-blur
-       radius 4). PENGUKURAN: rata-rata 16,9/255, puncak 205/255.
+       KELUHAN PENGGUNA: "malah makin rusak semua asset nya ga jelas blur
+       buran noise jelek" + "gumpalan putih/abu-abu besar".
 
-       Pengali 0,62x dipilih agar:
-           rata-rata 16,9 x 0,62 = 10,5/255  (pita terlihat, tidak jenuh)
-           puncak    205  x 0,62 = 127/255   (tidak jenuh)
-       Iterasi sebelumnya pada tekstur NASA: 1,35x (jenuh, 244) -> 0,45x
-       (samar) -> 0,55x (baik). Karena tekstur ESO lebih terang (16,9 vs
-       11,9), pengali disesuaikan ke 0,62x untuk hasil proporsi sama.
+       PENGUKURAN KONTRIBUSI LAPISAN (memisahkan sumber gumpalan):
+           semua lapisan     : 9 10 10 11 13 11 19 28 40 31 18 25 20 12 7 6
+           tanpa Bima Sakti   : 0  0  0  0  0  0  0  0  0  0  0  5 10  3 0 0
+           tanpa surfaceSky  : (identik dengan 'semua' — tidak berpengaruh)
+           tanpa deep-sky    : (hanya sedikit berbeda di 2 titik)
+       → SUMBER GUMPALAN ADALAH TEKSTUR BIMA SAKTI (skyMesh), bukan yang lain.
 
-       Referensi Stellarium: puncak pita ~1/4-1/3 kecerahan bintang,
-       tepi pita hanya 1,2-2x di atas latar langit.
+       Penyebab: pengali 0,62x membuat kabut pita mencapai 40-127/255 —
+       terlalu terang sehingga terlihat sebagai gumpalan abu-abu, bukan
+       pita samar. Referensi Stellarium: tepi pita hanya 1,2-2x di atas
+       latar langit (bukan 5-10x).
+
+       Pengali 0,28x dipilih:
+           rata-rata 16,9 x 0,28 = 4,7/255   (tepi pita samar)
+           puncak    205  x 0,28 =  57/255   (inti galaksi tetap terlihat)
        ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(0.62, 0.62, 0.62);
+    mat.color.setRGB(0.28, 0.28, 0.28);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
@@ -10321,6 +10511,10 @@ async function boot() {
     updateOrbitLines(J2000_JD + app.days);
     updateTour(dt);
     updateLabels();
+    /* label nama rasi bintang — tampil bila "Garis rasi bintang" aktif */
+    if (typeof CONSTELLATION_LABELS !== 'undefined') {
+      CONSTELLATION_LABELS.update(app.constellationLinesOn !== false && app.labelsOn !== false);
+    }
     updateOrbitLineVisibility();
     updateBeacons();
     updateHud();
@@ -10358,6 +10552,11 @@ function buildUI() {
   try {
     if (typeof COMPASS !== 'undefined') COMPASS.init();
   } catch (e) { console.warn('kompas gagal:', e); }
+
+  /* ---- label nama rasi bintang ---- */
+  try {
+    if (typeof CONSTELLATION_LABELS !== 'undefined') CONSTELLATION_LABELS.init();
+  } catch (e) { console.warn('label rasi gagal:', e); }
 
   /* =====================================================================
      POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap

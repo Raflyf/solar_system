@@ -696,26 +696,32 @@ function buildSky() {
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
     /* =====================================================================
-       KECERAHAN LANGIT — PANORAMA ESO
+       KECERAHAN LANGIT — DITURUNKAN AGAR TIDAK MENJADI "GUMPALAN"
        ---------------------------------------------------------------------
-       Tekstur: milkyway_eso.jpg (panorama ESO 6000x3000, sudah di-blur
-       radius 4). PENGUKURAN: rata-rata 16,9/255, puncak 205/255.
+       KELUHAN PENGGUNA: "malah makin rusak semua asset nya ga jelas blur
+       buran noise jelek" + "gumpalan putih/abu-abu besar".
 
-       Pengali 0,62x dipilih agar:
-           rata-rata 16,9 x 0,62 = 10,5/255  (pita terlihat, tidak jenuh)
-           puncak    205  x 0,62 = 127/255   (tidak jenuh)
-       Iterasi sebelumnya pada tekstur NASA: 1,35x (jenuh, 244) -> 0,45x
-       (samar) -> 0,55x (baik). Karena tekstur ESO lebih terang (16,9 vs
-       11,9), pengali disesuaikan ke 0,62x untuk hasil proporsi sama.
+       PENGUKURAN KONTRIBUSI LAPISAN (memisahkan sumber gumpalan):
+           semua lapisan     : 9 10 10 11 13 11 19 28 40 31 18 25 20 12 7 6
+           tanpa Bima Sakti   : 0  0  0  0  0  0  0  0  0  0  0  5 10  3 0 0
+           tanpa surfaceSky  : (identik dengan 'semua' — tidak berpengaruh)
+           tanpa deep-sky    : (hanya sedikit berbeda di 2 titik)
+       → SUMBER GUMPALAN ADALAH TEKSTUR BIMA SAKTI (skyMesh), bukan yang lain.
 
-       Referensi Stellarium: puncak pita ~1/4-1/3 kecerahan bintang,
-       tepi pita hanya 1,2-2x di atas latar langit.
+       Penyebab: pengali 0,62x membuat kabut pita mencapai 40-127/255 —
+       terlalu terang sehingga terlihat sebagai gumpalan abu-abu, bukan
+       pita samar. Referensi Stellarium: tepi pita hanya 1,2-2x di atas
+       latar langit (bukan 5-10x).
+
+       Pengali 0,28x dipilih:
+           rata-rata 16,9 x 0,28 = 4,7/255   (tepi pita samar)
+           puncak    205  x 0,28 =  57/255   (inti galaksi tetap terlihat)
        ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(0.62, 0.62, 0.62);
+    mat.color.setRGB(0.28, 0.28, 0.28);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });

@@ -266,3 +266,37 @@
   .compass-tick { font-size: 10px; }
   .compass-tick.cardinal { font-size: 12px; }
 }
+
+/* =======================================================================
+   LABEL NAMA RASI BINTANG (gaya Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "mana kontelasi yg lain seperti stellarium knapa
+   pada tidak ada?"
+   Nama rasi ditampilkan sebagai teks kecil di posisi pusat rasi, mirip
+   label rasi di Stellarium. Warnanya cyan lembut agar selaras dengan
+   garis rasi, tidak mencolok.
+   ======================================================================= */
+.constellation-labels {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 12;
+  overflow: hidden;
+}
+.constellation-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.9px;
+  color: #8fd8ff;
+  opacity: 0.62;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, .95), 0 0 8px rgba(0, 0, 0, .8);
+  white-space: nowrap;
+  pointer-events: none;
+  text-transform: uppercase;
+  font-variant: small-caps;
+}
+@media (max-width: 640px) {
+  .constellation-label { font-size: 9px; letter-spacing: 0.6px; }
+}

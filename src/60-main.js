@@ -247,6 +247,10 @@ async function boot() {
     updateOrbitLines(J2000_JD + app.days);
     updateTour(dt);
     updateLabels();
+    /* label nama rasi bintang — tampil bila "Garis rasi bintang" aktif */
+    if (typeof CONSTELLATION_LABELS !== 'undefined') {
+      CONSTELLATION_LABELS.update(app.constellationLinesOn !== false && app.labelsOn !== false);
+    }
     updateOrbitLineVisibility();
     updateBeacons();
     updateHud();
@@ -284,6 +288,11 @@ function buildUI() {
   try {
     if (typeof COMPASS !== 'undefined') COMPASS.init();
   } catch (e) { console.warn('kompas gagal:', e); }
+
+  /* ---- label nama rasi bintang ---- */
+  try {
+    if (typeof CONSTELLATION_LABELS !== 'undefined') CONSTELLATION_LABELS.init();
+  } catch (e) { console.warn('label rasi gagal:', e); }
 
   /* =====================================================================
      POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap
