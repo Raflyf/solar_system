@@ -157,6 +157,22 @@ function initControls(canvas) {
       const b = findBody(id);
       if (b) { focusBody(b); return; }
     }
+    /* ==================================================================
+       BINTANG & OBJEK LANGIT — BARU (permintaan pengguna: "coba tiru zoom
+       stellarium yg bisa zoom semua planet, bintang, dan objek langit
+       lainnya").
+       Bila klik tidak mengenai planet/bulan, cari BINTANG terdekat dari
+       arah klik. Bintang dirender sebagai point sprite tanpa volume,
+       sehingga dipakai pencarian sudut (lihat STAR_FOCUS.cariBintang).
+       ================================================================== */
+    if (typeof STAR_FOCUS !== 'undefined' && typeof starField !== 'undefined' &&
+        starField.labeled) {
+      const arah = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera).sub(camera.position).normalize();
+      const bintang = STAR_FOCUS.cariBintang(arah);
+      if (bintang) { STAR_FOCUS.fokus(bintang); return; }
+      /* klik di langit kosong = lepas fokus bintang */
+      STAR_FOCUS.lepas();
+    }
   });
 
   /* sentuh

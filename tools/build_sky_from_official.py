@@ -38,10 +38,12 @@ NAMEFAB = os.path.join(STELL, 'name.fab')
 
 # batas magnitudo.
 #  6,5 = mata telanjang di langit sangat gelap (8.921 bintang)
-#  8,0 = terlihat dengan binokular / langit sangat gelap (41.488 bintang)
-# Dipakai 8,0 supaya medan bintang padat seperti Stellarium, tetapi tetap
-# ringan: bintang dirender sebagai point sprite (satu draw call).
-MAG_MAX = 8.0
+#  8,0 = terlihat dengan binokular (41.488)
+# 10,0 = batas katalog HYG praktis (108.072)  <-- dipakai
+# Dipakai 10,0 supaya medan bintang PADAT seperti Stellarium. Tetap
+# ringan karena semua bintang dirender sebagai point sprite (SATU draw
+# call); katalog penuh HYG hanya 117.931 bintang, jadi ini hampir semua.
+MAG_MAX = 10.0
 
 
 def buka_hyg():

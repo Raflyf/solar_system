@@ -300,3 +300,39 @@
 @media (max-width: 640px) {
   .constellation-label { font-size: 9px; letter-spacing: 0.6px; }
 }
+
+/* =======================================================================
+   PANEL INFO BINTANG TERFOKUS (gaya panel objek Stellarium)
+   -----------------------------------------------------------------------
+   PERMINTAAN PENGGUNA: "coba tiru zoom stellarium yg bisa zoom semua
+   planet, bintang, dan objek langit lainnya".
+   Saat bintang diklik, panel kecil ini muncul di dekat bintang dan
+   menampilkan nama, magnitudo, jarak, dan kelas spektrum.
+   ======================================================================= */
+.star-focus-panel {
+  position: fixed;
+  display: none;
+  min-width: 158px;
+  padding: 7px 9px;
+  font-size: 11.5px;
+  transform: translateX(-50%);
+  z-index: 26;
+  pointer-events: auto;
+  transition: opacity .18s;
+}
+.star-focus-panel.show { display: block; }
+.sf-head {
+  display: flex; align-items: center; gap: 6px;
+  padding-bottom: 5px; margin-bottom: 5px;
+  border-bottom: 1px solid rgba(120,160,220,.16);
+}
+.sf-head b { flex: 1; color: #ffe9a8; font-size: 12.5px; }
+.sf-dot {
+  width: 9px; height: 9px; border-radius: 50%; flex: none;
+  box-shadow: 0 0 6px currentColor;
+}
+.sf-row {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 1.5px 0; color: #9fb4cc;
+}
+.sf-row b { color: #e6eefc; font-variant-numeric: tabular-nums; }
