@@ -27,3 +27,7 @@ _msg.txt
 # (URL tercatat di tools/fetch_bmng.py).
 _dl2/
 _dl/
+
+# Aset mentah dari internet (unduh ulang lewat tools/)
+_stell/
+_dl3/

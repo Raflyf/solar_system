@@ -339,6 +339,14 @@ function buildUI() {
   /* kontrol langit nyata */
   $('chkStars').addEventListener('change', (e) => setStarFieldVisible(e.target.checked));
   $('chkConst').addEventListener('change', (e) => setConstellationLines(e.target.checked));
+  /* Pita Bima Sakti bisa dimatikan — pengguna yang menganggap pita terlalu
+     menonjol/gumpalan bisa menyembunyikannya dan tetap melihat bintang. */
+  if ($('chkMilkyWay')) {
+    $('chkMilkyWay').addEventListener('change', (e) => {
+      if (typeof skyMesh !== 'undefined' && skyMesh) skyMesh.visible = e.target.checked;
+      if (typeof MILKY_WAY_ON !== 'undefined') window.MILKY_WAY_ON = e.target.checked;
+    });
+  }
   $('chkStarNames').addEventListener('change', (e) => {
     setStarNames(e.target.checked);
     buildStarLabels();
