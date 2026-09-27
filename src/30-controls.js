@@ -76,6 +76,21 @@ function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
 
 function initControls(canvas) {
   window.addEventListener('keydown', (e) => {
+    /* =====================================================================
+       JANGAN TANGGAPI TOMBOL SAAT MENGETIK
+       ---------------------------------------------------------------------
+       KELUHAN: "saat mengetik di search, keyboard bentrok dengan fungsi
+       gerak seperti WASD — malah jadi gerak dan tidak bisa ngetik"
+
+       Handler ini menangkap WASD/QE/panah/Spasi secara global. Saat fokus
+       ada di kotak teks (pencarian, input tanggal, dsb), tombol harus
+       diteruskan ke input, bukan dipakai menggerakkan kamera.
+       Guard: bila target event adalah input/textarea/select atau elemen
+       yang bisa diedit, keluar tanpa melakukan apa pun.
+       ===================================================================== */
+    if (e.target && (
+      e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+      e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
     keys[e.code] = true;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') cameraState.boosting = true;
     /* Esc menutup panel / melepas fokus; saat POV Bumi aktif, EARTHVIEW_UI
@@ -85,6 +100,10 @@ function initControls(canvas) {
     if (handled.indexOf(e.code) >= 0) e.preventDefault();
   });
   window.addEventListener('keyup', (e) => {
+    /* Sama seperti keydown: abaikan bila sedang mengetik (lihat guard). */
+    if (e.target && (
+      e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+      e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
     keys[e.code] = false;
     if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') cameraState.boosting = false;
   });
