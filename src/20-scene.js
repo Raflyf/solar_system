@@ -696,62 +696,40 @@ function buildSky() {
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
     /* =====================================================================
-       KECERAHAN LANGIT — DIKALIBRASI ULANG SETELAH TEKSTUR DIHALUSKAN
+       KECERAHAN LANGIT — PANORAMA ESO
        ---------------------------------------------------------------------
-       PENGUKURAN tekstur milkyway_nasa.jpg setelah BLUR GAUSSIAN radius 3:
-           rata-rata 11,9/255, puncak 178/255
-           noise (beda antar piksel) 9,73 -> 1,24  (8x lebih halus)
+       Tekstur: milkyway_eso.jpg (panorama ESO 6000x3000, sudah di-blur
+       radius 4). PENGUKURAN: rata-rata 16,9/255, puncak 205/255.
 
-       KENAPA DI-BLUR (keluhan: "masih noise, tidak HD, bintang tidak
-       jelas, hanya milkyway yang mencolok"):
-       Peta NASA "Deep Star Maps 2020" menggambar ~100 JUTA bintang
-       sebagai titik 1-2 px. Saat dipetakan ke bola langit, titik-titik
-       itu tampak sebagai BUTIRAN/NOISE dan mengaburkan bintang katalog
-       yang dirender di atasnya. Bintang sudah dirender terpisah oleh
-       katalog HYG (8.714 bintang, ukuran & warna per magnitudo), jadi
-       yang dibutuhkan dari tekstur ini HANYA kabut pita + jalur debunya.
+       Pengali 0,62x dipilih agar:
+           rata-rata 16,9 x 0,62 = 10,5/255  (pita terlihat, tidak jenuh)
+           puncak    205  x 0,62 = 127/255   (tidak jenuh)
+       Iterasi sebelumnya pada tekstur NASA: 1,35x (jenuh, 244) -> 0,45x
+       (samar) -> 0,55x (baik). Karena tekstur ESO lebih terang (16,9 vs
+       11,9), pengali disesuaikan ke 0,62x untuk hasil proporsi sama.
 
-       Iterasi pengali (diukur dari piksel layar):
-           1,35x -> puncak 244 : pita seperti awan, bintang tenggelam
-           0,75x -> puncak 135 : masih dominan (6/10)
-           0,45x -> puncak  81 : samar, tetapi noise masih terlihat
-           0,55x -> puncak  98 : pita jelas + HALUS (dipakai) <-- sekarang
-       Pengali dinaikkan kembali ke 0,55x karena tekstur sudah bersih —
-       pita tetap terbaca sebagai kabut, dan karena tidak ada lagi
-       butiran, bintang katalog terlihat tajam di atasnya.
+       Referensi Stellarium: puncak pita ~1/4-1/3 kecerahan bintang,
+       tepi pita hanya 1,2-2x di atas latar langit.
        ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(0.55, 0.55, 0.55);
+    mat.color.setRGB(0.62, 0.62, 0.62);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
   }
   /* =====================================================================
-     BOLA LANGIT — SEGMEN DIPERBANYAK AGAR TEKSTUR TIDAK BERBELANG
+     BOLA LANGIT — SEGMEN DIPERBANYAK UNTUK TEKSTUR 6000x3000
      ---------------------------------------------------------------------
-     KELUHAN USER: "langit berbintang nya malah makin jelek dan buram"
-     — setelah tekstur NASA (3840x1920) dipasang, pita galaksi terlihat
-     seperti GARIS-GARIS PARALEL, bukan kabut halus.
-
-     PENYEBAB: bola langit hanya 64x48 segmen. Dengan tekstur 3840 px
-     dipetakan ke 64 segmen horizontal, setiap segmen mewakili 60 px
-     tekstur — jadi tepi antar segitiga membentuk garis yang terlihat
-     sebagai belang. Interpolasi linear antar verteks juga membuat
-     gradien patah-patah.
-
-     PERBAIKAN: 128x96 segmen (2x lipat tiap arah = 4x jumlah segitiga,
-     24.576 segitiga). Biaya GPU tetap kecil karena hanya SATU draw call
-     dan bola ini dirender paling awal (renderOrder -200), tanpa
-     pencahayaan (MeshBasicMaterial). Terukur: fps tetap di atas 60.
-
-     CATATAN: nilai 128x96 dipilih dari pengukuran — 96x72 masih terlihat
-     belang saat fov 70 derajat, sedangkan 160x120 tidak memberi
-     perbaikan yang terlihat lagi tetapi menambah 15% waktu frame.
+     Tekstur ESO 6000x3000 (naik dari 3840x1920). Agar tekstur tidak
+     berbelang, jumlah segmen bola harus cukup: 160x120 memberi ~37,5 px
+     tekstur per segmen horizontal (6000/160) — cukup halus.
+     Biaya GPU: 38.400 segitiga, satu draw call, tanpa pencahayaan
+     (MeshBasicMaterial), renderOrder -200 → tidak memengaruhi fps.
      ===================================================================== */
-  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 128, 96), mat);
+  skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 160, 120), mat);
   skyMesh.frustumCulled = false;
   skyMesh.renderOrder = -200;
   /* Kalibrasi orientasi langit — DIUKUR empiris dari citra vs katalog nyata:

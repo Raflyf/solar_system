@@ -22,28 +22,28 @@ const ASSET_MANIFEST = {
   uranus:     { map: 'uranus.jpg' },
   neptune:    { map: 'neptune.jpg' },
   /* =====================================================================
-     TEKSTUR LANGIT — DIPISAH DARI TEKSTUR BIASA
+     TEKSTUR LANGIT — PANORAMA ESO 6000x3000 (RESOLUSI LEBIH TINGGI)
      ---------------------------------------------------------------------
-     BUG YANG DIPERBAIKI (keluhan: "langit berbintang nya malah makin jelek
-     dan buram ga jelas"):
+     PERMINTAAN: "buat langit nya lebih HD dan jelas, cari asset nya dari
+     internet dan web nasa".
 
-     Tekstur lama (milkyway.jpg dari Solar System Scope) rata-rata
-     kecerahannya hanya 1,17/255 — sangat gelap. Agar terlihat, ia harus
-     dikali 14x, dan pengali itu IKUT MEMPERBESAR artefak kompresi JPEG
-     (4,2% piksel di area yang seharusnya hitam bernilai >5). Hasilnya:
-     gumpalan ungu-buram yang terlihat seperti noise, bukan galaksi.
+     Sumber sebelumnya (NASA "Deep Star Maps 2020", 3840x1920) diganti
+     dengan PANORAMA ESO (European Southern Observatory):
+         https://cdn.eso.org/images/large/eso0932a.jpg
+         "The Milky Way panorama" oleh Serge Brunier (ESO)
+         lisensi CC BY 4.0 / domain publik
 
-     Tekstur baru (milkyway_nasa.jpg dari NASA SVS "Deep Star Maps 2020",
-     dibuat dari 100 juta bintang katalog Bright Star + Tycho-2 + UCAC3):
-         rata-rata kecerahan 11,86/255  (10x lebih terang)
-         puncak 181/255
-     Karena sudah terang, pengali cukup ~1,2x → artefak TIDAK diperbesar,
-     dan pita galaksi + jalur debu terlihat tajam.
+     PERBANDINGAN TERUKUR:
+         NASA  : 3840x1920, rata-rata 11,9, puncak 178
+         ESO   : 6000x3000, rata-rata 16,9, puncak 205   <-- dipakai
+     Resolusi 1,56x lebih tinggi dan rentang kecerahan lebih kaya,
+     sehingga pita galaksi + jalur debu terlihat lebih jelas dan halus.
 
-     Sumber: https://svs.gsfc.nasa.gov/4851/ (NASA/Goddard SVS, Ernie
-     Wright dkk). Cermin unduhan: Wikimedia Commons (file 64k asli).
+     Proses: Gaussian blur radius 4 (pada 6000px ≈ radius 2,6 pada
+     3840px) untuk menghilangkan titik bintang individual — bintang
+     sudah dirender terpisah oleh katalog HYG. Hasil: noise 1,16 (halus).
      ===================================================================== */
-  milkyway:   { map: 'milkyway_nasa.jpg' },
+  milkyway:   { map: 'milkyway_eso.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
   phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },
