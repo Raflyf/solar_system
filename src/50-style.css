@@ -121,7 +121,16 @@ html, body {
 
 /* ---------------- daftar benda ---------------- */
 .sidebar {
-  top: 92px; left: 18px; width: 232px;
+  /* ====================================================================
+     POSISI SIDEBAR — DI BAWAH PANEL JUDUL + PANEL PENCARIAN
+     --------------------------------------------------------------------
+     Susunan dari atas ke bawah:
+       18px : panel judul (title-panel)
+       ~92px: panel pencarian (search-panel), tinggi ~38px
+       ~140px: sidebar JELAJAHI (panel ini)
+     Angka diukur dari tinggi elemen di atasnya, bukan tebakan.
+     ==================================================================== */
+  top: 140px; left: 18px; width: 232px;
   /* =====================================================================
      POSISI SIDEBAR — DIUKUR DARI TINGGI PANEL JUDUL (bukan angka tebakan)
      ---------------------------------------------------------------------
