@@ -219,6 +219,7 @@ async function boot() {
       if (typeof applyDaylightStarDimming === 'function') applyDaylightStarDimming(0);
       if (typeof COMPASS !== 'undefined') COMPASS.update(0);
       if (typeof LANDSCAPE !== 'undefined') LANDSCAPE.hide();
+      if (typeof SKY_TILES !== 'undefined') SKY_TILES.hide();
     }
     updateCamera(dt);
     applyPositions();
@@ -253,6 +254,10 @@ async function boot() {
     }
     /* zoom bertahap & panel bintang terfokus */
     if (typeof STAR_FOCUS !== 'undefined') STAR_FOCUS.update(dt);
+    /* LOD langit: pilih tekstur sesuai fov (zoom berlapis seperti Stellarium) */
+    if (typeof SKY_LOD !== 'undefined') SKY_LOD.update();
+    /* citra langit resolusi tinggi saat zoom masuk (Legacy Survey) */
+    if (typeof SKY_TILES !== 'undefined') SKY_TILES.update();
     updateOrbitLineVisibility();
     updateBeacons();
     updateHud();

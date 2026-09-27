@@ -14,6 +14,10 @@ const cameraState = {
   followDist: 0,
   followYaw: 0.7,
   followPitch: 0.32,
+  /* true = pengguna sudah mengatur jarak sendiri (roda/pinch). Selama ini
+     true, auto-fit TIDAK menimpa followDist — inilah perbaikan bug
+     "tidak bisa sampai zoom" (auto-fit selalu menarik kamera menjauh). */
+  userZoomed: false,
 };
 
 const keys = {};
@@ -134,6 +138,9 @@ function initControls(canvas) {
       }
       if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
       cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
+      /* tandai bahwa pengguna mengatur jarak sendiri — auto-fit harus
+         berhenti menimpa zoom pengguna (lihat penjelasan di updateCamera) */
+      cameraState.userZoomed = true;
     } else {
       cameraState.baseSpeed = clampf(cameraState.baseSpeed * k, 0.05, 3000000);
     }
@@ -284,6 +291,7 @@ function initControls(canvas) {
           }
           if (farthest > 0) maxD = Math.max(maxD, farthest * 3.0);
           cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
+          cameraState.userZoomed = true;
         } else {
           /* mode bebas: cubit = gerak maju/mundur (dolly) — inilah yang
              diharapkan pengguna HP. (Sebelumnya mengubah baseSpeed yang
@@ -405,6 +413,9 @@ function focusBody(body) {
   cs.followDist = initial;
   cs.followYaw = 0.7;
   cs.followPitch = 0.28;
+  /* reset penanda zoom pengguna: benda baru dipilih, jadi auto-fit boleh
+     bekerja lagi sampai pengguna zoom manual (lihat updateCamera) */
+  cs.userZoomed = false;
   /* auto-fit aktif bila planet ini punya satelit, supaya satelitnya tidak
      keluar layar saat terus bergerak; mati bila tidak ada satelit */
   cs.followAutoFit = !body.isMoon && hasMoons(body);
@@ -590,12 +601,30 @@ function updateCamera(dt) {
     const body = cs.target;
     const bp = bodyWorldPos(body, _tmp2);
 
-    /* Jaga agar satelit tetap dalam pandangan.
-       Satelit bergerak mengelilingi induknya, jadi jarak yang pas saat
-       kamera berhenti bisa jadi tidak pas beberapa detik kemudian.
-       Karena itu jarak minimum disesuaikan terus-menerus: kalau ada satelit
-       yang berada di luar 92% tepi layar, kamera menjauh sedikit. */
-    if (cs.followAutoFit && !body.isMoon && cs.followDist > body.radiusKm * 1.2) {
+    /* ====================================================================
+       AUTO-FIT — DIPERBAIKI (keluhan: "tidak bisa sampai zoom", terbukti
+       dari pengukuran followDist = 34.915 unit padahal radius Mars hanya
+       0,53 unit)
+       --------------------------------------------------------------------
+       DUA BUG:
+       (a) auto-fit HANYA memperbesar jarak (`+=`), tidak pernah mengecil,
+           sehingga setelah sekali terdorong jauh, kamera tidak pernah
+           kembali dekat.
+       (b) `focusBody()` menyalakan followAutoFit=true setiap kali benda
+           dipilih — termasuk saat pengguna baru saja zoom masuk. Akibatnya
+           zoom pengguna langsung ditimpa.
+
+       PERBAIKAN:
+       • `cs.userZoomed` menandai bahwa pengguna sudah mengatur jarak
+         sendiri (roda mouse / pinch). Selama itu true, auto-fit TIDAK
+         menyentuh followDist sama sekali.
+       • Auto-fit boleh memperbesar DAN memperkecil, tetapi hanya bila
+         pengguna belum pernah zoom manual.
+       • `focusBody()` mereset userZoomed=false supaya auto-fit bekerja
+         lagi untuk benda yang baru dipilih.
+       ==================================================================== */
+    if (cs.followAutoFit && !cs.userZoomed && !body.isMoon &&
+        cs.followDist > body.radiusKm * 1.2) {
       let need = 0;
       const tanHalfF = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
       const aspectF = window.innerWidth / Math.max(1, window.innerHeight);
@@ -611,8 +640,8 @@ function updateCamera(dt) {
         const n = Math.max(needV, needH);
         if (n > need) need = n;
       }
+      /* perbesar bila satelit keluar layar (halus, tidak melompat) */
       if (need > cs.followDist) {
-        /* mundur perlahan, jangan melompat */
         cs.followDist += (need - cs.followDist) * Math.min(1, dt * 1.2);
       }
     }

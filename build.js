@@ -37,6 +37,8 @@ const compass = read(path.join(SRC, '28-compass.js'));
 const landscape = read(path.join(SRC, '29-landscape.js'));
 const constLabels = read(path.join(SRC, '31-constellation-labels.js'));
 const starFocus = read(path.join(SRC, '32-star-focus.js'));
+const skyLod = read(path.join(SRC, '33-sky-lod.js'));
+const skyTiles = read(path.join(SRC, '34-sky-tiles.js'));
 const temporalBadge = read(path.join(SRC, '22-temporal-badge.js'));
 const starsData = read(path.join(SRC, '12-stars-data.js'));
 const constData = read(path.join(SRC, '13-constellations-data.js'));
@@ -186,6 +188,16 @@ ${safe(constLabels)}
 <script>
 "use strict";
 ${safe(starFocus)}
+</script>
+
+<script>
+"use strict";
+${safe(skyLod)}
+</script>
+
+<script>
+"use strict";
+${safe(skyTiles)}
 </script>
 
 <script>
