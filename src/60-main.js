@@ -201,6 +201,13 @@ async function boot() {
       if (typeof applyDaylightStarDimming === 'function' && svObs) {
         applyDaylightStarDimming(SURFACE_VIEW.sunAltitudeDeg(svObs));
       }
+      /* Lapisan DETAIL permukaan (tile NASA GIBS): tekstur patch diganti
+         citra resolusi tinggi wilayah pengamat — inilah yang membuat
+         "zoom sampai darat" terlihat detail (30x lebih halus dari tekstur
+         global). Hanya untuk Bumi (sumber tile = citra Bumi). */
+      if (typeof SURFACE_DETAIL !== 'undefined' && svBody && svBody.key === 'earth') {
+        SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
+      }
     } else {
       if (typeof hideSurfaceSky === 'function') hideSurfaceSky();
       if (typeof removeSurfacePatch === 'function') removeSurfacePatch();

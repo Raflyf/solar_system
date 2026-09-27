@@ -90,7 +90,7 @@ function surfacePatchRadiusDeg(bodyRadiusKm, elevM, fovDeg) {
      x = cos φ cos λ ,  y = sin φ ,  z = −cos φ sin λ
      u = 0,5 + λ/360 ,  v = 0,5 + φ/180
    ======================================================================= */
-function applyPatchUV(mesh, centerLat, centerLon) {
+function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
   const geo = mesh.geometry;
   const pos = geo.attributes.position;
   const uv = geo.attributes.uv;
@@ -98,23 +98,47 @@ function applyPatchUV(mesh, centerLat, centerLon) {
 
   const lat0 = centerLat * DEG, lon0 = centerLon * DEG;
   const cosLat0 = Math.cos(lat0), sinLat0 = Math.sin(lat0);
+  /* =====================================================================
+     DUA MODE UV — sesuai tekstur yang dipakai
+     ---------------------------------------------------------------------
+     • MODE GLOBAL (spanDeg tidak diberikan): tekstur mencakup seluruh Bumi
+       (4096x2048 equirectangular). UV = posisi geografis langsung.
+     • MODE DETAIL (spanDeg diberikan): tekstur hanya mencakup wilayah
+       kecil di sekitar pengamat (dari tile NASA GIBS). UV harus
+       dinormalisasi KE DALAM wilayah itu, bukan ke seluruh dunia.
+       BUG YANG DIPERBAIKI: tanpa normalisasi ini, tekstur 6° melar
+       menutupi seluruh patch sehingga layar jadi satu warna rata
+       (terbukti di uji: seluruh layar (130,181,213) = biru laut).
+     ===================================================================== */
+  const useDetail = (spanDeg && spanDeg > 0);
+  const half = useDetail ? spanDeg / 2 : 0;
   const v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
-    /* arah verteks di ruang LOKAL patch */
     v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
-    /* ubah kerangka lokal patch → kerangka mesh planet dengan memutar
-       sehingga kutub +Y lokal menjadi arah lokasi pengamat */
     const q = new THREE.Quaternion().setFromUnitVectors(
       new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(cosLat0 * Math.cos(lon0), sinLat0, -cosLat0 * Math.sin(lon0)).normalize()
     );
     v.applyQuaternion(q);
-    /* sekarang v adalah arah di kerangka mesh planet → (lat, lon) → UV */
-    const lat = Math.asin(Math.max(-1, Math.min(1, v.y)));
-    const lon = Math.atan2(-v.z, v.x);
-    let u = 0.5 + lon / (2 * Math.PI);
-    const vv = 0.5 + lat / Math.PI;
-    uv.setXY(i, u - Math.floor(u), vv);
+    const latDeg = Math.asin(Math.max(-1, Math.min(1, v.y))) / DEG;
+    const lonDeg = Math.atan2(-v.z, v.x) / DEG;
+    let u, vv;
+    if (useDetail) {
+      /* ==============================================================
+         V TERBALIK — BUG YANG DIPERBAIKI
+         --------------------------------------------------------------
+         Kanvas Y naik KE BAWAH (baris 0 = paling utara), sedangkan
+         lintang naik KE ATAS. Tanpa pembalikan ini, tekstur tampil
+         terbalik utara-selatan sehingga wilayah yang terlihat bukan
+         wilayah pengamat (terbukti: layar jadi satu warna rata).
+         ============================================================== */
+      u = (lonDeg - (centerLon - half)) / spanDeg;
+      vv = 1 - (latDeg - (centerLat - half)) / spanDeg;
+    } else {
+      u = 0.5 + lonDeg / 360;
+      vv = 0.5 + latDeg / 180;
+    }
+    uv.setXY(i, u - Math.floor(u), Math.max(0, Math.min(1, vv)));
   }
   uv.needsUpdate = true;
 }
@@ -159,12 +183,15 @@ function makeSurfacePatchMaterial(body) {
     roughness: 0.95,
     metalness: 0.0,
     side: THREE.DoubleSide,
-    /* polygonOffset: tarik patch sedikit ke arah kamera di ruang depth
-       supaya selalu menang atas mesh planet yang beradius sama
-       (mengatasi z-fighting tanpa mengubah geometri). */
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4,
+    /* CATATAN: polygonOffset TIDAK dipakai di sini. Percobaan sebelumnya
+       memakai polygonOffsetFactor/Units -4 untuk mengatasi z-fighting
+       dengan mesh planet, tetapi (a) tidak bekerja dengan
+       logarithmicDepthBuffer, dan (b) dengan buffer logaritmik offset itu
+       menarik patch SANGAT jauh ke depan sehingga menutupi lapisan detail
+       (tile NASA GIBS) yang berada di atasnya — terbukti di uji: bidang
+       tile tidak pernah terlihat walau ter-render.
+       Z-fighting sendiri sudah terpecahkan dengan menyembunyikan mesh
+       bola planet selama POV (lihat buildSurfacePatch). */
   });
   if (!map && body && body.color) mat.color = new THREE.Color(body.color);
 
@@ -369,6 +396,15 @@ function updateSurfacePatch(body, lat, lon) {
   } else if (typeof setPovLighting === 'function') {
     setPovLighting(true, 30);
   }
+}
+
+/* Hitung ulang UV patch memakai cakupan tekstur tertentu.
+   Dipakai saat tekstur detail (tile) dipasang/dilepas. */
+function repatchUV(spanDeg) {
+  if (!surfacePatch) return;
+  const lat0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lat : 0;
+  const lon0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lon : 0;
+  applyPatchUV(surfacePatch, lat0, lon0, spanDeg || null);
 }
 
 /* Lepas patch (saat keluar POV atau ganti body). */

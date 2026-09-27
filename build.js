@@ -31,6 +31,8 @@ const earthViewUi = read(path.join(SRC, '21-earthview-ui.js'));
 const poles = read(path.join(SRC, '19-poles.js'));
 const surfaceSky = read(path.join(SRC, '23-surface-sky.js'));
 const surfacePatch = read(path.join(SRC, '24-surface-patch.js'));
+const surfaceTiles = read(path.join(SRC, '26-surface-tiles.js'));
+const surfaceDetail = read(path.join(SRC, '27-surface-detail.js'));
 const temporalBadge = read(path.join(SRC, '22-temporal-badge.js'));
 const starsData = read(path.join(SRC, '12-stars-data.js'));
 const constData = read(path.join(SRC, '13-constellations-data.js'));
@@ -140,6 +142,16 @@ ${safe(surfaceSky)}
 <script>
 "use strict";
 ${safe(surfacePatch)}
+</script>
+
+<script>
+"use strict";
+${safe(surfaceTiles)}
+</script>
+
+<script>
+"use strict";
+${safe(surfaceDetail)}
 </script>
 
 <script>
