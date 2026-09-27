@@ -251,6 +251,8 @@ async function boot() {
     if (typeof CONSTELLATION_LABELS !== 'undefined') {
       CONSTELLATION_LABELS.update(app.constellationLinesOn !== false && app.labelsOn !== false);
     }
+    /* zoom bertahap & panel bintang terfokus */
+    if (typeof STAR_FOCUS !== 'undefined') STAR_FOCUS.update(dt);
     updateOrbitLineVisibility();
     updateBeacons();
     updateHud();
@@ -293,6 +295,11 @@ function buildUI() {
   try {
     if (typeof CONSTELLATION_LABELS !== 'undefined') CONSTELLATION_LABELS.init();
   } catch (e) { console.warn('label rasi gagal:', e); }
+
+  /* ---- fokus bintang (zoom ke bintang seperti Stellarium) ---- */
+  try {
+    if (typeof STAR_FOCUS !== 'undefined') STAR_FOCUS.init();
+  } catch (e) { console.warn('star focus gagal:', e); }
 
   /* =====================================================================
      POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap
