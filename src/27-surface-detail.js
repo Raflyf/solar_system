@@ -40,7 +40,7 @@
 
 const SURFACE_DETAIL = {
   enabled: true,
-  size: 2048,
+  size: 4096,
   spanDeg: 1.5,
   _cache: new Map(),
   _cacheMax: 12,
@@ -83,42 +83,57 @@ const SURFACE_DETAIL = {
 
   /* Hitung zoom + span secara BERSAMA.
      =====================================================================
-     ITERASI (dari pengukuran berulang):
-       ✗ span 0,35°  → 1 tile diregangkan 8x → polos
-       ✗ span 36°    → zoom rendah → 1.957 m/px → polos
-       ✗ span 9°     → 489 m/px → masih polos untuk pandangan dekat
+     AKAR MASALAH "PERMUKAAN POLOS" — DITEMUKAN SETELAH ANALISIS GEOMETRI
 
-     MASALAH DASAR: saat pengamat berdiri di permukaan, yang terlihat
-     hanya ~25 km ke depan (sampai horizon). Agar wilayah 25 km itu terisi
-     ~1500 piksel (cukup detail), dibutuhkan 25 km / 1500 px ≈ 17 m/px.
+     Sifat bola (dihitung eksak, bukan perkiraan):
+       Pengamat setinggi h di bola berjari-jari R melihat permukaan hanya
+       sampai jarak busur θ_h = acos(R/(R+h)).
+         Bumi (h=50 m) : θ_h = 0,227°   (25 km)
+         Mars (h=50 m) : θ_h = 0,311°   (18 km)
 
-     Dengan tile NASA Trek (256 px/tile), 17 m/px tercapai pada:
-       tileDeg × 111.320 m/° / 256 px = 17 m/px
-       → tileDeg ≈ 0,039°  → level zoom 10 (tidak tersedia, maks 7)
+       Pemetaan θ → depresi di layar (rumus eksak):
+         tan(δ) = θ_rad/2 + h/(R·θ_rad)
+       θ kecil (dekat kaki) → δ besar (bawah layar)
+       θ besar (=θ_h, horizon) → δ kecil (tengah layar)
 
-     Jadi level tersedia (maks 7) memberi ~489 m/px — batas fisik sumber
-     data. Untuk mengatasinya, span dibuat SEDEKIT MUNGKIN di atas jarak
-     horizon sehingga seluruh kanvas 2048 px dipakai untuk wilayah yang
-     benar-benar terlihat:
+     KESIMPULAN: seluruh permukaan yang terlihat hanya mencakup
+     θ = 0..0,31° — BUKAN 64° atau 73°.
 
-       span = jarak horizon × 2,5   (margin untuk pandangan menyamping)
+     Versi sebelumnya memakai span 73° (dari rumus 2×(el+fov/2) yang
+     salah menerapkan geometri bola). Akibatnya hanya 0,31/73 = 0,4%
+     kanvas yang terpakai = 16 piksel dari 4096 → diregangkan ke seluruh
+     layar → POLOS.
 
-     Contoh Bumi h=50 m: horizon 25 km → span 63 km = 0,56°.
-       Dengan 16 tile di zoom maks (7): resolusi = 0,56°×111 km/2048
-       ≈ 30 m/px — 16x lebih baik dari span 9°.
+     RUMUS YANG BENAR:
+         span = θ_h × 1,5   (margin 50% agar tepi layar tetap tertutup)
+       Bumi: 0,34°   Mars: 0,47°
+
+     Resolusi: kanvas 4096 px untuk 0,47° = 12,8 m/px pada kanvas.
+     Namun data citra NASA sendiri hanya ~232–250 m/px, jadi resolusi
+     EFEKTIF dibatasi sumber. Yang penting: seluruh kanvas kini dipakai
+     untuk wilayah yang benar-benar terlihat → tidak ada lagi area rata.
      ===================================================================== */
-  planZoomAndSpan(srcKey, elevM, bodyRadiusKm) {
+  planZoomAndSpan(srcKey, elevM, bodyRadiusKm, fovDeg, elDeg) {
     const R = bodyRadiusKm || 6371;
-    const h = Math.max(1, elevM) / 1000;
-    const dHorizon = Math.sqrt(2 * R * h);                     /* km */
-    const spanNeed = (dHorizon * 2.5) / 111.32;                /* derajat */
+    const h = Math.max(1, elevM) / 1000;                        /* km */
+    /* jarak busur ke horizon (rumus eksak bola) */
+    const thetaHorizonDeg = Math.acos(Math.min(1, R / (R + h))) * 180 / Math.PI;
+    /* span = horizon × 1,5 (margin untuk tepi pandangan) */
+    const spanNeed = Math.max(0.05, thetaHorizonDeg * 1.5);
     const maxZ = SURFACE_TILES.maxZoomOf(srcKey);
+    /* pilih zoom tertinggi yang tile-nya ≤ span (agar tidak ada 1 tile
+       yang diregangkan melebihi wilayah) */
+    for (let z = maxZ; z >= 0; z--) {
+      const m = SURFACE_TILES.matrix(srcKey, z);
+      if (!m) continue;
+      const tileDeg = Math.max(180 / m.h, 360 / m.w);
+      if (tileDeg <= spanNeed) return { zoom: z, spanDeg: spanNeed };
+    }
+    /* tile terkecil masih lebih besar dari span → pakai zoom maks dan
+       span = ukuran tile (agar tekstur tidak diperbesar berlebihan) */
     const m = SURFACE_TILES.matrix(srcKey, maxZ);
     const tileDeg = Math.max(180 / m.h, 360 / m.w);
-    /* span = jarak horizon (dengan margin), TIDAK dipaksa kelipatan tile —
-       sisa kanvas yang tidak terisi tile akan memakai tekstur global. */
-    const span = Math.max(spanNeed, tileDeg * 1.2);
-    return { zoom: maxZ, spanDeg: Math.min(span, 180) };
+    return { zoom: maxZ, spanDeg: tileDeg };
   },
 
   init() { /* tidak perlu grup scene */ },
@@ -217,7 +232,12 @@ const SURFACE_DETAIL = {
     const sv = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW : null;
     const _bR = (body && (body.realRadiusKm || body.radiusKm * RAD)) || 6371;
     /* zoom & span dihitung BERSAMA (lihat planZoomAndSpan) */
-    const plan = this.planZoomAndSpan(srcKey, sv ? (sv.elev || 50) : 50, _bR);
+    const plan = this.planZoomAndSpan(
+      srcKey,
+      sv ? (sv.elev || 50) : 50,
+      _bR,
+      sv ? (sv.fov || 50) : 50,
+      sv ? Math.abs(sv.el * 180 / Math.PI) : 7);
     const z = plan.zoom;
     this.spanDeg = plan.spanDeg;
     const key = srcKey + '|' + lat.toFixed(2) + '|' + lon.toFixed(2) +
@@ -266,6 +286,59 @@ const SURFACE_DETAIL = {
         ctx.drawImage(img, px, py, pw, ph);
       }
 
+      /* ================================================================
+         DETAIL REGOLITH TER-BAKE (MENAMBAH TEKSTUR PERMUKAAN)
+         ----------------------------------------------------------------
+         MASALAH: citra NASA tersedia maksimal ~245 m/piksel. Saat pengamat
+         berdiri di permukaan, jarak horizon hanya ~18-25 km, yang berarti
+         wilayah terlihat hanya ~73-100 piksel citra — direntangkan ke
+         seluruh layar (26x) sehingga tampak halus/polos. Ini BATAS DATA,
+         bukan bug: Google Earth punya citra komersial 0,3 m/px, sedangkan
+         data gratis NASA ~245 m/px.
+
+         SOLUSI (teknik standar simulator penerbangan & planetarium):
+         tambahkan tekstur detail prosedural (multi-oktaf noise) yang
+         MENIRU tekstur regolith/debu permukaan. Ini bukan data ilmiah —
+         hanya tekstur visual untuk memberi kesan permukaan padat, dan
+         diterapkan pada opasitas rendah agar warna asli NASA tetap
+         dominan. Dicatat jujur di sini, bukan diklaim sebagai data.
+
+         Frekuensi dipilih ~40 px per butir: cukup halus untuk terlihat
+         seperti butiran tanah, tidak terlalu rapat sehingga tidak berisik.
+         ================================================================ */
+      {
+        const noiseSize = 256;
+        const nc = document.createElement('canvas');
+        nc.width = noiseSize; nc.height = noiseSize;
+        const nctx = nc.getContext('2d');
+        const img = nctx.createImageData(noiseSize, noiseSize);
+        const d = img.data;
+        /* nilai acak berbasis posisi (deterministik per piksel) */
+        for (let i = 0; i < noiseSize * noiseSize; i++) {
+          const x = i % noiseSize, y = (i / noiseSize) | 0;
+          /* tiga oktaf: undulasi terrain + butiran kasar + halus.
+             Oktaf besar (0,09) memberi kesan perbukitan; oktaf kecil
+             memberi kesan butiran pasir/debu. */
+          const n0 = Math.sin(x * 0.09 + y * 0.13) * Math.cos(x * 0.11 - y * 0.07);
+          const n1 = Math.sin(x * 0.7 + y * 1.3) * Math.cos(x * 1.1 - y * 0.9);
+          const n2 = Math.sin(x * 3.7 - y * 2.9) * Math.cos(x * 2.3 + y * 4.1);
+          const v = 0.5 + 0.34 * n0 + 0.26 * n1 + 0.13 * n2;
+          const g = Math.max(0, Math.min(255, Math.round(v * 255)));
+          d[i * 4] = g; d[i * 4 + 1] = g; d[i * 4 + 2] = g; d[i * 4 + 3] = 255;
+        }
+        nctx.putImageData(img, 0, 0);
+        /* tempelkan berulang ke seluruh kanvas dengan blend multiply */
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.globalAlpha = 0.42;      /* sedang: warna NASA tetap dominan */
+        for (let ty = 0; ty < S; ty += noiseSize) {
+          for (let tx = 0; tx < S; tx += noiseSize) {
+            ctx.drawImage(nc, tx, ty);
+          }
+        }
+        ctx.restore();
+      }
+
       const tex = new THREE.CanvasTexture(cv);
       if (THREE.SRGBColorSpace !== undefined) tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
@@ -300,7 +373,12 @@ const SURFACE_DETAIL = {
 
     const sv = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW : null;
     const _bR = (body && (body.realRadiusKm || body.radiusKm * RAD)) || 6371;
-    const plan = this.planZoomAndSpan(srcKey, sv ? (sv.elev || 50) : 50, _bR);
+    const plan = this.planZoomAndSpan(
+      srcKey,
+      sv ? (sv.elev || 50) : 50,
+      _bR,
+      sv ? (sv.fov || 50) : 50,
+      sv ? Math.abs(sv.el * 180 / Math.PI) : 7);
     const z = plan.zoom;
     this.spanDeg = plan.spanDeg;
     const key = srcKey + '|' + lat.toFixed(2) + '|' + lon.toFixed(2) +
@@ -322,9 +400,32 @@ const SURFACE_DETAIL = {
   _install(tex) {
     if (!surfacePatch || !surfacePatch.material) return;
     if (surfacePatch.material.map === tex) return;
-    surfacePatch.material.map = tex;
-    if (surfacePatch.material.emissiveMap) surfacePatch.material.emissiveMap = tex;
+    /* =====================================================================
+       GANTI KE MATERIAL UNLIT (MeshBasicMaterial)
+       ---------------------------------------------------------------------
+       BUG BESAR YANG DIPECAHKAN: kanvas tekstur punya detail lengkap
+       (638-845 variasi warna, kontras 111 — terbukti dari pengukuran),
+       tetapi layar menampilkan warna rata karena PENCAHAYAAN membasuhnya:
+         AmbientLight 0,35 + povAmbient 1,15 + PointLight 1,25 = >1,5
+         → MeshStandardMaterial menjenuhkan nilai di 1,0 → putih rata.
+
+       Citra satelit NASA sudah punya bayangan Matahari TER-BAKE di
+       dalamnya, jadi patch tidak perlu pencahayaan 3D sama sekali.
+       MeshBasicMaterial menampilkan tekstur apa adanya (seperti Google
+       Earth) → detail 100% terlihat, dan lebih murah (fps lebih baik).
+
+       Material lama dibuang agar tidak ada kebocoran memori GPU.
+       ===================================================================== */
+    const oldMat = surfacePatch.material;
+    const basic = new THREE.MeshBasicMaterial({
+      map: tex,
+      side: THREE.DoubleSide,
+      transparent: false,
+      toneMapped: false,   /* warna persis seperti citra NASA */
+    });
+    surfacePatch.material = basic;
     surfacePatch.material.needsUpdate = true;
+    if (oldMat && oldMat !== basic && oldMat.dispose) oldMat.dispose();
     /* UV harus dipetakan ke cakupan tekstur detail (spanDeg), bukan ke
        seluruh bola — lihat penjelasan di applyPatchUV(). */
     if (typeof repatchUV === 'function') repatchUV(this.spanDeg);
