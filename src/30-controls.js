@@ -149,8 +149,21 @@ function initControls(canvas) {
   /* klik = pilih benda (hanya jika tidak menyeret) */
   canvas.addEventListener('click', (e) => {
     if (moved > 6) return;
-    /* di mode POV Bumi, klik tidak memfokuskan benda lain */
-    if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) return;
+    /* ==================================================================
+       BUG YANG DIPERBAIKI — ZOOM PLANET DARI POV TIDAK BISA
+       ------------------------------------------------------------------
+       KELUHAN PENGGUNA: "untuk zoom planet masih mentok segini, hanya
+       sampai bulan terlihat saja, tidak bisa zoom planet dari pov nya".
+
+       Versi sebelumnya: `if (EARTH_VIEW.active) return;` — SEMUA klik di
+       mode POV langsung dibuang, sehingga planet lain tidak bisa dipilih
+       atau di-zoom dari POV.
+
+       PERBAIKAN: di mode POV, klik planet/bulan TETAP diproses. Bila yang
+       diklik adalah benda LAIN (bukan benda POV saat ini), maka keluar
+       dari POV dan fokuskan benda itu (zoom ke planet). Bila yang diklik
+       adalah benda POV itu sendiri, tidak terjadi apa-apa (sudah di sana).
+       ================================================================== */
     const rect = canvas.getBoundingClientRect();
     const ndc = new THREE.Vector2(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,

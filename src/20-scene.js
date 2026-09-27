@@ -1342,12 +1342,6 @@ function moonOffsetLocal(b, jd) {
   return moonLocalOffset(b, jd);
 }
 
-/* Offset satelit terhadap induknya, dalam unit scene (tanpa posisi induk).
-   Dipertahankan sebagai alias supaya kode lama tetap jalan. */
-function moonOffsetUnits(b, jd) {
-  return moonSceneOffset(b, jd);
-}
-
 /* Perbarui garis orbit bila tanggal simulasi sudah bergeser cukup jauh.
    Elemen orbit planet berubah sangat lambat (orde abad), jadi memperbarui
    tiap ~10 hari sudah lebih dari cukup dan tidak membebani tiap frame. */
