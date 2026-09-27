@@ -498,10 +498,38 @@ function updateCamera(dt) {
       rebaseOffset.copy(cs.pos);
       camera.position.set(0, 0, 0);
 
-      /* arah pandang dari azimut/elevasi dalam kerangka pengamat ENU */
+      /* arah pandang dari azimut/elevasi dalam kerangka pengamat ENU.
+
+         ==================================================================
+         BUG YANG DIPERBAIKI — camera.lookAt() TIDAK DAPAT DIANDALKAN
+         ------------------------------------------------------------------
+         Versi sebelumnya memakai:
+             camera.up.copy(obs.zenith);
+             camera.lookAt(fwd);          // fwd = vektor ARAH
+         Masalahnya lookAt() mengharapkan TITIK TUJU, bukan arah; selain itu
+         ia memakai camera.up sebagai acuan "atas", dan bila up hampir
+         sejajar dengan arah pandang (mis. memandang dekat zenit), hasilnya
+         tidak terdefinisi — kamera bisa menghadap ke arah yang salah.
+         Terbukti: kamera diarahkan ke Bulan (alt 56°) tetapi sudut antara
+         arah kamera dan arah Bulan = 100° (seharusnya 0°).
+
+         SOLUSI: bangun basis kamera secara EKSPLISIT dari kerangka ENU
+         pengamat — tidak ada ketergantungan pada up atau lookAt:
+             right = fwd × up        (sumbu +X kamera)
+             upCam = right × fwd     (sumbu +Y kamera)
+             -Z kamera = fwd         (Three.js melihat sepanjang −Z)
+         Matriks basis (right, upCam, −fwd) lalu diubah ke kuaternion.
+         Ini terdefinisi untuk SEMUA arah pandang, termasuk tegak lurus.
+         ================================================================== */
       const fwd = SURFACE_VIEW.viewDir(obs, _tmp);
-      camera.up.copy(obs.zenith);
-      camera.lookAt(fwd);
+      const right = new THREE.Vector3().crossVectors(fwd, obs.zenith).normalize();
+      /* bila fwd sejajar zenith (memandang tegak), cross = nol → pakai east */
+      if (right.lengthSq() < 1e-9) right.copy(obs.east);
+      const upCam = new THREE.Vector3().crossVectors(right, fwd).normalize();
+      const back = fwd.clone().negate();
+      const m = new THREE.Matrix4().makeBasis(right, upCam, back);
+      camera.quaternion.setFromRotationMatrix(m);
+      camera.up.copy(upCam);
 
     /* Pesawat dekat (near plane) harus sangat kecil di POV: kamera berdiri
        puluhan meter di atas permukaan, sedangkan near bawaan 0,0005 unit =
