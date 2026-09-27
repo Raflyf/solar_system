@@ -81,24 +81,44 @@ const SURFACE_DETAIL = {
     return Math.min(120, Math.max(0.35, spanHorizon));
   },
 
-  /* Hitung zoom + span secara BERSAMA agar 4x4 tile menutupi span,
-     dengan zoom setinggi mungkin (resolusi terbaik) selama span masih
-     ≥ jarak horizon. */
+  /* Hitung zoom + span secara BERSAMA.
+     =====================================================================
+     ITERASI (dari pengukuran berulang):
+       ✗ span 0,35°  → 1 tile diregangkan 8x → polos
+       ✗ span 36°    → zoom rendah → 1.957 m/px → polos
+       ✗ span 9°     → 489 m/px → masih polos untuk pandangan dekat
+
+     MASALAH DASAR: saat pengamat berdiri di permukaan, yang terlihat
+     hanya ~25 km ke depan (sampai horizon). Agar wilayah 25 km itu terisi
+     ~1500 piksel (cukup detail), dibutuhkan 25 km / 1500 px ≈ 17 m/px.
+
+     Dengan tile NASA Trek (256 px/tile), 17 m/px tercapai pada:
+       tileDeg × 111.320 m/° / 256 px = 17 m/px
+       → tileDeg ≈ 0,039°  → level zoom 10 (tidak tersedia, maks 7)
+
+     Jadi level tersedia (maks 7) memberi ~489 m/px — batas fisik sumber
+     data. Untuk mengatasinya, span dibuat SEDEKIT MUNGKIN di atas jarak
+     horizon sehingga seluruh kanvas 2048 px dipakai untuk wilayah yang
+     benar-benar terlihat:
+
+       span = jarak horizon × 2,5   (margin untuk pandangan menyamping)
+
+     Contoh Bumi h=50 m: horizon 25 km → span 63 km = 0,56°.
+       Dengan 16 tile di zoom maks (7): resolusi = 0,56°×111 km/2048
+       ≈ 30 m/px — 16x lebih baik dari span 9°.
+     ===================================================================== */
   planZoomAndSpan(srcKey, elevM, bodyRadiusKm) {
     const R = bodyRadiusKm || 6371;
     const h = Math.max(1, elevM) / 1000;
-    const spanHorizon = (2 * Math.sqrt(2 * R * h)) / 111.32;   /* derajat */
+    const dHorizon = Math.sqrt(2 * R * h);                     /* km */
+    const spanNeed = (dHorizon * 2.5) / 111.32;                /* derajat */
     const maxZ = SURFACE_TILES.maxZoomOf(srcKey);
-    /* mulai dari zoom tertinggi, turun sampai span-nya ≥ horizon */
-    for (let z = maxZ; z >= 0; z--) {
-      const m = SURFACE_TILES.matrix(srcKey, z);
-      if (!m) continue;
-      const tileDeg = Math.max(180 / m.h, 360 / m.w);
-      const span = tileDeg * 4;                    /* 4x4 tile */
-      if (span >= spanHorizon) return { zoom: z, spanDeg: span };
-    }
-    const m0 = SURFACE_TILES.matrix(srcKey, 0) || { w: 3, h: 2 };
-    return { zoom: 0, spanDeg: Math.max(180 / m0.h, 360 / m0.w) * 4 };
+    const m = SURFACE_TILES.matrix(srcKey, maxZ);
+    const tileDeg = Math.max(180 / m.h, 360 / m.w);
+    /* span = jarak horizon (dengan margin), TIDAK dipaksa kelipatan tile —
+       sisa kanvas yang tidak terisi tile akan memakai tekstur global. */
+    const span = Math.max(spanNeed, tileDeg * 1.2);
+    return { zoom: maxZ, spanDeg: Math.min(span, 180) };
   },
 
   init() { /* tidak perlu grup scene */ },

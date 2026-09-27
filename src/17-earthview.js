@@ -44,7 +44,7 @@ const SURFACE_VIEW = {
 
   /* orientasi pandang */
   az: 0,             /* azimut (radian, 0 = utara, + = timur) */
-  el: 0.30,          /* elevasi (radian dari horizon) */
+  el: -0.12,         /* elevasi (radian dari horizon; negatif = menunduk) */
   fov: 50,           /* lensa khusus POV */
 
   /* tampilan */
@@ -296,7 +296,17 @@ const SURFACE_VIEW = {
 
     this.active = true;
     this.az = 0;
-    this.el = 0.30;
+    /* =====================================================================
+       SUDUT AWAL POV — MENUNDUK SEDIKIT (permintaan "texture pov tidak ada")
+       ---------------------------------------------------------------------
+       Sebelumnya el = 0,30 rad (17° ke ATAS). Akibatnya saat masuk POV,
+       pengguna langsung melihat LANGIT dan mengira "permukaan tidak ada
+       tekstur" — padahal permukaan ada di bawah, hanya tidak terlihat.
+
+       Sekarang el = −0,12 rad (−7°, menunduk sedikit): permukaan + horizon
+       langsung terlihat, seperti berdiri di tanah dan memandang ke depan.
+       ===================================================================== */
+    this.el = -0.12;
     this.fov = 50;
 
     cameraState.vel.set(0, 0, 0);
