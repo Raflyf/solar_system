@@ -242,7 +242,13 @@ function initControls(canvas) {
        ================================================================== */
     const arahKlik = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera)
       .sub(camera.position).normalize();
-    const bendaTerdekat = cariBendaDariArah(arahKlik, 3.5);
+    /* Toleransi klik untuk planet/bulan — MENYESUAIKAN ZOOM seperti bintang
+       (lihat penjelasan di STAR_FOCUS.toleransiSudut). Radius sasaran 34 px
+       di layar supaya klik terasa pas di semua tingkat zoom. */
+    const fovNow = camera.fov || 50;
+    const tinggiLayar = window.innerHeight || 640;
+    const tolPlanetDeg = Math.max(0.02, Math.min(6.0, 34 * fovNow / tinggiLayar));
+    const bendaTerdekat = cariBendaDariArah(arahKlik, tolPlanetDeg);
     if (bendaTerdekat) { focusBody(bendaTerdekat); return; }
     /* ==================================================================
        BINTANG & OBJEK LANGIT — BARU (permintaan pengguna: "coba tiru zoom

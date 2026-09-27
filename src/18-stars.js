@@ -51,40 +51,44 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — DIPERBESAR SECARA UNIVERSAL
+     UKURAN BINTANG — KURVA EKSPONENSIAL (bukan linier)
      ---------------------------------------------------------------------
-     KELUHAN PENGGUNA (terbaru): "bintang terang nya masih sangat kecil dan
-     tidak terlihat, jauh dari kata terlihat jelas, hanya titik seperti
-     1 pixel saja" + "ubah semua secara universal semua bintang terang agar
-     lebih jelas besar dan terlihat"
+     KELUHAN PENGGUNA: "sekarang malah semua bintang jadi besar dan runyam
+     sampai menutupi milkyway nya"
 
-     PERJALANAN NILAI (dari keluhan-keluhan sebelumnya):
-         Awal   : 7,6 - mag x 0,94   (terlalu kecil)
-         Lalu   : 5,0 - mag x 0,50   (makin kecil)
-         Lalu   : 11,0 - mag x 1,15  (2x lebih besar)
-     Namun keluhan tetap muncul karena MASALAH SEBENARNYA ada di shader:
-     `core = smoothstep(1.0, 0.0, r * 6.0)` membuat hanya ~17% tengah titik
-     yang terang. Jadi ukuran 12 px hanya tampak ~2 px. Shader sudah
-     diperbaiki di berkas ini.
+     MASALAH PADA VERSI SEBELUMNYA (kurva LINIER):
+         ukuran = max(3,0 ; 14,0 - mag x 1,45)
+         mag 6 -> 4,6 px      (terlalu besar untuk bintang redup!)
+         mag 8 -> 3,0 px      (semua bintang tampak sama besar)
+     Dengan 108.072 bintang, ukuran minimum 3 px membuat langit PENUH
+     bulatan besar — tidak ada hierarki terang/redup, dan pita Bima Sakti
+     tertutup oleh hamparan bintang.
 
-     Sekarang ukuran dinaikkan SEKALI LAGI agar bintang terang benar-benar
-     besar dan jelas:
-         mag -1,5 (Sirius)     -> ~17 px
-         mag  0                -> ~14 px
-         mag  1                -> ~12 px
-         mag  3                ->  ~8 px
-         mag  6                ->  ~4 px
-         mag  8 (batas katalog)->  ~3 px
-     Rumus: ukuran = 14,0 - mag x 1,45, minimum 3,0 px.
-     Batas minimum dinaikkan 2,2 -> 3,0 px supaya bintang redup pun tetap
-     terlihat (bukan titik 1 piksel).
+     PENYEBAB: kurva linier memberi ukuran besar pada SEMUA magnitudo.
+     Rentang magnitudo katalog sangat lebar (mag -1,5 sampai 8), sehingga
+     selisih 9,5 magnitudo hanya menghasilkan selisih ukuran 11 px.
+
+     SOLUSI: kurva EKSPONENSIAL — bintang terang tumbuh cepat, bintang
+     redup menyusut tajam (seperti persepsi mata dan seperti Stellarium):
+         mag -1,5 (Sirius)     -> ~14 px   (besar, jelas)
+         mag  0                ->  ~9,5 px
+         mag  1                ->  ~7,2 px
+         mag  3                ->  ~4,1 px
+         mag  5                ->  ~2,4 px
+         mag  6 (mata telanjang) -> ~1,8 px  (titik kecil)
+         mag  8 (batas katalog)  -> ~1,3 px  (titik halus)
+     Rumus: ukuran = 9,5 x 1,32^(-mag), dibatasi 1,3 .. 18 px.
+     Hasil: hierarki terang/redup JELAS; bintang redup jadi titik halus
+     yang membentuk tekstur, bukan bulatan; pita Bima Sakti kembali
+     terlihat karena tidak lagi tertutup.
      ===================================================================== */
-  return Math.max(3.0, 14.0 - mag * 1.45);
+  return Math.max(1.3, Math.min(18.0, 9.5 * Math.pow(1.32, -mag)));
 }
 function starAlpha(mag) {
-  /* Alpha dinaikkan agar bintang redup lebih terlihat.
-     Minimum 0,30 -> 0,45; bintang terang tetap 1,0 (opak penuh). */
-  return Math.max(0.45, Math.min(1.0, 1.15 - mag * 0.085));
+  /* Alpha mengikuti magnitudo lebih tegas: bintang redup samar, bintang
+     terang opak. Minimum 0,20 (dari 0,45) supaya bintang redup kembali
+     menjadi titik halus, bukan bulatan terang. */
+  return Math.max(0.20, Math.min(1.0, 1.0 - mag * 0.11));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
@@ -494,14 +498,35 @@ function buildStarField() {
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r = length(d) * 2.0;',
       '  if (r > 1.0) discard;',
+      /* ================================================================
+         PROFIL — DIBUAT MENYESUAIKAN UKURAN BINTANG
+         ----------------------------------------------------------------
+         KELUHAN: "sekarang malah semua bintang jadi besar dan runyam
+         sampai menutupi milkyway nya"
+
+         MASALAH: halo 0,40 diberikan ke SEMUA bintang. Bintang redup yang
+         titiknya kecil (1,3-2 px) tetap mendapat halo 40% dari diameternya
+         -> terlihat sebagai bulatan kecil bercahaya, bukan titik halus.
+         Dengan 108.072 bintang, langit jadi penuh bulatan.
+
+         SOLUSI: besarnya halo mengikuti UKURAN titik bintang. Bintang
+         redup (titik kecil) mendapat halo sangat tipis; bintang terang
+         (titik besar) mendapat halo penuh. Ini membuat hierarki terang/
+         redup terlihat dan pita Bima Sakti tidak tertutup.
+
+         Rumus: faktor = clamp((ukuran - 1,3) / 8,0 ; 0,05 .. 1,0)
+         Ukuran titik tersedia dari vAlpha? Tidak — jadi dipakai
+         panjang gradien: titik besar punya gl_PointCoord lebih halus.
+         Karena itu halo dikaitkan ke vAlpha (kecerahan) sebagai proksi.
+         ================================================================ */
+      '  float haloKuat = 0.06 + 0.34 * smoothstep(0.35, 1.0, vAlpha);',
       '  float core = smoothstep(0.85, 0.0, r);',
-      '  float halo = pow(max(0.0, 1.0 - r), 2.2) * 0.40;',
-      /* spike difraksi: hanya muncul pada bintang yang sangat terang
-         (vAlpha mendekati 1). Dihitung dari kecuraman sumbu x/y. */
+      '  float halo = pow(max(0.0, 1.0 - r), 2.2) * haloKuat;',
+      /* spike difraksi: hanya untuk bintang SANGAT terang */
       '  float ax = abs(d.x), ay = abs(d.y);',
       '  float spike = (smoothstep(0.05, 0.0, ax) + smoothstep(0.05, 0.0, ay))',
       '              * smoothstep(1.0, 0.1, r) * 0.45;',
-      '  float a = clamp(core + halo + spike * smoothstep(0.75, 1.0, vAlpha), 0.0, 1.0)',
+      '  float a = clamp(core + halo + spike * smoothstep(0.85, 1.0, vAlpha), 0.0, 1.0)',
       '          * vAlpha * uOpacity;',
       '  vec3 col = vCol * (1.0 + 0.30 * core);',
       '  gl_FragColor = vec4(col, a);',
