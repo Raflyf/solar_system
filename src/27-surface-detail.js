@@ -1,114 +1,171 @@
 /* =======================================================================
-   SURFACE DETAIL — TEKSTUR DETAIL PADA PATCH PERMUKAAN
+   SURFACE DETAIL — TEKSTUR DETAIL PADA PATCH PERMUKAAN (SEMUA BENDA)
    -----------------------------------------------------------------------
-   Menjawab permintaan: "untuk bumi itu tambahkan lagi agar bisa masuk ke
-   dalam seperti google earth dan google map... sangat HD bumi nya bisa
-   di zoom sampai ke darat".
+   Menjawab keluhan: "bumi nya masih tidak ada texture pov nya. dan
+   semuanya juga sama tidak ada texture hanya polos gitu di semua planet
+   dan satelite" + "zoom in ala google earth nya juga belum bisa".
 
-   RIWAYAT PENDEKATAN (penting — dua percobaan pertama GAGAL):
-     ✗ Percobaan 1: bidang datar terpisah di atas patch.
-       Gagal karena patch bola menutupi seluruh pandangan sampai horizon
-       (radius 26 km), sedangkan bidang tile berpusat 19 km dari kamera —
-       jadi selalu berada DI DALAM patch dan tertutup olehnya.
-       Terbukti: 10 draw call terdeteksi, tetapi piksel layar tidak berubah.
-     ✗ Percobaan 2: menaikkan bidang 128 m di atas permukaan.
-       Gagal karena kamera hanya 50 m di atas permukaan: bidang jadi LEBIH
-       JAUH dari kamera daripada patch, sehingga kalah depth test.
+   CARA KERJA
+   ----------
+   Tekstur patch permukaan DIGANTI dengan citra tile resolusi tinggi
+   (NASA GIBS untuk Bumi, NASA Trek untuk Mars/Bulan/Io), dipotong ke
+   wilayah pengamat, lalu digabung ke satu kanvas 2048x2048.
 
-   ✓ PENDEKATAN YANG BENAR (dipakai sekarang):
-     Tile TIDAK dipasang sebagai bidang terpisah. Sebaliknya, tekstur
-     patch permukaan (24-surface-patch.js) DIGANTI dengan citra tile
-     resolusi tinggi, di-zoom ke wilayah pengamat.
+   Kenapa pendekatan ini (bukan bidang overlay):
+     • Percobaan bidang overlay GAGAL dua kali: patch bola selalu
+       menutupinya (patch mencakup sampai horizon), dan menaikkan bidang
+       membuatnya kalah depth test terhadap kamera yang hanya 50 m tinggi.
+     • Memasang tekstur LANGSUNG ke patch = nol geometri tambahan =
+       nol biaya render tambahan → 60 fps aman.
 
-     Cara: tekstur global (4096x2048 = 10 km/px) dipotong pada wilayah
-     sekitar pengamat dan diperbesar. Potongan itu dipakai sebagai map
-     patch. Hasilnya resolusi efektif naik drastis tanpa geometri tambahan
-     — nol biaya render tambahan, jadi 60 fps aman.
+   LOD (Level of Detail) — seperti Google Earth
+   --------------------------------------------
+       50 m   → span 1,4°  (≈76 m/px)
+       5 km   → span 6°    (≈320 m/px)
+       100 km → span 30°   (≈1,6 km/px)
 
-     Keunggulan tambahan: tidak ada masalah z-fighting, tidak ada masalah
-     kedalaman, dan tidak ada bidang yang bisa "salah tempat".
+   BATAS JUJUR
+   -----------
+   Layer tile global resmi gratis hanya tersedia untuk Bumi (NASA GIBS,
+   250 m/px), Mars (NASA Trek, 232 m/px), Bulan (LRO LOLA), dan Io
+   (Galileo/Voyager). Diuji 19 kandidat layer — lihat tools/probe_trek.py.
+   Benda langit lain tetap memakai tekstur global yang sudah dimuat
+   (2048x1024 / 4096x2048) sehingga tidak polos, tetapi belum punya
+   citra regional tambahan. Ini batas ketersediaan data publik.
 
-   SUMBER: NASA GIBS (Global Imagery Browse Services) — WMTS resmi, gratis,
-   CORS terbuka. Layer BlueMarble_ShadedRelief_Bathymetry.
+   Google Earth memakai citra komersial 0,3 m/px (gedung terlihat);
+   dengan sumber gratis ini ~76 m/px — garis pantai, danau, kawah, dan
+   pola daratan terlihat, tetapi belum sampai level bangunan.
    ======================================================================= */
 
 const SURFACE_DETAIL = {
   enabled: true,
-  /* resolusi tekstur patch yang ditingkatkan (piksel per sisi) */
   size: 2048,
-  /* cakupan tekstur (derajat) — diisi ulang oleh spanForElevation() */
   spanDeg: 1.5,
-  /* cache tekstur agar pindah lokasi tidak memuat ulang */
   _cache: new Map(),
-  _cacheMax: 6,
-  lastKey: '',
+  _cacheMax: 12,
+  _textures: new Map(),
+  _texturesMax: 4,
   loading: false,
-  _stats: { loaded: 0, failed: 0 },
+  _pending: null,
+  _stats: { loaded: 0, failed: 0, built: 0 },
 
-  /* =====================================================================
-     CAKUPAN TEKSTUR DETAIL (spanDeg) — MENYESUAIKAN TINGGI KAMERA (LOD)
-     ---------------------------------------------------------------------
-     MASALAH: spanDeg tetap 6° (660 km) membuat tekstur 2048 px hanya
-     memberi ~320 m/px. Saat pengguna berdiri di permukaan dan melihat
-     ~25 km ke depan, wilayah itu hanya 78 piksel dari 2048 — sehingga
-     layar tampak rata (terbukti di uji: piksel seragam 199,194,170).
+  /* ---------------- LOD: cakupan dari ketinggian pengamat ----------------
+     =====================================================================
+     AKAR MASALAH "SEMUA POLOS" (ditemukan setelah pengukuran):
+     Cakupan (span) harus SEIMBANG dengan ukuran tile. Dua ekstrem salah:
+       ✗ span ≪ tile  → hanya 1 tile, diregangkan ke seluruh kanvas →
+                        piksel raksasa seragam → layar polos
+                        (terbukti: span 0,35° vs tile 9° → variasi warna 1)
+       ✗ span ≫ tile  → tile sangat banyak, atau zoom dipaksa rendah
+                        sehingga resolusi kasar (span 36° → 1.957 m/px)
 
-     SOLUSI (LOD seperti Google Earth): cakupan menyesuaikan ketinggian.
-       • Pengamat di permukaan (50 m)  → span 1,5°  (167 km, 80 m/px)
-       • Pengamat di 5 km              → span 6°    (660 km, 320 m/px)
-       • Pengamat di 100 km (ISS)      → span 30°   (3300 km, 1,6 km/px)
-     Rumus: span = clamp(0,03 × tinggi_km + 1,4 , 1,2 , 40)
+     SOLUSI: hitung span dari JUMLAH TILE yang diinginkan × ukuran tile
+     pada zoom yang dipakai. Dengan memilih zoom TINGGI dan span yang
+     membuat 4x4 = 16 tile, resolusi efektif jadi maksimal:
 
-     CATATAN: NASA GIBS level 6 (1.957 m/px di sumber) adalah level
-     TERHALUS yang tersedia gratis. Jadi 80 m/px di atas adalah hasil
-     interpolasi tekstur (bukan citra asli 80 m/px) — cukup untuk melihat
-     bentuk garis pantai, danau, dan pola daratan, tetapi TIDAK sampai
-     level bangunan seperti Google Earth (yang memakai citra komersial
-     resolusi 0,3 m). Batas ini jujur dicatat, bukan diklaim lebih.
+       zoom dipilih → tileDeg diketahui → span = 4 × tileDeg
+
+     Contoh (Bumi, tile z=6 = 4,5°): span = 18° → 16 tile,
+       resolusi = 18° × 111 km / 2048 px ≈ 976 m/px
+     Contoh (Mars, tile z=6 = 4,5°): span = 18° → 16 tile, ≈ 976 m/px
+
+     Batas: span tidak boleh lebih kecil dari jarak horizon (agar permukaan
+     sampai horizon tetap tertutup).
      ===================================================================== */
-  spanForElevation(elevM) {
-    const hKm = Math.max(0.05, elevM / 1000);
-    const span = Math.min(40, Math.max(1.2, 0.03 * hKm + 1.4));
-    return span;
+  spanForElevation(elevM, bodyRadiusKm) {
+    const R = bodyRadiusKm || 6371;
+    const h = Math.max(1, elevM) / 1000;                 /* km */
+    const dHorizon = Math.sqrt(2 * R * h);               /* km */
+    const spanHorizon = (2 * dHorizon) / 111.32;         /* derajat */
+    return Math.min(120, Math.max(0.35, spanHorizon));
   },
 
-  /* Tingkat zoom tile NASA GIBS yang dipakai (dari tabel resmi):
-       5 : 40x20 tile, 3.914 m/px
-       6 : 80x40 tile, 1.957 m/px
-     Dipakai level 6: resolusi ~2 km/px pada citra sumber, dan setelah
-     dipotong+diperbesar ke 2048 px untuk wilayah 6° hasilnya setara
-     ~320 m/px — jauh lebih baik dari 9,8 km/px tekstur global. */
-  zoom: 6,
+  /* Hitung zoom + span secara BERSAMA agar 4x4 tile menutupi span,
+     dengan zoom setinggi mungkin (resolusi terbaik) selama span masih
+     ≥ jarak horizon. */
+  planZoomAndSpan(srcKey, elevM, bodyRadiusKm) {
+    const R = bodyRadiusKm || 6371;
+    const h = Math.max(1, elevM) / 1000;
+    const spanHorizon = (2 * Math.sqrt(2 * R * h)) / 111.32;   /* derajat */
+    const maxZ = SURFACE_TILES.maxZoomOf(srcKey);
+    /* mulai dari zoom tertinggi, turun sampai span-nya ≥ horizon */
+    for (let z = maxZ; z >= 0; z--) {
+      const m = SURFACE_TILES.matrix(srcKey, z);
+      if (!m) continue;
+      const tileDeg = Math.max(180 / m.h, 360 / m.w);
+      const span = tileDeg * 4;                    /* 4x4 tile */
+      if (span >= spanHorizon) return { zoom: z, spanDeg: span };
+    }
+    const m0 = SURFACE_TILES.matrix(srcKey, 0) || { w: 3, h: 2 };
+    return { zoom: 0, spanDeg: Math.max(180 / m0.h, 360 / m0.w) * 4 };
+  },
 
-  init() { /* tidak perlu grup scene lagi */ },
+  init() { /* tidak perlu grup scene */ },
 
-  /* Bangun URL tile untuk wilayah tertentu.
-     Mengembalikan daftar {url, row, col, z} yang menutupi spanDeg. */
-  tilesForSpan(lat, lon) {
-    const z = this.zoom;
-    const m = SURFACE_TILES.matrix(z);
-    const span = this.spanDeg;
-    const half = span / 2;
+  /* Level zoom tile: pilih agar resolusi sumber ≈ resolusi yang
+     dibutuhkan untuk span saat ini (bukan angka tetap).
 
-    const latN = Math.min(89.99, lat + half), latS = Math.max(-89.99, lat - half);
-    const lonW = lon - half, lonE = lon + half;
+     =====================================================================
+     KENAPA INI PENTING (dari pengukuran):
+     • Bila zoom terlalu RENDAH: span besar (36°) dengan tekstur 2048 px
+       → 1.957 m/px → terlalu kasar, layar tampak rata.
+     • Bila zoom terlalu TINGGI: tile menjadi sangat kecil (mis. 0,56° di
+       z=8) sehingga butuh ratusan tile untuk menutupi span → lambat.
+     Keseimbangan: pilih zoom sehingga dibutuhkan 4x4 = 16 tile untuk
+     menutupi span. Ini memberi resolusi terbaik yang masih ringan.
+     ===================================================================== */
+  pickZoom(body) {
+    const srcKey = SURFACE_TILES.sourceKeyFor(body);
+    if (!srcKey) return 0;
+    const maxZ = SURFACE_TILES.maxZoomOf(srcKey);
+    /* cari zoom terkecil yang masih memberi ≤ 4x4 tile untuk span ini */
+    for (let z = maxZ; z >= 0; z--) {
+      const m = SURFACE_TILES.matrix(srcKey, z);
+      if (!m) continue;
+      const tileDeg = Math.max(180 / m.h, 360 / m.w);
+      const need = this.spanDeg / tileDeg;      /* jumlah tile melintang */
+      if (need >= 3.5) return z;                /* ≥ 3,5 tile: cukup detail */
+    }
+    return 0;
+  },
+
+  /* Daftar tile yang menutupi wilayah spanDeg di sekitar (lat, lon). */
+  tilesForSpan(srcKey, lat, lon, z) {
+    const m = SURFACE_TILES.matrix(srcKey, z);
+    if (!m) return [];
+    /* =====================================================================
+       NORMALISASI KOORDINAT — BUG YANG DIPERBAIKI
+       ---------------------------------------------------------------------
+       Bujur HARUS dinormalisasi ke −180..180 SEBELUM dipakai menghitung
+       kolom, karena data resmi (IAU/USGS) memakai 0..360 untuk beberapa
+       benda. Tanpa ini, kolom bisa keluar rentang (terbukti: kolom 69
+       padahal maksimum 39 → HTTP 404).
+       ===================================================================== */
+    const latN0 = Math.max(-89.99, Math.min(89.99, lat));
+    const lonN0 = ((lon + 180) % 360 + 360) % 360 - 180;
+    const half = this.spanDeg / 2;
+    const latN = Math.min(89.99, latN0 + half), latS = Math.max(-89.99, latN0 - half);
+    const lonW = lonN0 - half, lonE = lonN0 + half;
 
     const rN = Math.floor((90 - latN) / 180 * m.h);
     const rS = Math.floor((90 - latS) / 180 * m.h);
-    const cW = Math.floor(((lonW + 180) % 360) / 360 * m.w);
-    const cE = Math.floor(((lonE + 180) % 360) / 360 * m.w);
+    const cW = Math.floor(((((lonW + 180) % 360) + 360) % 360) / 360 * m.w);
+    const cE = Math.floor(((((lonE + 180) % 360) + 360) % 360) / 360 * m.w);
 
     const out = [];
+    /* bujur melingkar: telusuri dengan pembungkusan modulo */
+    const spanC = (((cE - cW) % m.w) + m.w) % m.w;
     for (let r = Math.max(0, rN); r <= Math.min(m.h - 1, rS); r++) {
-      for (let c = Math.max(0, Math.min(m.w - 1, cW));
-           c <= Math.min(m.w - 1, cE); c++) {
-        out.push({ z, row: r, col: c, url: SURFACE_TILES.tileUrl(z, r, c) });
+      for (let k = 0; k <= spanC; k++) {
+        out.push({ z, row: r, col: ((cW + k) % m.w + m.w) % m.w });
+        if (out.length >= SURFACE_TILES.maxTiles) return out;
       }
     }
     return out;
   },
 
-  /* Muat satu gambar (Promise<Image|null>) dengan cache. */
+  /* Muat satu gambar dengan cache (Promise<Image|null>). */
   _loadImage(url) {
     const hit = this._cache.get(url);
     if (hit) { hit.used = Date.now(); return Promise.resolve(hit.img); }
@@ -117,7 +174,6 @@ const SURFACE_DETAIL = {
       img.crossOrigin = 'anonymous';
       img.onload = () => {
         this._cache.set(url, { img, used: Date.now() });
-        /* buang entri paling lama bila cache penuh */
         if (this._cache.size > this._cacheMax) {
           let ok = null, ot = Infinity;
           for (const [k, v] of this._cache) if (v.used < ot) { ot = v.used; ok = k; }
@@ -131,57 +187,59 @@ const SURFACE_DETAIL = {
     });
   },
 
-  /* Bangun tekstur patch resolusi tinggi untuk (lat, lon).
-     Menggabungkan tile-tile NASA GIBS menjadi satu kanvas 2048x2048.
-
-     PENTING: bila tekstur untuk lokasi ini SUDAH pernah dibuat, kembalikan
-     yang tersimpan (bukan null). Versi sebelumnya mengembalikan null untuk
-     key yang sama, sehingga pemanggil menyimpulkan "gagal" padahal
-     teksturnya sudah ada — dan tekstur itu tidak pernah terpasang
-     (terbukti di uji: buildTexture → null padahal tile berhasil dimuat). */
-  async buildTexture(lat, lon) {
+  /* Bangun tekstur detail untuk sebuah body di (lat, lon).
+     Mengembalikan Promise<THREE.CanvasTexture|null>. */
+  async buildTexture(body, lat, lon) {
     if (!this.enabled || typeof SURFACE_TILES === 'undefined') return null;
-    /* cakupan menyesuaikan ketinggian pengamat (LOD) */
+    const srcKey = SURFACE_TILES.sourceKeyFor(body);
+    if (!srcKey) return null;
+
     const sv = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW : null;
-    this.spanDeg = this.spanForElevation(sv ? (sv.elev || 50) : 50);
-    const key = lat.toFixed(2) + '|' + lon.toFixed(2) + '|' + this.spanDeg.toFixed(2);
-    if (this._textures === undefined) this._textures = new Map();
+    const _bR = (body && (body.realRadiusKm || body.radiusKm * RAD)) || 6371;
+    /* zoom & span dihitung BERSAMA (lihat planZoomAndSpan) */
+    const plan = this.planZoomAndSpan(srcKey, sv ? (sv.elev || 50) : 50, _bR);
+    const z = plan.zoom;
+    this.spanDeg = plan.spanDeg;
+    const key = srcKey + '|' + lat.toFixed(2) + '|' + lon.toFixed(2) +
+                '|' + this.spanDeg.toFixed(2) + '|' + z;
+
     if (this._textures.has(key)) return this._textures.get(key);
     if (this.loading) return null;
     this.loading = true;
-    this.lastKey = key;
 
     try {
-      const tiles = this.tilesForSpan(lat, lon);
+      const tiles = this.tilesForSpan(srcKey, lat, lon, z);
       if (!tiles.length) { this.loading = false; return null; }
 
-      const imgs = await Promise.all(tiles.map(t => this._loadImage(t.url)));
-      const ok = imgs.filter(Boolean);
-      if (!ok.length) { this.loading = false; return null; }
+      const urls = tiles.map(t => SURFACE_TILES.tileUrl(srcKey, t.z, t.row, t.col));
+      const imgs = await Promise.all(urls.map(u => this._loadImage(u)));
+      if (!imgs.filter(Boolean).length) { this.loading = false; return null; }
 
-      /* Susun ke kanvas: setiap tile menempati sel sesuai posisinya
-         relatif terhadap wilayah. */
+      /* ---- susun tile ke kanvas sesuai posisi geografisnya ---- */
       const S = this.size;
       const cv = document.createElement('canvas');
       cv.width = S; cv.height = S;
       const ctx = cv.getContext('2d');
+      ctx.fillStyle = '#101820';
+      ctx.fillRect(0, 0, S, S);
 
-      /* wilayah dalam derajat → piksel kanvas */
-      const half = this.spanDeg / 2;
-      const latN = lat + half, lonW = lon - half;
-      const m = SURFACE_TILES.matrix(this.zoom);
+      const m = SURFACE_TILES.matrix(srcKey, z);
       const tileDegLat = 180 / m.h;
       const tileDegLon = 360 / m.w;
+      const half = this.spanDeg / 2;
+      const latN = lat + half, lonW = lon - half;
 
       for (let i = 0; i < tiles.length; i++) {
         const img = imgs[i];
         if (!img) continue;
         const t = tiles[i];
-        /* sudut barat-laut tile ini */
         const tLatN = 90 - t.row * tileDegLat;
         const tLonW = -180 + t.col * tileDegLon;
-        /* posisi di kanvas (piksel), y dari atas */
-        const px = (tLonW - lonW) / this.spanDeg * S;
+        /* pembungkusan bujur: pastikan tile di barat wilayah tetap pas */
+        let dLon = tLonW - lonW;
+        if (dLon > 180) dLon -= 360;
+        if (dLon < -180) dLon += 360;
+        const px = dLon / this.spanDeg * S;
         const py = (latN - tLatN) / this.spanDeg * S;
         const pw = tileDegLon / this.spanDeg * S;
         const ph = tileDegLat / this.spanDeg * S;
@@ -189,18 +247,18 @@ const SURFACE_DETAIL = {
       }
 
       const tex = new THREE.CanvasTexture(cv);
-      tex.colorSpace = (THREE.SRGBColorSpace !== undefined) ? THREE.SRGBColorSpace : undefined;
+      if (THREE.SRGBColorSpace !== undefined) tex.colorSpace = THREE.SRGBColorSpace;
       tex.anisotropy = 4;
       tex.needsUpdate = true;
       this.loading = false;
+      this._stats.built++;
       this._textures.set(key, tex);
-      /* batasi cache tekstur (masing-masing 2048x2048 = 16 MB di GPU) */
-      if (this._textures.size > 4) {
-        const firstKey = this._textures.keys().next().value;
-        if (firstKey !== key) {
-          const old = this._textures.get(firstKey);
+      if (this._textures.size > this._texturesMax) {
+        const fk = this._textures.keys().next().value;
+        if (fk !== key) {
+          const old = this._textures.get(fk);
           if (old && old.dispose) old.dispose();
-          this._textures.delete(firstKey);
+          this._textures.delete(fk);
         }
       }
       return tex;
@@ -210,59 +268,56 @@ const SURFACE_DETAIL = {
     }
   },
 
-  /* Terapkan tekstur detail ke patch permukaan.
-     Mengembalikan true bila tekstur BERHASIL dipasang.
-
-     PENTING — kenapa ada dua jalur:
-       • buildTexture() asinkron (unduh 6 tile dari NASA GIBS, ~1-2 detik).
-       • Karena itu hasilnya di-cache. Setelah cache terisi, pemanggilan
-         berikutnya langsung sinkron (instan).
-     Render loop memanggil ini tiap frame; selama unduhan berjalan ia
-     mengembalikan false dan patch tetap memakai tekstur global (tidak
-     ada frame yang terlewat). */
+  /* Pasang tekstur detail ke patch permukaan.
+     Mengembalikan true bila tekstur sudah terpasang.
+     Selama unduhan berjalan mengembalikan false dan patch tetap memakai
+     tekstur global (tidak ada frame yang terlewat). */
   applyToPatch(body, lat, lon) {
-    if (!body || !body.key || body.key !== 'earth') return false;
+    if (!body) return false;
     if (typeof surfacePatch === 'undefined' || !surfacePatch) return false;
+    const srcKey = SURFACE_TILES.sourceKeyFor(body);
+    if (!srcKey) return false;   /* benda ini tidak punya sumber tile */
 
-    /* cakupan menyesuaikan ketinggian pengamat (LOD) */
     const sv = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW : null;
-    this.spanDeg = this.spanForElevation(sv ? (sv.elev || 50) : 50);
-    const key = lat.toFixed(2) + '|' + lon.toFixed(2) + '|' + this.spanDeg.toFixed(2);
+    const _bR = (body && (body.realRadiusKm || body.radiusKm * RAD)) || 6371;
+    const plan = this.planZoomAndSpan(srcKey, sv ? (sv.elev || 50) : 50, _bR);
+    const z = plan.zoom;
+    this.spanDeg = plan.spanDeg;
+    const key = srcKey + '|' + lat.toFixed(2) + '|' + lon.toFixed(2) +
+                '|' + this.spanDeg.toFixed(2) + '|' + z;
 
-    /* jalur cepat: tekstur sudah ada di cache → pasang langsung */
-    if (this._textures === undefined) this._textures = new Map();
     const cached = this._textures.get(key);
-    if (cached) {
-      this._install(cached);
-      return true;
-    }
-    /* jalur lambat: bangun sekali, lalu pasang */
+    if (cached) { this._install(cached); return true; }
+
     if (this._pending === key) return false;
     this._pending = key;
-    this.buildTexture(lat, lon).then((tex) => {
+    this.buildTexture(body, lat, lon).then((tex) => {
       this._pending = null;
       if (tex) this._install(tex);
     }).catch(() => { this._pending = null; });
     return false;
   },
 
-  /* Pasang tekstur ke material patch + perbaiki UV-nya. */
+  /* Pasang tekstur ke material patch + sesuaikan UV ke cakupan tekstur. */
   _install(tex) {
     if (!surfacePatch || !surfacePatch.material) return;
-    if (surfacePatch.material.map === tex) return;   /* sudah terpasang */
+    if (surfacePatch.material.map === tex) return;
     surfacePatch.material.map = tex;
     if (surfacePatch.material.emissiveMap) surfacePatch.material.emissiveMap = tex;
     surfacePatch.material.needsUpdate = true;
+    /* UV harus dipetakan ke cakupan tekstur detail (spanDeg), bukan ke
+       seluruh bola — lihat penjelasan di applyPatchUV(). */
     if (typeof repatchUV === 'function') repatchUV(this.spanDeg);
   },
 
-  /* Tidak ada yang perlu ditempatkan di scene (tekstur dipakai patch). */
-  place() { /* no-op */ },
+  place() { /* no-op: tekstur dipakai patch, bukan bidang terpisah */ },
   hide() { /* no-op */ },
-  dispose() { this._cache.clear(); this.lastKey = ''; },
+  dispose() { this._cache.clear(); this._textures.clear(); this._pending = null; },
   status() {
-    return { spanDeg: this.spanDeg, zoom: this.zoom, size: this.size,
-             loaded: this._stats.loaded, failed: this._stats.failed,
-             cached: this._cache.size };
+    return {
+      spanDeg: +this.spanDeg.toFixed(2), size: this.size,
+      loaded: this._stats.loaded, failed: this._stats.failed,
+      built: this._stats.built, texCache: this._textures.size,
+    };
   },
 };

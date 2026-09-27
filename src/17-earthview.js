@@ -73,10 +73,14 @@ const SURFACE_VIEW = {
       { name: 'Sahara',        lat: 23.417, lon: 25.0 },
     ],
     mars: [
-      { name: 'Olympus Mons',  lat: 18.65,  lon: -226.2 },   /* IAU/USGS */
-      { name: 'Valles Marineris', lat: -14.0, lon: -301.4 },
-      { name: 'Gale Crater',   lat: -5.4,   lon: 137.8 },
-      { name: 'Jezero Crater', lat: 18.38,  lon: 77.58 },
+      /* Koordinat dari IAU/USGS Gazetteer of Planetary Nomenclature.
+         Bujur Mars di gazetteer memakai rentang 0..360 (positif ke barat);
+         di sini ditulis sebagai −180..180 agar konsisten dengan perhitungan
+         posisi (computeObserver memakai atan2 → −180..180). */
+      { name: 'Olympus Mons',  lat: 18.65,  lon: 133.8 },    /* 226,2°B */
+      { name: 'Valles Marineris', lat: -14.0, lon: 58.6 },   /* 301,4°B */
+      { name: 'Gale Crater',   lat: -5.4,   lon: 137.8 },    /* 222,2°B */
+      { name: 'Jezero Crater', lat: 18.38,  lon: 77.58 },    /* 282,4°B */
       { name: 'Kutub Utara',   lat: 89.9,   lon: 0 },
     ],
     moon: [

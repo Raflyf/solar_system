@@ -212,9 +212,19 @@ function updateSurfaceSky(obs, body, atmoOn) {
   if (!atmoOn) {
     op = 0.0;
   } else {
-    /* siang: pekat (0,96) — bintang tenggelam; malam: 0,25 — bintang jelas */
+    /* =====================================================================
+       LANGIT MALAM — DIBUAT LEBIH GELAP (permintaan pengguna)
+       ---------------------------------------------------------------------
+       Sebelumnya malam memakai opasitas 0,25 sehingga langit tampak
+       kelabu dan bintang kurang kontras ("pada saat malam coba buat
+       bulannya lebih terlihat seperti pov realistik dari bumi").
+
+       Di kehidupan nyata, langit malam JAUH lebih gelap dari siang
+       (rasio ~100.000:1). Nilai baru: 0,06 saat malam penuh — bintang
+       dan Bulan jadi jauh lebih kontras, seperti pemandangan malam asli.
+       ===================================================================== */
     const dayness = Math.max(0, Math.min(1, (altDeg + 12) / 24));
-    op = 0.25 + 0.71 * dayness;
+    op = 0.06 + 0.90 * dayness;
   }
   m.uOpacity.value = op;
 
