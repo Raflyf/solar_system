@@ -50,11 +50,26 @@ const starField = {
    Skala magnitudo bersifat logaritmik: setiap 5 magnitudo = 100x fluks.
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
-  /* mag 0 -> 7.6px ; mag 6.5 -> 1.5px */
-  return Math.max(1.5, 7.6 - mag * 0.94);
+  /* =====================================================================
+     UKURAN BINTANG — DIPERBESAR (keluhan: "bintang bintang yg lain malah
+     jadi tidak terlihat dan ga jelas" setelah pita Bima Sakti diperkuat)
+     ---------------------------------------------------------------------
+     Versi lama: mag 0 -> 7,6px ; mag 6,5 -> 1,5px
+
+     Referensi Stellarium: bintang terang tampak JELAS sebagai titik
+     tajam di atas pita Bima Sakti, dan bintang redup tetap terlihat
+     sebagai titik 1px (bukan hilang).
+     Perbaikan: bintang terang 7,6 -> 9,2px (lebih menonjol di atas pita),
+     sedangkan batas bawah 1,5 -> 1,8px supaya bintang redup tidak hilang
+     saat latar pita agak terang.
+     ===================================================================== */
+  return Math.max(1.8, 9.2 - mag * 1.02);
 }
 function starAlpha(mag) {
-  return Math.max(0.30, Math.min(1.0, 1.30 - mag * 0.135));
+  /* alpha minimum dinaikkan 0,30 -> 0,42 dan kurva dibuat lebih datar
+     supaya bintang redup tetap terlihat di atas pita Bima Sakti
+     (AdditiveBlending: alpha kecil mudah tenggelam di latar terang). */
+  return Math.max(0.42, Math.min(1.0, 1.35 - mag * 0.125));
 }
 
 /* ---------- konversi kerangka: EKUATOR J2000 -> SCENE (ekliptika) ----------
