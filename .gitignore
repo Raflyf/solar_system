@@ -53,3 +53,6 @@ _d.json
 _core.json
 _stell.json
 _mt.xml
+
+# Berkas uji orientasi langit (dihasilkan tools/dump_tex_gray.py)
+_tex_gray.json
