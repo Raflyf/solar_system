@@ -4,7 +4,8 @@
 
 const app = {
   days: 0,                 /* hari simulasi sejak 2000-01-01 */
-  daysPerSecond: 1 / 1440,   /* default 1 dtk = 1 menit (lihat DEFAULT_SPEED_INDEX) */
+  daysPerSecond: 1 / 86400,   /* default 1 dtk = 1 detik / waktu nyata
+                                 (lihat DEFAULT_SPEED_INDEX) */
   paused: false,
   scrubbing: false,        /* true saat slider "Geser waktu" sedang ditarik */
   labelsOn: true,
@@ -308,6 +309,11 @@ function buildUI() {
     if (typeof STAR_FOCUS !== 'undefined') STAR_FOCUS.init();
   } catch (e) { console.warn('star focus gagal:', e); }
 
+  /* ---- pencarian benda langit ---- */
+  try {
+    if (typeof SEARCH !== 'undefined') SEARCH.init();
+  } catch (e) { console.warn('pencarian gagal:', e); }
+
   /* =====================================================================
      POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap
      ---------------------------------------------------------------------
@@ -454,7 +460,7 @@ function buildUI() {
      Laju ini memberi siklus siang-malam ~24 menit — cukup tenang untuk
      mengamati langit sambil tetap terasa berjalan.
      ====================================================================== */
-  const DEFAULT_SPEED_INDEX = 1;            /* 1 dtk = 1 menit */
+  const DEFAULT_SPEED_INDEX = 0;            /* 1 dtk = 1 detik (waktu nyata) */
   slider.value = String(DEFAULT_SPEED_INDEX);
   const upd = () => {
     const i = parseInt(slider.value, 10);

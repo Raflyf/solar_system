@@ -51,8 +51,23 @@ const SKY_DSS = {
   memuat: false,
   /** kunci wilayah terakhir yang diminta */
   kunciTerakhir: '',
-  /** status aktif */
-  aktif: true,
+  /* ====================================================================
+     DINONAKTIFKAN TOTAL — PERMINTAAN PENGGUNA
+     --------------------------------------------------------------------
+     KELUHAN: "untuk zoom layer nya hapus aja, malah jadi aneh ga jelas"
+
+     Lapisan citra DSS ini terlihat "aneh" karena:
+       • Citra DSS ditempel sebagai bidang datar di depan kamera, sehingga
+         tidak menyatu dengan bola langit (tidak ikut berputar halus).
+       • Saat pengguna menggeser pandangan, citra lama masih tampil sampai
+         citra baru selesai diunduh -> terlihat seperti "gambar pajangan".
+       • Citra DSS hitam-putih, sedangkan bola langit berwarna -> kontras
+         gaya yang mengganggu.
+
+     KEPUTUSAN: dimatikan. Kode DISIMPAN (bukan dihapus) bila nanti
+     dibutuhkan lagi.
+     ==================================================================== */
+  aktif: false,
   /** apakah pernah gagal (agar tidak mengulang terus) */
   gagal: 0,
 

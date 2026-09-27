@@ -5,6 +5,23 @@
   <div class="ui" id="uiRoot">
 
     <!-- Judul -->
+    <!-- ================================================================
+         PENCARIAN BENDA LANGIT
+         ----------------------------------------------------------------
+         PERMINTAAN: "tambahkan fungsi search untuk mencari benda langit
+         seperti bintang, galaxy, planet, satelit, dan lainnya yg ada di
+         langit secara lengkap"
+         Tombol pintas "/" memfokuskan kotak ini.
+         ================================================================ -->
+    <div class="panel search-panel" id="searchPanel">
+      <div class="search-box">
+        <span class="search-icon">⌕</span>
+        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Cari bintang, planet, galaksi, satelit…  (tekan /)">
+      </div>
+      <div class="search-results" id="searchResults"></div>
+    </div>
+
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
       <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>

@@ -336,3 +336,62 @@
   padding: 1.5px 0; color: #9fb4cc;
 }
 .sf-row b { color: #e6eefc; font-variant-numeric: tabular-nums; }
+
+/* =======================================================================
+   PENCARIAN BENDA LANGIT
+   -----------------------------------------------------------------------
+   PERMINTAAN: "tambahkan fungsi search untuk mencari benda langit seperti
+   bintang, galaxy, planet, satelit, dan lainnya yg ada di langit secara
+   lengkap"
+   Panel di bawah judul; daftar hasil muncul saat mengetik.
+   ======================================================================= */
+.search-panel {
+  position: fixed;
+  top: 92px; left: 18px; width: 292px;
+  padding: 0;
+  z-index: 30;
+  overflow: visible;
+}
+.search-box {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 11px;
+}
+.search-icon { color: #6f8bb0; font-size: 15px; flex: none; }
+#searchInput {
+  flex: 1; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: #e8f0fb; font-size: 12.5px;
+  font-family: inherit;
+}
+#searchInput::placeholder { color: #5d7794; }
+.search-results {
+  display: none;
+  max-height: 320px; overflow-y: auto;
+  border-top: 1px solid rgba(120,160,220,.14);
+}
+.search-panel.show .search-results { display: block; }
+.sr-item {
+  display: flex; align-items: center; gap: 7px;
+  padding: 6px 11px; cursor: pointer;
+  font-size: 11.5px; color: #cfe0f2;
+  border-bottom: 1px solid rgba(120,160,220,.06);
+}
+.sr-item:hover, .sr-item.aktif {
+  background: rgba(90,150,230,.16);
+  color: #fff;
+}
+.sr-dot {
+  width: 8px; height: 8px; border-radius: 50%; flex: none;
+  box-shadow: 0 0 5px currentColor;
+}
+.sr-dot-kosong { background: #4a6b90; }
+.sr-nama { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sr-jenis {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px;
+  color: #7f9cc0; flex: none;
+}
+.sr-info { font-size: 10px; color: #6f8bb0; flex: none; }
+.sr-kosong { padding: 10px 11px; font-size: 11.5px; color: #7f9cc0; }
+@media (max-width: 640px) {
+  .search-panel { width: calc(100vw - 36px); }
+}
