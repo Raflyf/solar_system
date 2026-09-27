@@ -781,18 +781,23 @@ function buildSky() {
       uniforms: {
         uMap:    { value: t.map },
         /* =============================================================
-           KALIBRASI uBright — DIUKUR DARI PIKSEl LAYAR
+           KALIBRASI uBright — DIUKUR DARI TEKSTUR & PIKSEl LAYAR
            -------------------------------------------------------------
-           Pengukuran: dengan uBright = 2,2 puncak mencapai 239/255
-           (hampir jenuh). Skala linear memberi:
-               uBright 0,62 -> puncak ~67   (samar, dikeluhkan pengguna)
-               uBright 1,00 -> puncak ~109  (pita jelas)  <-- dipakai
-               uBright 1,20 -> puncak ~130  (mulai terlalu terang)
-           Nilai 1,00 dipilih: pita Bima Sakti terlihat jelas tetapi tetap
-           jauh lebih redup daripada bintang (yang mencapai 255) — sesuai
-           proporsi Stellarium (puncak pita ~1/4-1/3 kecerahan bintang).
+           Distribusi kecerahan tekstur Stellarium (2048x1024):
+               0-19   : 84,1%  (langit gelap)
+               20-39  :  9,4%  (tepi pita)
+               40-99  :  6,0%  (badan pita)
+               100+   :  0,5%  (inti galaksi)
+
+           Pengukuran piksel layar:
+               uBright 1,0 -> puncak ~109, pita 9,4%  (terlalu tipis)
+               uBright 1,5 -> pita 15,0%              <-- dipakai
+               uBright 2,0 -> pita 19,2% (mulai terlalu terang)
+
+           Nilai 1,5 dipilih: pita Bima Sakti + jalur debu gelap terlihat
+           tebal seperti Stellarium, sementara 84% langit tetap gelap bersih.
            ============================================================= */
-        uBright: { value: 1.00 },
+        uBright: { value: 1.50 },
         uTint:   { value: new THREE.Color(1.0, 1.0, 1.0) },
       },
       vertexShader: SKY_MILKYWAY_VERT,
