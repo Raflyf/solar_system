@@ -122,31 +122,24 @@ html, body {
 /* ---------------- daftar benda ---------------- */
 .sidebar {
   /* ====================================================================
-     POSISI SIDEBAR — DI BAWAH PANEL JUDUL + PANEL PENCARIAN
+     POSISI SIDEBAR — DI BAWAH PANEL JUDUL **DAN** PANEL PENCARIAN
      --------------------------------------------------------------------
-     Susunan dari atas ke bawah:
-       18px : panel judul (title-panel)
-       ~92px: panel pencarian (search-panel), tinggi ~38px
-       ~140px: sidebar JELAJAHI (panel ini)
-     Angka diukur dari tinggi elemen di atasnya, bukan tebakan.
-     ==================================================================== */
-  top: 140px; left: 18px; width: 232px;
-  /* =====================================================================
-     POSISI SIDEBAR — DIUKUR DARI TINGGI PANEL JUDUL (bukan angka tebakan)
-     ---------------------------------------------------------------------
-     KELUHAN USER: "ui nya pada bertumpuk".
-     BUG: panel judul (top 18px) bisa setinggi ~100-130 px bila subjudulnya
-     membungkus dua baris atau badge peristiwa muncul, sedangkan sidebar
-     mulai di 92 px → panel judul MENIMPA sidebar.
-     Terbukti di screenshot pengguna: subjudul "Skala 1:1 - tekstur asli
-     NASA/USGS - Bumi bisa di-zoom sampai permukaan" tertutup sidebar.
+     KELUHAN PENGGUNA: "ini ui search nya menimpa ini tertumpuk"
 
-     SOLUSI: JS (measureBands) mengukur tinggi panel judul dan menulis
-     variabel --title-bottom. Sidebar memakai variabel itu sebagai `top`,
-     sehingga TIDAK MUNGKIN bertumpuk untuk ukuran layar/teks apa pun.
-     Nilai 92px tetap sebagai cadangan bila JS belum jalan.
-     ===================================================================== */
-  top: var(--title-bottom, 92px);
+     BUG YANG DIPERBAIKI: ada DUA deklarasi `top` di blok ini —
+         top: 140px;                       (dihitung manual, sia-sia)
+         top: var(--title-bottom, 92px);   (menimpa yang pertama!)
+     `--title-bottom` hanya mengukur tinggi PANEL JUDUL, tidak menghitung
+     panel PENCARIAN yang ada di antaranya. Akibatnya sidebar mulai di
+     ~92px dan panel pencarian menimpanya.
+
+     PERBAIKAN: `--title-bottom` diukur oleh measureBands() dan kini sudah
+     DITAMBAH tinggi panel pencarian + jarak (lihat 60-main.js). Deklarasi
+     `top: 140px` yang sia-sia DIHAPUS supaya tidak ada kebingungan.
+     Nilai cadangan 92px -> 150px bila JS belum jalan.
+     ==================================================================== */
+  top: var(--title-bottom, 150px);
+  left: 18px; width: 232px;
   max-height: calc(100vh - 210px);
   display: flex; flex-direction: column;
   transition: transform .3s cubic-bezier(.4,0,.2,1), opacity .3s;

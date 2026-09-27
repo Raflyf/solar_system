@@ -36,7 +36,44 @@ const STAR_FOCUS = {
   /** fov sasaran saat zoom (derajat) */
   targetFov: 12,
   /** toleransi sudut klik (derajat) */
-  tolDeg: 2.2,
+  /* ======================================================================
+     TOLERANSI KLIK — MENYESUAIKAN ZOOM (fov)
+     ----------------------------------------------------------------------
+     KELUHAN PENGGUNA: "info benda langit saat di klik itu tidak akurat
+     klik an nya tidak pas pada benda nya jadi susah buat di klik, harus
+     coba spam klik di sekitar nya baru ketemu, tidak pas dan akurat di
+     titik nya"
+
+     MASALAH: toleransi sudut dahulu TETAP 2,2 derajat. Karena toleransi
+     sudut diterjemahkan ke piksel lewat fov, ukuran klik di layar
+     BERUBAH-UBAH drastis:
+         fov 70 (pandangan luas) -> toleransi 2,2 derajat = 18 px radius
+         fov 25                  -> 50 px
+         fov  5                  -> 250 px
+     Pada pandangan luas, radius 18 px terlalu KECIL untuk bintang yang
+     tampak 9-14 px (mata pengguna harus tepat di pusat bintang), sehingga
+     pengguna merasa harus "spam klik di sekitarnya".
+     Pada zoom dalam, radius 250 px terlalu BESAR (bintang lain ikut
+     terpilih).
+
+     SOLUSI: toleransi dihitung dari fov supaya UKURANNYA DI LAYAR tetap
+     konstan ~34 px radius (2x ukuran bintang terang terbesar 14 px +
+     margin). Ini membuat klik terasa "pas" di semua tingkat zoom.
+     ====================================================================== */
+  tolDeg: 2.2,          /* cadangan bila fov tidak tersedia */
+
+  /* Toleransi sudut yang menyesuaikan fov (derajat). */
+  toleransiSudut() {
+    const fov = (typeof camera !== 'undefined' && camera.fov) ? camera.fov : 50;
+    /* target radius klik di layar: 34 px (ukuran tinggi layar acuan 640) */
+    const PX_TARGET = 34;
+    const tinggiLayar = (typeof window !== 'undefined' && window.innerHeight)
+      ? window.innerHeight : 640;
+    const derajatPerPiksel = fov / tinggiLayar;
+    const tol = PX_TARGET * derajatPerPiksel;
+    /* batasi agar tetap masuk akal di rentang fov ekstrem */
+    return Math.max(0.02, Math.min(6.0, tol));
+  },
   /** elemen panel info */
   panel: null,
 
@@ -51,7 +88,7 @@ const STAR_FOCUS = {
     if (typeof starField === 'undefined' || !starField.labeled) return null;
     const daftar = starField.labeled;      /* hanya bintang bernama */
     let terbaik = null;
-    const tolRad = this.tolDeg * DEG;
+    const tolRad = this.toleransiSudut() * DEG;
     for (let i = 0; i < daftar.length; i++) {
       const s = daftar[i];
       /* arah bintang (sudah di kerangka scene) */
