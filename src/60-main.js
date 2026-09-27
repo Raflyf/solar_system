@@ -732,27 +732,9 @@ function buildUI() {
     if (tp) {
       const r = tp.getBoundingClientRect();
       if (r.height > 0) {
-        /* ================================================================
-           UKUR SAMPAI BAWAH PANEL PENCARIAN (bukan hanya panel judul)
-           ----------------------------------------------------------------
-           BUG YANG DIPERBAIKI: dahulu hanya panel judul yang diukur,
-           sehingga sidebar mulai tepat di bawah panel judul — dan panel
-           PENCARIAN yang berada di antaranya MENIMPA sidebar.
-           Terbukti dari keluhan pengguna: "ini ui search nya menimpa ini
-           tertumpuk".
-
-           Sekarang diukur sampai bawah panel pencarian (search-panel) bila
-           ada, ditambah jarak 8 px. Bila panel pencarian tidak ada, jatuh
-           kembali ke bawah panel judul.
-           ================================================================ */
-        let bawah = r.bottom;
-        const sp = document.getElementById('searchPanel');
-        if (sp) {
-          const sr = sp.getBoundingClientRect();
-          if (sr.height > 0 && sr.bottom > bawah) bawah = sr.bottom;
-        }
-        /* +8 px: jarak lega antara panel terbawah dan sidebar */
-        document.documentElement.style.setProperty('--title-bottom', Math.ceil(bawah + 8) + 'px');
+        /* Panel pencarian kini berada DI DALAM panel judul, sehingga tinggi
+           panel judul sudah mencakupnya. Cukup pakai r.bottom. */
+        document.documentElement.style.setProperty('--title-bottom', Math.ceil(r.bottom + 8) + 'px');
       }
     }
   };

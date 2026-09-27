@@ -247,6 +247,10 @@ const SEARCH = {
 
   /* ---------------- panel UI ---------------- */
   init() {
+    /* CATATAN: sejak pencarian dipindah KE DALAM panel judul (agar tidak
+       pernah bertumpuk), `searchPanel` adalah KOTAK pencarian dan
+       `searchResults` adalah daftar hasil yang mengambang. Class `show`
+       diterapkan ke daftar hasil, bukan ke kotak. */
     this.panel = document.getElementById('searchPanel');
     this.input = document.getElementById('searchInput');
     this.daftar = document.getElementById('searchResults');
@@ -289,7 +293,7 @@ const SEARCH = {
         ? '<div class="sr-kosong">Tidak ada hasil untuk "' + q.replace(/[<>&]/g, '') + '"</div>'
         : '';
       this.terbuka = !!q;
-      this.panel.classList.toggle('show', this.terbuka);
+      this.daftar.classList.toggle('show', this.terbuka);
       return;
     }
     const html = this.hasil.map((it, i) => {
@@ -305,7 +309,7 @@ const SEARCH = {
     }).join('');
     this.daftar.innerHTML = html;
     this.terbuka = true;
-    this.panel.classList.add('show');
+    this.daftar.classList.add('show');
     /* klik pada hasil */
     this.daftar.querySelectorAll('.sr-item').forEach(el => {
       el.addEventListener('click', () => {
@@ -327,6 +331,6 @@ const SEARCH = {
 
   tutup() {
     this.terbuka = false;
-    if (this.panel) this.panel.classList.remove('show');
+    if (this.daftar) this.daftar.classList.remove('show');
   },
 };

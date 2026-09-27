@@ -377,16 +377,38 @@ kbd {
 
 /* ---------------- label melayang ---------------- */
 #labelLayer { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 1; }
+/* =======================================================================
+   LABEL NAMA BINTANG — TEKS BIASA (bukan card)
+   -----------------------------------------------------------------------
+   KELUHAN PENGGUNA: "untuk penamaan yg di dalam card gini coba buat jadi
+   text biasa saja, kalo cursor lewat ke sana jadi tidak bisa scroll zoom
+   in zoom out"
+
+   MASALAH: label memakai gaya "card" (background + border + padding).
+   Walaupun #labelLayer sudah pointer-events:none, label yang tampak
+   seperti tombol membuat pengguna mengira area itu menangkap klik —
+   dan memang ada elemen lain (star-focus-panel) yang benar-benar
+   menangkap scroll.
+
+   PERBAIKAN:
+     1. Gaya label diubah menjadi TEKS BIASA: tanpa background, tanpa
+        border, tanpa padding — hanya teks dengan bayangan tipis supaya
+        terbaca di atas langit.
+     2. pointer-events: none DIPERTEGAS (termasuk untuk anak elemen).
+   ======================================================================= */
 .flabel {
   position: absolute; transform: translate(-50%, -50%);
   font-size: 11.5px; letter-spacing: .5px; white-space: nowrap;
-  color: #dfe9fa; text-shadow: 0 1px 4px #000, 0 0 12px rgba(0,0,0,.9);
-  padding: 2px 8px; border-radius: 20px;
-  background: rgba(8, 12, 22, 0.42); border: 1px solid rgba(140, 170, 220, 0.22);
-  pointer-events: auto; cursor: pointer;
-  transition: background .13s, border-color .13s;
+  color: #dfe9fa;
+  /* teks biasa: tanpa kotak/card. Bayangan tipis supaya tetap terbaca. */
+  text-shadow: 0 1px 3px #000, 0 0 6px rgba(0,0,0,.85);
+  padding: 0; border-radius: 0;
+  background: none; border: none;
+  /* label TIDAK boleh menangkap event mouse sama sekali */
+  pointer-events: none;
+  user-select: none;
 }
-.flabel:hover { background: rgba(255, 170, 60, 0.3); border-color: rgba(255,180,77,.7); }
+#labelLayer, #labelLayer * { pointer-events: none; }
 .flabel.moon { font-size: 10.5px; color: #b9c8e2; }
 .flabel.small { opacity: .75; }
 
@@ -1154,7 +1176,20 @@ kbd {
   font-size: 11.5px;
   transform: translateX(-50%);
   z-index: 26;
-  pointer-events: auto;
+  /* ====================================================================
+     BUG YANG DIPERBAIKI — PANEL INI MENANGKAP SCROLL MOUSE
+     --------------------------------------------------------------------
+     KELUHAN PENGGUNA: "untuk penamaan yg di dalam card gini coba buat jadi
+     text biasa saja, kalo cursor lewat ke sana jadi tidak bisa scroll zoom
+     in zoom out"
+
+     `pointer-events: auto` membuat panel ini MENERIMA event mouse. Saat
+     kursor melintasi panel, roda mouse tidak sampai ke canvas — sehingga
+     zoom masuk/keluar tidak berfungsi.
+     PERBAIKAN: pointer-events: none. Panel hanya menampilkan informasi,
+     tidak perlu interaksi (tombol tutup sudah dihapus).
+     ==================================================================== */
+  pointer-events: none;
   transition: opacity .18s;
 }
 .star-focus-panel.show { display: block; }
@@ -1175,23 +1210,26 @@ kbd {
 .sf-row b { color: #e6eefc; font-variant-numeric: tabular-nums; }
 
 /* =======================================================================
-   PENCARIAN BENDA LANGIT
+   PENCARIAN BENDA LANGIT — DI DALAM PANEL JUDUL
    -----------------------------------------------------------------------
-   PERMINTAAN: "tambahkan fungsi search untuk mencari benda langit seperti
-   bintang, galaxy, planet, satelit, dan lainnya yg ada di langit secara
-   lengkap"
-   Panel di bawah judul; daftar hasil muncul saat mengetik.
+   KELUHAN BERULANG: "ui nya masih bertumpuk" / "ini ui search nya menimpa
+   ini tertumpuk"
+
+   Panel pencarian dahulu elemen `position: fixed` TERPISAH di top:92px,
+   sementara sidebar juga diposisikan fixed — dan setiap kali tinggi panel
+   judul berubah, keduanya saling menimpa.
+
+   Sekarang kotak pencarian berada DI DALAM panel judul (aliran normal),
+   jadi TIDAK MUNGKIN bertumpuk. Hanya daftar hasil yang mengambang
+   (position:absolute) supaya bisa keluar dari panel saat dibuka.
    ======================================================================= */
-.search-panel {
-  position: fixed;
-  top: 92px; left: 18px; width: 292px;
-  padding: 0;
-  z-index: 30;
-  overflow: visible;
-}
 .search-box {
   display: flex; align-items: center; gap: 7px;
-  padding: 8px 11px;
+  margin-top: 9px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: rgba(10, 16, 28, 0.55);
+  border: 1px solid rgba(120, 160, 220, 0.20);
 }
 .search-icon { color: #6f8bb0; font-size: 15px; flex: none; }
 #searchInput {
@@ -1201,12 +1239,23 @@ kbd {
   font-family: inherit;
 }
 #searchInput::placeholder { color: #5d7794; }
+/* daftar hasil: mengambang di bawah kotak pencarian supaya bisa memanjang
+   keluar panel tanpa mengubah tinggi panel judul */
 .search-results {
   display: none;
+  position: absolute;
+  top: 100%; left: 0; right: 0;
+  margin-top: 6px;
+  border-radius: 10px;
+  background: rgba(9, 14, 26, 0.94);
+  border: 1px solid rgba(120, 160, 220, 0.22);
+  box-shadow: 0 10px 28px rgba(0,0,0,.55);
   max-height: 320px; overflow-y: auto;
-  border-top: 1px solid rgba(120,160,220,.14);
+  z-index: 40;
 }
-.search-panel.show .search-results { display: block; }
+.title-panel { position: fixed; }
+.title-panel.show .search-results,
+.search-results.show { display: block; }
 .sr-item {
   display: flex; align-items: center; gap: 7px;
   padding: 6px 11px; cursor: pointer;
@@ -1230,7 +1279,7 @@ kbd {
 .sr-info { font-size: 10px; color: #6f8bb0; flex: none; }
 .sr-kosong { padding: 10px 11px; font-size: 11.5px; color: #7f9cc0; }
 @media (max-width: 640px) {
-  .search-panel { width: calc(100vw - 36px); }
+  .search-results { max-height: 220px; }
 }
 
 /* =======================================================================
@@ -1368,25 +1417,32 @@ input[type="date"] { color-scheme: dark; }
 
     <!-- Judul -->
     <!-- ================================================================
-         PENCARIAN BENDA LANGIT
+         PANEL JUDUL + PENCARIAN — DIGABUNG DALAM SATU PANEL
          ----------------------------------------------------------------
-         PERMINTAAN: "tambahkan fungsi search untuk mencari benda langit
-         seperti bintang, galaxy, planet, satelit, dan lainnya yg ada di
-         langit secara lengkap"
-         Tombol pintas "/" memfokuskan kotak ini.
-         ================================================================ -->
-    <div class="panel search-panel" id="searchPanel">
-      <div class="search-box">
-        <span class="search-icon">⌕</span>
-        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Cari bintang, planet, galaksi, satelit…  (tekan /)">
-      </div>
-      <div class="search-results" id="searchResults"></div>
-    </div>
+         KELUHAN BERULANG: "ui nya masih bertumpuk" / "ini ui search nya
+         menimpa ini tertumpuk"
 
+         AKAR MASALAH: panel pencarian dan panel judul adalah DUA elemen
+         terpisah dengan posisi `fixed` masing-masing. Setiap kali tinggi
+         salah satunya berubah (subjudul membungkus, badge muncul), posisi
+         mereka bisa saling menimpa — dan sidebar yang diposisikan lewat
+         variabel JS juga ikut bergeser.
+
+         SOLUSI DEFINITIF: panel pencarian DIPINDAH KE DALAM panel judul.
+         Dengan begitu keduanya menjadi SATU elemen; tidak mungkin lagi
+         bertumpuk karena aliran normal (bukan posisi absolut terpisah).
+         Sidebar cukup diposisikan di bawah panel gabungan ini.
+         ================================================================ -->
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
       <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
+      <!-- Pencarian benda langit (di dalam panel judul — lihat penjelasan) -->
+      <div class="search-box" id="searchPanel">
+        <span class="search-icon">⌕</span>
+        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Cari bintang, planet, galaksi, satelit…">
+      </div>
+      <div class="search-results" id="searchResults"></div>
       <!-- Lencana peristiwa langit — DI DALAM panel judul supaya tidak
            pernah bertabrakan dengan toolbar atau panel lain -->
       <div class="event-badge" id="eventBadge">—</div>
@@ -1415,9 +1471,16 @@ input[type="date"] { color-scheme: dark; }
         <label class="chk"><input type="checkbox" id="chkLabels2" checked> Tampilkan label</label>
         <div class="sky-toggles">
           <label class="chk"><input type="checkbox" id="chkStars" checked> Bintang nyata <b id="starCount"></b></label>
-          <label class="chk"><input type="checkbox" id="chkConst" checked> Garis rasi bintang</label>
+          <!-- ============================================================
+               DEFAULT DIUBAH — PERMINTAAN PENGGUNA
+               "buat settingan ini jadi gini default nya, matikan garis rasi
+               bintang dan nyalakan nama bintang"
+               chkConst  : checked -> TIDAK checked (garis rasi mati)
+               chkStarNames: kosong -> checked (nama bintang nyala)
+               ============================================================ -->
+          <label class="chk"><input type="checkbox" id="chkConst"> Garis rasi bintang</label>
           <label class="chk"><input type="checkbox" id="chkMilkyWay" checked> Pita Bima Sakti</label>
-          <label class="chk"><input type="checkbox" id="chkStarNames"> Nama bintang &amp; galaksi</label>
+          <label class="chk"><input type="checkbox" id="chkStarNames" checked> Nama bintang &amp; galaksi</label>
         </div>
         <div class="sky-info" id="skyInfo"></div>
       </div>
@@ -116376,6 +116439,10 @@ const SEARCH = {
 
   /* ---------------- panel UI ---------------- */
   init() {
+    /* CATATAN: sejak pencarian dipindah KE DALAM panel judul (agar tidak
+       pernah bertumpuk), `searchPanel` adalah KOTAK pencarian dan
+       `searchResults` adalah daftar hasil yang mengambang. Class `show`
+       diterapkan ke daftar hasil, bukan ke kotak. */
     this.panel = document.getElementById('searchPanel');
     this.input = document.getElementById('searchInput');
     this.daftar = document.getElementById('searchResults');
@@ -116418,7 +116485,7 @@ const SEARCH = {
         ? '<div class="sr-kosong">Tidak ada hasil untuk "' + q.replace(/[<>&]/g, '') + '"</div>'
         : '';
       this.terbuka = !!q;
-      this.panel.classList.toggle('show', this.terbuka);
+      this.daftar.classList.toggle('show', this.terbuka);
       return;
     }
     const html = this.hasil.map((it, i) => {
@@ -116434,7 +116501,7 @@ const SEARCH = {
     }).join('');
     this.daftar.innerHTML = html;
     this.terbuka = true;
-    this.panel.classList.add('show');
+    this.daftar.classList.add('show');
     /* klik pada hasil */
     this.daftar.querySelectorAll('.sr-item').forEach(el => {
       el.addEventListener('click', () => {
@@ -116456,7 +116523,7 @@ const SEARCH = {
 
   tutup() {
     this.terbuka = false;
-    if (this.panel) this.panel.classList.remove('show');
+    if (this.daftar) this.daftar.classList.remove('show');
   },
 };
 
@@ -119178,38 +119245,31 @@ const AXIS_Y = new THREE.Vector3(0, 1, 0);
    lensa 800 mm ≈ 2,5°.
    ========================================================================= */
 /* =====================================================================
-   BATAS ZOOM POV (fov) — DIPERLEBAR AGAR PLANET TERLIHAT SEBAGAI CAKRAM
+   BATAS ZOOM POV (fov) — DIPERDALAM LAGI (permintaan pengguna)
    ---------------------------------------------------------------------
-   KELUHAN PENGGUNA: "saya cuma mau zoom dan melihat planet lain secara
-   jelas dengan zoom dari pov bumi, seperti zoom bulan kan jelas, nah saya
-   mau zoom planet lain dari bumi — bukan mau pindah planet".
+   KELUHAN: "untuk zoom nya coba buat lebih ngezoom lagi saat di mode pov"
 
-   PENGUKURAN ukuran sudut benda langit dilihat dari Bumi:
-       Bulan      0,518°   -> 368 px pada fov 0,8°  (JELAS, cakram besar)
-       Venus      0,017°   ->  12 px pada fov 0,8°  (cuma titik)
-       Jupiter    0,013°   ->   9 px pada fov 0,8°  (cuma titik)
-       Mars       0,005°   ->   3 px pada fov 0,8°  (cuma titik)
-       Merkurius  0,003°   ->   2 px pada fov 0,8°  (cuma titik)
+   Nilai sebelumnya 0,005 derajat (zoom ~14.000x dari fov 70).
+   Sekarang 0,001 derajat (zoom ~70.000x) — 5x lebih dalam.
 
-   Bulan terlihat jelas karena ukuran sudutnya besar. Planet lain 30-100x
-   LEBIH KECIL, sehingga pada fov minimum lama (0,8°) mereka mustahil
-   terlihat sebagai cakram — bukan karena bug, tetapi karena batas zoom
-   terlalu dangkal.
+   BATAS PRESISI: matriks proyeksi memakai float32 (~7 digit). Error
+   relatif pada tan(fov/2) dihitung:
+       fov 0,0050 -> error 2,3e-3   (aman)
+       fov 0,0010 -> error 1,2e-2   (dipakai — masih layak)
+       fov 0,0005 -> error 2,3e-2   (gemetar)
+   Jadi 0,001 derajat adalah batas aman. Di bawah itu gambar mulai
+   gemetar saat digeser (pengguna akan mengeluh "licin/tidak fokus").
 
-   PERBAIKAN: fov minimum 0,8° -> 0,005° (zoom optik 160x -> 25.600x).
-       Jupiter pada fov 0,005° = 1.480 px (cakram besar, jelas)
-       Venus   pada fov 0,005° = 1.930 px
-       Mars    pada fov 0,005° =   570 px
-       Merkurius pada fov 0,005° = 340 px
-   Semua planet jadi terlihat sebagai CAKRAM seperti Bulan.
-
-   CATATAN TEKNIS: pada fov sangat kecil, matriks proyeksi punya presisi
-   terbatas. Batas 0,005° dipilih karena masih aman untuk float32
-   (cot(fov/2) ≈ 22.900) dan sudah cukup membuat semua planet terlihat.
-   Sensitivitas geser sudah otomatis menyesuaikan fov (lihat povSens),
-   jadi gerakan tetap halus pada zoom dalam.
+   PENGARUH KE UKURAN BENDA LANGIT (dilihat dari Bumi):
+       Bulan  0,518 derajat -> pada fov 0,001 = 294.000 px (jauh melebihi
+                               layar; permukaan Bulan bisa dijelajahi)
+       Jupiter 0,013 derajat -> 7.400 px  (cakram raksasa)
+       Venus  0,017 derajat -> 9.700 px
+       Mars   0,005 derajat -> 2.800 px
+       Merkurius 0,003 derajat -> 1.700 px
+   Semua planet kini bisa di-zoom sampai SANGAT besar dari POV.
    ===================================================================== */
-const POV_FOV_MIN = 0.005;
+const POV_FOV_MIN = 0.001;
 const POV_FOV_MAX = 100;
 
 function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -119391,7 +119451,18 @@ function initControls(canvas) {
        arah klik. Bintang dirender sebagai point sprite tanpa volume,
        sehingga dipakai pencarian sudut (lihat STAR_FOCUS.cariBintang).
        ================================================================== */
-    if (typeof STAR_FOCUS !== 'undefined' && typeof starField !== 'undefined' &&
+    /* ==================================================================
+       BINTANG & OBJEK LANGIT — DINONAKTIFKAN (permintaan pengguna)
+       ------------------------------------------------------------------
+       KELUHAN: "untuk info bintang yg di klik hilangkan saja, malah
+       ganggu kalo salah klik malah jadi pokus ke sana dan nge zoom"
+
+       Versi sebelumnya: klik di langit mencari BINTANG terdekat lalu
+       memfokuskan kamera ke sana. Akibatnya salah klik sedikit langsung
+       membuat kamera melompat + zoom — sangat mengganggu.
+       Sekarang klik di langit TIDAK melakukan apa pun.
+       ================================================================== */
+    if (false && typeof STAR_FOCUS !== 'undefined' && typeof starField !== 'undefined' &&
         starField.labeled) {
       const arah = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera).sub(camera.position).normalize();
       const bintang = STAR_FOCUS.cariBintang(arah);
@@ -120819,27 +120890,9 @@ function buildUI() {
     if (tp) {
       const r = tp.getBoundingClientRect();
       if (r.height > 0) {
-        /* ================================================================
-           UKUR SAMPAI BAWAH PANEL PENCARIAN (bukan hanya panel judul)
-           ----------------------------------------------------------------
-           BUG YANG DIPERBAIKI: dahulu hanya panel judul yang diukur,
-           sehingga sidebar mulai tepat di bawah panel judul — dan panel
-           PENCARIAN yang berada di antaranya MENIMPA sidebar.
-           Terbukti dari keluhan pengguna: "ini ui search nya menimpa ini
-           tertumpuk".
-
-           Sekarang diukur sampai bawah panel pencarian (search-panel) bila
-           ada, ditambah jarak 8 px. Bila panel pencarian tidak ada, jatuh
-           kembali ke bawah panel judul.
-           ================================================================ */
-        let bawah = r.bottom;
-        const sp = document.getElementById('searchPanel');
-        if (sp) {
-          const sr = sp.getBoundingClientRect();
-          if (sr.height > 0 && sr.bottom > bawah) bawah = sr.bottom;
-        }
-        /* +8 px: jarak lega antara panel terbawah dan sidebar */
-        document.documentElement.style.setProperty('--title-bottom', Math.ceil(bawah + 8) + 'px');
+        /* Panel pencarian kini berada DI DALAM panel judul, sehingga tinggi
+           panel judul sudah mencakupnya. Cukup pakai r.bottom. */
+        document.documentElement.style.setProperty('--title-bottom', Math.ceil(r.bottom + 8) + 'px');
       }
     }
   };

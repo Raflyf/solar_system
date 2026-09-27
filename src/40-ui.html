@@ -6,25 +6,32 @@
 
     <!-- Judul -->
     <!-- ================================================================
-         PENCARIAN BENDA LANGIT
+         PANEL JUDUL + PENCARIAN — DIGABUNG DALAM SATU PANEL
          ----------------------------------------------------------------
-         PERMINTAAN: "tambahkan fungsi search untuk mencari benda langit
-         seperti bintang, galaxy, planet, satelit, dan lainnya yg ada di
-         langit secara lengkap"
-         Tombol pintas "/" memfokuskan kotak ini.
-         ================================================================ -->
-    <div class="panel search-panel" id="searchPanel">
-      <div class="search-box">
-        <span class="search-icon">⌕</span>
-        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Cari bintang, planet, galaksi, satelit…  (tekan /)">
-      </div>
-      <div class="search-results" id="searchResults"></div>
-    </div>
+         KELUHAN BERULANG: "ui nya masih bertumpuk" / "ini ui search nya
+         menimpa ini tertumpuk"
 
+         AKAR MASALAH: panel pencarian dan panel judul adalah DUA elemen
+         terpisah dengan posisi `fixed` masing-masing. Setiap kali tinggi
+         salah satunya berubah (subjudul membungkus, badge muncul), posisi
+         mereka bisa saling menimpa — dan sidebar yang diposisikan lewat
+         variabel JS juga ikut bergeser.
+
+         SOLUSI DEFINITIF: panel pencarian DIPINDAH KE DALAM panel judul.
+         Dengan begitu keduanya menjadi SATU elemen; tidak mungkin lagi
+         bertumpuk karena aliran normal (bukan posisi absolut terpisah).
+         Sidebar cukup diposisikan di bawah panel gabungan ini.
+         ================================================================ -->
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
       <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
+      <!-- Pencarian benda langit (di dalam panel judul — lihat penjelasan) -->
+      <div class="search-box" id="searchPanel">
+        <span class="search-icon">⌕</span>
+        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+               placeholder="Cari bintang, planet, galaksi, satelit…">
+      </div>
+      <div class="search-results" id="searchResults"></div>
       <!-- Lencana peristiwa langit — DI DALAM panel judul supaya tidak
            pernah bertabrakan dengan toolbar atau panel lain -->
       <div class="event-badge" id="eventBadge">—</div>
@@ -53,9 +60,16 @@
         <label class="chk"><input type="checkbox" id="chkLabels2" checked> Tampilkan label</label>
         <div class="sky-toggles">
           <label class="chk"><input type="checkbox" id="chkStars" checked> Bintang nyata <b id="starCount"></b></label>
-          <label class="chk"><input type="checkbox" id="chkConst" checked> Garis rasi bintang</label>
+          <!-- ============================================================
+               DEFAULT DIUBAH — PERMINTAAN PENGGUNA
+               "buat settingan ini jadi gini default nya, matikan garis rasi
+               bintang dan nyalakan nama bintang"
+               chkConst  : checked -> TIDAK checked (garis rasi mati)
+               chkStarNames: kosong -> checked (nama bintang nyala)
+               ============================================================ -->
+          <label class="chk"><input type="checkbox" id="chkConst"> Garis rasi bintang</label>
           <label class="chk"><input type="checkbox" id="chkMilkyWay" checked> Pita Bima Sakti</label>
-          <label class="chk"><input type="checkbox" id="chkStarNames"> Nama bintang &amp; galaksi</label>
+          <label class="chk"><input type="checkbox" id="chkStarNames" checked> Nama bintang &amp; galaksi</label>
         </div>
         <div class="sky-info" id="skyInfo"></div>
       </div>
