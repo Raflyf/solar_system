@@ -21,7 +21,7 @@
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)"><span class="bi">🏷</span><span class="bt">Label</span></button>
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur"><span class="bi">◈</span><span class="bt">Kualitas</span></button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)"><span class="bi">?</span><span class="bt">Bantuan</span></button>
-      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi"><span class="bi">🌍</span><span class="bt">POV Bumi</span></button>
+      <button class="btn" id="btnEarthView" title="POV dari permukaan planet / satelit mana pun"><span class="bi">🛰</span><span class="bt">POV</span></button>
     </div>
 
     <!-- Daftar benda -->
@@ -105,15 +105,19 @@
       <button class="mini" id="btnObsExit" title="Keluar dari POV Bumi">✕</button>
     </div>
 
-    <!-- Modal POV Bumi -->
+    <!-- Modal POV permukaan (semua planet & satelit) -->
     <div class="panel earthview-modal hidden" id="earthviewModal">
       <div class="evm-head">
-        <span>🌍 POV dari Permukaan Bumi</span>
+        <span>🛰 POV dari Permukaan Benda Langit</span>
         <button class="mini" id="evmClose" title="Tutup">✕</button>
       </div>
       <div class="evm-body">
         <div class="evm-row">
-          <label>Kota</label>
+          <label>Benda langit</label>
+          <select id="evmBody" class="evm-input"></select>
+        </div>
+        <div class="evm-row">
+          <label>Lokasi</label>
           <select id="evmCity" class="evm-input"></select>
         </div>
         <div class="evm-row">
@@ -128,11 +132,14 @@
           <label>Elevasi (m)</label>
           <input type="number" step="10" id="evmElev" class="evm-input" placeholder="Elevasi meter">
         </div>
-        <div class="evm-btns">
-          <button class="btn primary" id="evmApply">Terapkan & Masuk POV</button>
-          <button class="btn" id="evmExit" style="display:none" title="Keluar POV Bumi">⬆ Keluar POV</button>
+        <div class="evm-row evm-toggles">
+          <label class="chk"><input type="checkbox" id="evmAtmo" checked> Atmosfer &amp; langit dinamis</label>
         </div>
-        <div class="evm-hint">Geser mouse untuk melihat langit 360°. Roda mouse = zoom. E = keluar POV.</div>
+        <div class="evm-btns">
+          <button class="btn primary" id="evmApply">Terapkan &amp; Masuk POV</button>
+          <button class="btn" id="evmExit" style="display:none" title="Keluar dari POV">⬆ Keluar POV</button>
+        </div>
+        <div class="evm-hint">Seret untuk melihat sekeliling 360°. Roda/cubit = zoom lensa. Langit berubah otomatis mengikuti waktu simulasi (siang ↔ senja ↔ malam).</div>
       </div>
     </div>
 

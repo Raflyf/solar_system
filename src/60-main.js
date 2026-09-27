@@ -176,6 +176,36 @@ async function boot() {
        Dengan urutan ini tidak ada keterlambatan satu frame antara
        benda dan kamera — inilah yang membuat zoom presisi mungkin. */
     computePositions(app.days, now * 0.001);
+    /* =====================================================================
+       LANGIT PERMUKAAN DINAMIS (siang ↔ malam)
+       ---------------------------------------------------------------------
+       Dipanggil SEBELUM updateCamera supaya warna langit memakai posisi
+       pengamat frame ini. Warna dihitung dari elevasi Matahari di lokasi
+       pengamat: biru siang → jingga senja → hitam malam, dan berubah
+       otomatis saat waktu simulasi berjalan (itulah "animasi siang
+       malam" yang diminta).
+       ===================================================================== */
+    if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active &&
+        typeof updateSurfaceSky === 'function') {
+      const svBody = SURFACE_VIEW.currentBody();
+      const svObs = SURFACE_VIEW.computeObserver(svBody);
+      if (svObs) updateSurfaceSky(svObs, svBody, SURFACE_VIEW.atmosphereOn);
+      /* Permukaan lokal resolusi tinggi: mesh planet terlalu kasar
+         (segmen ~500 km), sehingga dari 50 m permukaan tak terlihat sama
+         sekali. Patch ini memasang potongan bola rapat di sekitar pengamat. */
+      if (typeof updateSurfacePatch === 'function') {
+        updateSurfacePatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
+      }
+      /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:
+         langit siang jauh lebih terang sehingga bintang tenggelam). */
+      if (typeof applyDaylightStarDimming === 'function' && svObs) {
+        applyDaylightStarDimming(SURFACE_VIEW.sunAltitudeDeg(svObs));
+      }
+    } else {
+      if (typeof hideSurfaceSky === 'function') hideSurfaceSky();
+      if (typeof removeSurfacePatch === 'function') removeSurfacePatch();
+      if (typeof applyDaylightStarDimming === 'function') applyDaylightStarDimming(0);
+    }
     updateCamera(dt);
     applyPositions();
     /* glow Matahari dijaga tetap terlihat dari jarak berapa pun */
@@ -215,6 +245,22 @@ function buildUI() {
       TEMPORAL_BADGE.update(app.days);
     }
   } catch (e) { console.warn('temporal badge gagal:', e); }
+
+  /* =====================================================================
+     POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap
+     ---------------------------------------------------------------------
+     EARTHVIEW_UI.init() sudah berjalan di DOMContentLoaded, tetapi saat itu
+     daftar `bodies` MASIH KOSONG — sehingga dropdown benda langit tidak
+     terisi (terbukti di uji: 0 opsi). Di sini (setelah semua planet &
+     satelit dibangun) kita panggil ulang init supaya dropdown lengkap.
+     ===================================================================== */
+  try {
+    if (typeof EARTHVIEW_UI !== 'undefined' && typeof SURFACE_VIEW !== 'undefined') {
+      /* bersihkan listener lama dengan menandai sudah-inisialisasi ulang */
+      EARTHVIEW_UI._filled = false;
+      EARTHVIEW_UI.refillBodySelect();
+    }
+  } catch (e) { console.warn('POV dropdown gagal:', e); }
   /* ---- daftar benda di bilah samping ---- */
   const list = $('bodyList');
   list.innerHTML = '';
@@ -890,9 +936,15 @@ function updateHud() {
   /* Dengan floating origin, camera.position selalu dekat 0.
      Gunakan cameraState.pos yang menyimpan koordinat absolut kamera. */
   const distAU = cameraState.pos.length() / (AU_KM / RAD);
-  const follow = (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active)
-    ? ('POV Bumi — ' + EARTH_VIEW.city)
-    : cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  let follow;
+  if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
+    const svb = SURFACE_VIEW.currentBody();
+    follow = 'POV ' + (svb ? svb.name : 'permukaan') +
+             ' — ' + Math.abs(SURFACE_VIEW.lat).toFixed(1) + '°, ' +
+             Math.abs(SURFACE_VIEW.lon).toFixed(1) + '°';
+  } else {
+    follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  }
   const distStr = distAU < 0.01 
     ? (distAU * 149597870.7).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' km'
     : distAU.toFixed(2) + ' SA';

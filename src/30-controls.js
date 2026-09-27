@@ -448,49 +448,55 @@ function updateCamera(dt) {
   const cs = cameraState;
 
   /* =====================================================================
-     POV BUMI — kamera berdiri di permukaan Bumi
+     POV PERMUKAAN (SEMUA PLANET & SATELIT)
      ---------------------------------------------------------------------
      BUG YANG DIPERBAIKI: sebelumnya EARTH_VIEW.enable() hanya menyalakan
      bendera, tetapi TIDAK ADA satu baris pun di updateCamera() yang
      membacanya — jadi menekan "Terapkan & Masuk POV" tidak menggerakkan
      apa pun (keluhan: "pov bumi tidak berfungsi").
 
-     Sekarang: posisi kamera = titik pengamat nyata di permukaan (dihitung
-     dari lat/lon + GMST, sama seperti mesh Bumi), dan orientasi memakai
-     utara Bumi sebagai camera.up supaya langit tidak miring.
+     Sekarang: posisi kamera = titik pengamat nyata di permukaan body yang
+     dipilih (dihitung dari lat/lon + rotasi harian + poros nyata body itu,
+     SAMA dengan jalur mesh), dan orientasi memakai kutub body sebagai
+     camera.up supaya horizon selalu mendatar.
      ===================================================================== */
-  if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-    const earth = findBody('earth');
-    const obs = EARTH_VIEW.computeObserver(app.days, earth);
-    if (obs) {
+  if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
+    const body = SURFACE_VIEW.currentBody();
+    const obs = SURFACE_VIEW.computeObserver(body);
+    if (obs && body) {
       cs.target = null;
       cs.transition = null;
       cs.pos.copy(obs.pos);
       cs.vel.set(0, 0, 0);
 
-      /* Selubung atmosfer Bumi memakai BackSide — dilihat dari dalam
+      /* Selubung atmosfer body memakai BackSide — dilihat dari dalam
          (kamera di permukaan) ia akan menutupi SELURUH langit. Matikan
-         selama POV; dinyalakan kembali saat keluar. */
-      if (earth && earth.atmoMesh) earth.atmoMesh.visible = false;
+         selubung itu selama POV; kabut horizon yang benar dirender oleh
+         surfaceSky (lihat 20-scene.js). Pengguna bisa menyalakan kabut
+         itu lewat SURFACE_VIEW.atmosphereOn. */
+      for (const b of bodies) {
+        if (b.atmoMesh) b.atmoMesh.visible = false;
+      }
 
       rebaseOffset.copy(cs.pos);
       camera.position.set(0, 0, 0);
 
       /* arah pandang dari azimut/elevasi dalam kerangka pengamat ENU */
-      const fwd = EARTH_VIEW.viewDir(obs, _tmp);
+      const fwd = SURFACE_VIEW.viewDir(obs, _tmp);
       camera.up.copy(obs.zenith);
       camera.lookAt(fwd);
 
     /* Pesawat dekat (near plane) harus sangat kecil di POV: kamera berdiri
-       50 m di atas permukaan, sedangkan near bawaan 0,0005 unit = 3,2 km —
-       permukaan dalam radius itu akan terpotong dan tampak "bolong".
-       Dengan logarithmicDepthBuffer, rasio near/far 1e-6 : 2e6 tetap presisi. */
+       puluhan meter di atas permukaan, sedangkan near bawaan 0,0005 unit =
+       3,2 km — permukaan dalam radius itu akan terpotong dan tampak
+       "bolong". Dengan logarithmicDepthBuffer, rasio near/far 1e-6 : 2e6
+       tetap presisi. */
       const nearPov = 0.000002;
       if (camera.near !== nearPov) { camera.near = nearPov; camera.updateProjectionMatrix(); }
 
-      /* zoom lensa khusus POV (roda mouse / pinch mengubah EARTH_VIEW.fov) */
-      if (Math.abs(camera.fov - EARTH_VIEW.fov) > 0.01) {
-        camera.fov = EARTH_VIEW.fov;
+      /* zoom lensa khusus POV (roda mouse / pinch mengubah SURFACE_VIEW.fov) */
+      if (Math.abs(camera.fov - SURFACE_VIEW.fov) > 0.01) {
+        camera.fov = SURFACE_VIEW.fov;
         camera.updateProjectionMatrix();
       }
       return;
