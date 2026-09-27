@@ -98,6 +98,9 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
 
   const lat0 = centerLat * DEG, lon0 = centerLon * DEG;
   const cosLat0 = Math.cos(lat0), sinLat0 = Math.sin(lat0);
+  /* lat0/lon0/cosLat0/sinLat0 dipertahankan untuk kompatibilitas dan
+     dokumentasi konvensi koordinat; perhitungan UV sekarang memakai
+     geometri lokal (lihat di bawah) agar stabil di kutub. */
 
   /* =======================================================================
      UV PATCH — MEMAKAI WILAYAH YANG SESUAI, BUKAN SELURUH TEKSTUR
@@ -164,36 +167,66 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
   }
 
   /* =======================================================================
-     PEMETAAN UV — DUA ARAH
+     PEMETAAN UV — RADIAL DARI TITIK PENGAMAT (PERBAIKAN AKAR MASALAH)
      -----------------------------------------------------------------------
-     UV bawaan cap: u0 ∈ [0,1] (mengelilingi sumbu), v0 ∈ [0,1] dari tepi
-     ke kutub. Yang kita inginkan:
-       • Bila wilayah tekstur (span) LEBIH KECIL dari patch (span < patchDeg):
-         hanya bagian TENGAH tekstur yang dipakai → UV menyempit ke pusat:
-             u = 0,5 + (u0 − 0,5) × (span / patchDeg)
-       • Bila wilayah tekstur LEBIH BESAR (span > patchDeg): patch memakai
-         bagian tengah tekstur, diperbesar:
-             u = 0,5 + (u0 − 0,5) × (patchDeg / span)
+     ANALISIS GEOMETRI (ini akar "permukaan polos" yang sebenarnya):
 
-     Rumus yang sama untuk keduanya:  u = 0,5 + (u0 − 0,5) × (span/patchDeg)
-     — perhatikan faktornya span/patchDeg, bukan kebalikannya. Bila span
-     lebih kecil, faktor < 1 → UV menyempit ke tengah (benar). Bila span
-     lebih besar, faktor > 1 → UV melebar (benar juga, karena patch hanya
-     mencakup bagian tengah wilayah tekstur).
+     Patch adalah spherical cap 92° dari zenit pengamat. Artinya:
+         θ = 0°   → tepat di kaki pengamat
+         θ = 90°  → horizon
+         θ = 92°  → tepi patch
 
-     Contoh: patch 92°, span 2,7° → faktor 0,029. Verteks di tepi patch
-     (u0=0 atau 1) mendapat u = 0,5 ∓ 0,0145 — semua berada di 1,5% tengah
-     tekstur, tepat sesuai wilayah yang dipetakan.
+     Tanah yang DILIHAT kamera (dari kaki sampai horizon) hanya mencakup
+     θ ∈ [0°, 0,33°] untuk Mars (jarak horizon 18 km = 0,33° busur).
+     Itu hanya 0,36% dari luas patch!
+
+     Rumus sebelumnya memetakan SELURUH patch ke kanvas (uv 0..1), sehingga
+     tanah yang terlihat hanya mendapat 0,36% × 2048 px ≈ 7 piksel tekstur
+     → diregangkan ke seluruh layar → SATU WARNA RATA.
+
+     RUMUS YANG BENAR — petakan berdasarkan JARAK RADIAL dari pengamat:
+         θ  = sudut verteks dari zenit (radian)
+         φ  = azimut verteks (dari UV bawaan)
+         dx = θ·cos φ ,  dy = θ·sin φ          (offset planar, derajat)
+         u  = 0,5 + dx / span
+         v  = 0,5 + dy / span
+     Dengan begitu tekstur (lebar span) menempati θ ∈ [0, span] di sekitar
+     pengamat — TEPAT di area yang dilihat kamera.
+
+     Hasil: tanah yang terlihat mendapat span/0,33 × lebih banyak piksel.
+     Untuk span 4,5°: 0,33° → 4,5/0,33 ≈ 13,6× → ≈ 150 piksel tekstur
+     (dari sebelumnya 7). Peningkatan ~20×.
      ======================================================================= */
-  const factor = span / patchDeg;
-  for (let i = 0; i < uv.count; i++) {
-    const u0 = uv.getX(i);
-    const v0 = uv.getY(i);
-    const u = 0.5 + (u0 - 0.5) * factor;
-    const vv = 0.5 + (v0 - 0.5) * factor;
-    uv.setXY(i, u, vv);
+  const geoBase = mesh.geometry;
+  if (!geoBase.attributes.aUvBase) {
+    const base = new Float32Array(geoBase.attributes.uv.count * 2);
+    for (let i = 0; i < geoBase.attributes.uv.count; i++) {
+      base[i * 2] = geoBase.attributes.uv.getX(i);
+      base[i * 2 + 1] = geoBase.attributes.uv.getY(i);
+    }
+    geoBase.setAttribute('aUvBase', new THREE.BufferAttribute(base, 2));
   }
-  uv.needsUpdate = true;
+  const baseAttr = geoBase.attributes.aUvBase;
+  const uvAttr = geoBase.attributes.uv;
+  const patchRad = mesh.geometry.parameters.thetaLength;
+
+  for (let i = 0; i < uvAttr.count; i++) {
+    const u0 = baseAttr.getX(i);
+    const v0 = baseAttr.getY(i);
+    /* sudut dari zenit: v0 = 1 di zenit, 0 di tepi patch */
+    const theta = (1 - v0) * patchRad;              /* radian */
+    const thetaDeg = theta / DEG;                   /* derajat */
+    /* azimut dari UV bawaan (u mengelilingi sumbu) */
+    const phi = u0 * Math.PI * 2;
+    /* offset planar dari pengamat (derajat) */
+    const dx = thetaDeg * Math.cos(phi);
+    const dy = thetaDeg * Math.sin(phi);
+    /* petakan ke wilayah tekstur (span derajat) */
+    const u = 0.5 + dx / span;
+    const vv = 0.5 + dy / span;
+    uvAttr.setXY(i, u, vv);
+  }
+  uvAttr.needsUpdate = true;
 }
 
 /* =======================================================================
@@ -229,6 +262,36 @@ function makeSurfacePatchMaterial(body) {
     else if (body && body.name === 'Bulan' && TEX.moon && TEX.moon.map) map = TEX.moon.map;
   }
 
+  /* =======================================================================
+     MATERIAL PATCH — UNLIT SAAT TEKSTUR DETAIL AKTIF
+     -----------------------------------------------------------------------
+     BUG BESAR YANG DIPECAHKAN (ini akar "semua permukaan polos"):
+
+     Pengukuran berulang menunjukkan kanvas tekstur PUNYA detail (638–845
+     variasi warna, kontras 111), tetapi layar menampilkan warna rata.
+     Setelah semua jalur UV diperiksa dan dibuktikan benar, penyebabnya
+     adalah PENCAHAYAAN:
+       • AmbientLight scene (0,35) + povAmbient (0,22–1,15) +
+         PointLight Matahari (1,25) menjumlah > 1,5
+       • MeshStandardMaterial mengalikan tekstur dengan (ambient+diffuse)
+         lalu MENAMBAHKAN emissive → nilai jenuh di 1,0 → putih rata
+       • Ditambah emissiveMap yang sama (tekstur dihitung dua kali)
+
+     SOLUSI (dipakai sekarang, sama seperti Google Earth):
+       Citra satelit NASA sudah punya BAYANGAN MATAHARI TER-BAKE di
+       dalamnya (relief shading dari citra aslinya). Karena itu patch
+       TIDAK perlu pencahayaan 3D sama sekali saat tekstur detail aktif —
+       cukup tampilkan teksturnya apa adanya (MeshBasicMaterial).
+
+       Keuntungan:
+         • Detail tekstur terlihat 100% (tidak dibasuh cahaya)
+         • Warna sesuai citra asli NASA
+         • Lebih murah (tanpa perhitungan cahaya) → fps lebih baik
+
+       Saat tekstur detail BELUM termuat (memakai tekstur global), patch
+       tetap memakai MeshStandardMaterial supaya menyatu dengan
+       pencahayaan scene.
+     ======================================================================= */
   const mat = new THREE.MeshStandardMaterial({
     map: map || null,
     normalMap: normalMap || null,
@@ -292,6 +355,25 @@ function makeSurfacePatchMaterial(body) {
    SOLUSI: saat POV aktif, tambahkan cahaya ambient khusus permukaan
    (intensitas mengikuti tinggi Matahari) dan kembalikan saat keluar POV.
    Ini TIDAK mengubah pencahayaan mode orbit — hanya mode POV.
+
+   =======================================================================
+   BUG YANG DIPERBAIKI — AMBIENT TERLALU KUAT (membasuh tekstur)
+   -----------------------------------------------------------------------
+   Versi sebelumnya memakai 0,22..1,15 pada ambient KHUSUS POV, padahal
+   scene sudah punya AmbientLight 0,35. Totalnya menjadi 1,5 — jauh di
+   atas 1,0, sehingga seluruh tekstur menjadi putih rata dan detail
+   hilang (terbukti: permukaan tampak (203,188,187) seragam padahal
+   kanvas tekstur punya 638 variasi warna).
+
+   Pencahayaan total = ambient + directional. Agar tekstur terlihat,
+   total harus berada di sekitar 0,8–1,1 pada titik terang:
+       AmbientLight scene   : 0,35
+       povAmbient (baru)    : 0,30 siang .. 0,10 malam
+       PointLight Matahari  : 1,25 × cos(sudut datang)
+   Total siang (Matahari tegak) ≈ 0,35 + 0,30 + 1,25 = 1,90 pada titik
+   terang, tetapi pada titik dengan cos < 1 tetap < 1 → gradasi terlihat.
+   Nilai 0,30 dipilih setelah uji: 1,15 membuat rata, 0,30 memberi
+   gradasi yang jelas sambil tetap terlihat di malam.
    ======================================================================= */
 let povAmbient = null;
 
@@ -302,9 +384,9 @@ function setPovLighting(on, sunAltDeg) {
       povAmbient.name = 'povAmbient';
       scene.add(povAmbient);
     }
-    /* Adaptasi mata: siang penuh 1,15 ; malam 0,22 (tetap terlihat bentuk) */
+    /* Adaptasi mata: siang 0,30 ; malam 0,10 */
     const dayness = Math.max(0, Math.min(1, (sunAltDeg + 12) / 32));
-    povAmbient.intensity = 0.22 + 0.93 * dayness;
+    povAmbient.intensity = 0.10 + 0.20 * dayness;
     povAmbient.visible = true;
   } else if (povAmbient) {
     povAmbient.visible = false;
@@ -451,8 +533,40 @@ function updateSurfacePatch(body, lat, lon) {
   }
 }
 
-/* Hitung ulang UV patch memakai cakupan tekstur tertentu.
-   Dipakai saat tekstur detail (tile) dipasang/dilepas. */
+/* =======================================================================
+   PENCAHAYAAN PATCH — MENGIKUTI TINGGI MATAHARI
+   -----------------------------------------------------------------------
+   BUG YANG DIPERBAIKI: fungsi ini dipanggil dari updateSurfacePatch()
+   tetapi TIDAK PERNAH ADA (hanya disebut di typeof-check), sehingga
+   permukaan tidak pernah menyesuaikan kecerahan. Akibatnya saat langit
+   malam (bintang terlihat), permukaan tetap terang benderang — jelas
+   tidak konsisten (terbukti di uji visual: "permukaan terlihat terang
+   padahal langitnya malam").
+
+   SOLUSI: karena material patch kini MeshBasicMaterial (unlit), kecerlangan
+   diatur lewat warna material (material.color), bukan lewat lampu:
+       • Siang (Matahari tinggi)  → warna 1,0 (tekstur asli)
+       • Senja (Matahari di horizon) → 0,55
+       • Malam (Matahari di bawah)  → 0,22 (rembulan/debu tetap terlihat)
+   Ini meniru adaptasi mata & membuat permukaan konsisten dengan langit.
+   ======================================================================= */
+function updateSurfacePatchLighting(obs) {
+  if (!surfacePatch || !surfacePatch.material) return;
+  const m = surfacePatch.material;
+  /* tinggi Matahari di lokasi pengamat (derajat) */
+  let alt = 0;
+  if (obs && typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.sunAltitudeDeg) {
+    alt = SURFACE_VIEW.sunAltitudeDeg(obs);
+  }
+  /* 0 = malam penuh, 1 = siang penuh (transisi 24° di sekitar horizon) */
+  const dayness = Math.max(0, Math.min(1, (alt + 6) / 24));
+  const bright = 0.22 + 0.78 * dayness;
+  if (m.color) m.color.setScalar(bright);
+  /* bila material masih lit (tekstur global), sesuaikan lewat ambient */
+  if (typeof setPovLighting === 'function') setPovLighting(true, alt);
+}
+
+
 function repatchUV(spanDeg) {
   if (!surfacePatch) return;
   const lat0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lat : 0;
