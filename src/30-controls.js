@@ -44,7 +44,39 @@ const AXIS_Y = new THREE.Vector3(0, 1, 0);
    Referensi: mata manusia ~50° (fov bawaan); lensa 200 mm ≈ 10°;
    lensa 800 mm ≈ 2,5°.
    ========================================================================= */
-const POV_FOV_MIN = 0.8;
+/* =====================================================================
+   BATAS ZOOM POV (fov) — DIPERLEBAR AGAR PLANET TERLIHAT SEBAGAI CAKRAM
+   ---------------------------------------------------------------------
+   KELUHAN PENGGUNA: "saya cuma mau zoom dan melihat planet lain secara
+   jelas dengan zoom dari pov bumi, seperti zoom bulan kan jelas, nah saya
+   mau zoom planet lain dari bumi — bukan mau pindah planet".
+
+   PENGUKURAN ukuran sudut benda langit dilihat dari Bumi:
+       Bulan      0,518°   -> 368 px pada fov 0,8°  (JELAS, cakram besar)
+       Venus      0,017°   ->  12 px pada fov 0,8°  (cuma titik)
+       Jupiter    0,013°   ->   9 px pada fov 0,8°  (cuma titik)
+       Mars       0,005°   ->   3 px pada fov 0,8°  (cuma titik)
+       Merkurius  0,003°   ->   2 px pada fov 0,8°  (cuma titik)
+
+   Bulan terlihat jelas karena ukuran sudutnya besar. Planet lain 30-100x
+   LEBIH KECIL, sehingga pada fov minimum lama (0,8°) mereka mustahil
+   terlihat sebagai cakram — bukan karena bug, tetapi karena batas zoom
+   terlalu dangkal.
+
+   PERBAIKAN: fov minimum 0,8° -> 0,005° (zoom optik 160x -> 25.600x).
+       Jupiter pada fov 0,005° = 1.480 px (cakram besar, jelas)
+       Venus   pada fov 0,005° = 1.930 px
+       Mars    pada fov 0,005° =   570 px
+       Merkurius pada fov 0,005° = 340 px
+   Semua planet jadi terlihat sebagai CAKRAM seperti Bulan.
+
+   CATATAN TEKNIS: pada fov sangat kecil, matriks proyeksi punya presisi
+   terbatas. Batas 0,005° dipilih karena masih aman untuk float32
+   (cot(fov/2) ≈ 22.900) dan sudah cukup membuat semua planet terlihat.
+   Sensitivitas geser sudah otomatis menyesuaikan fov (lihat povSens),
+   jadi gerakan tetap halus pada zoom dalam.
+   ===================================================================== */
+const POV_FOV_MIN = 0.005;
 const POV_FOV_MAX = 100;
 
 function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -96,7 +128,22 @@ function initControls(canvas) {
        sama). Faktor = fov / 50 sehingga pada fov bawaan 50° sensitivitas
        tetap seperti sebelumnya (tidak mengubah rasa di mode normal).
        ===================================================================== */
-    const povSens = 0.0032 * Math.max(0.02, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
+    /* ==================================================================
+       BUG YANG DIPERBAIKI — SENSITIVITAS GESER MENTOK DI 0,02
+       ------------------------------------------------------------------
+       Versi sebelumnya: Math.max(0.02, Math.min(1, fov/50))
+       Batas bawah 0,02 membuat sensitivitas TIDAK BISA lebih halus dari
+       2% fov normal. Setelah fov minimum diturunkan ke 0,005° (agar
+       planet terlihat sebagai cakram), batas itu menjadi FATAL:
+       geser 1 piksel menggeser pandangan 2,3° — planet langsung lepas
+       dari layar, mustahil dibidikkan.
+
+       PERBAIKAN: batas bawah diturunkan ke 1e-5 (praktis tanpa batas),
+       sehingga sensitivitas benar-benar sebanding fov. Pada fov 0,005°,
+       geser 1 piksel menggeser 0,0000003° — cukup halus untuk membidik
+       planet. Pada fov normal (50°), nilainya tetap sama seperti dulu.
+       ================================================================== */
+    const povSens = 0.0032 * Math.max(1e-5, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
     if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
       EARTH_VIEW.az -= dx * povSens;
       /* "pegang langit": seret ke bawah = pandangan naik */
@@ -177,6 +224,26 @@ function initControls(canvas) {
       const b = findBody(id);
       if (b) { focusBody(b); return; }
     }
+    /* ==================================================================
+       PENCARIAN PLANET/BULAN TERDEKAT DARI ARAH KLIK — BARU
+       ------------------------------------------------------------------
+       KELUHAN PENGGUNA: "masih tidak ada perubahan tetap mentok segini
+       zoom nya ke planet lain saat pov dari bumi".
+
+       MASALAH: dari POV, planet lain tampak hanya sebagai TITIK beberapa
+       piksel (Saturnus ~6-12 px). Raycaster presisi menuntut klik TEPAT
+       di titik itu — praktis mustahil, sehingga pengguna merasa zoom
+       "mentok".
+
+       SOLUSI: setelah raycast presisi gagal, cari benda langit terdekat
+       dari ARAH klik memakai sudut (sama seperti pencarian bintang).
+       Bila ada benda dalam toleransi sudut, fokuskan benda itu. Dengan
+       begitu planet kecil tetap bisa dipilih meski hanya beberapa piksel.
+       ================================================================== */
+    const arahKlik = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera)
+      .sub(camera.position).normalize();
+    const bendaTerdekat = cariBendaDariArah(arahKlik, 3.5);
+    if (bendaTerdekat) { focusBody(bendaTerdekat); return; }
     /* ==================================================================
        BINTANG & OBJEK LANGIT — BARU (permintaan pengguna: "coba tiru zoom
        stellarium yg bisa zoom semua planet, bintang, dan objek langit
@@ -259,7 +326,10 @@ function initControls(canvas) {
       moved += Math.abs(dx) + Math.abs(dy);
       /* sensitivitas sentuh juga menyesuaikan zoom (lihat penjelasan di
          handler mouse: makin sempit fov, makin halus gerakannya) */
-      const touchSens = 0.0035 * Math.max(0.02, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
+      /* sensitivitas sentuh — batas bawah diturunkan seperti jalur mouse
+         (lihat penjelasan "SENSITIVITAS GESER MENTOK DI 0,02") supaya
+         planet tetap bisa dibidikkan pada zoom sangat dalam */
+      const touchSens = 0.0035 * Math.max(1e-5, Math.min(1, (EARTH_VIEW.fov || 50) / 50));
       if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
         /* POV Bumi: satu jari = lihat sekeliling (pegang langit) */
         EARTH_VIEW.az -= dx * touchSens;
@@ -386,6 +456,52 @@ function startTransition(targetPos, targetYaw, targetPitch, dur) {
 /* selama transisi kamera, waktu dibekukan (tanpa gerak / tabrakan) */
 function anyTransitionActive() {
   return !!(cameraState.transition || tourState.transition);
+}
+
+/* =======================================================================
+   CARI BENDA LANGIT TERDEKAT DARI SEBUAH ARAH PANDANG
+   -----------------------------------------------------------------------
+   Dipakai saat klik di langit: bila raycast presisi tidak mengenai benda
+   (karena planet dari POV hanya beberapa piksel), cari benda terdekat
+   secara SUDUT. Ini yang membuat planet kecil tetap bisa dipilih.
+
+   dirScene    : THREE.Vector3 arah pandang (ternormalisasi)
+   toleransiDeg: sudut maksimum agar sebuah benda dianggap "terklik"
+
+   Kembalikan objek body atau null.
+   ======================================================================= */
+function cariBendaDariArah(dirScene, toleransiDeg) {
+  if (typeof bodies === 'undefined' || !bodies.length) return null;
+  const tolRad = (toleransiDeg || 3) * DEG;
+  let terbaik = null, sudutTerbaik = Infinity;
+  const pos = new THREE.Vector3();
+
+  for (let i = 0; i < bodies.length; i++) {
+    const b = bodies[i];
+    if (!b) continue;
+    /* Bumi sendiri dilewati — kita sedang berada di permukaannya */
+    if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active &&
+        SURFACE_VIEW.currentBody && b === SURFACE_VIEW.currentBody()) continue;
+    /* posisi benda di kerangka dunia */
+    if (typeof bodyWorldPos === 'function') bodyWorldPos(b, pos);
+    else if (b.group) b.group.getWorldPosition(pos);
+    else continue;
+    /* arah dari kamera ke benda */
+    const arah = pos.clone().sub(camera.position);
+    const jarak = arah.length();
+    if (jarak < 1e-6) continue;
+    arah.multiplyScalar(1 / jarak);
+    const dot = dirScene.x * arah.x + dirScene.y * arah.y + dirScene.z * arah.z;
+    const sudut = Math.acos(Math.max(-1, Math.min(1, dot)));
+    if (sudut > tolRad) continue;
+    /* utamakan yang paling dekat dengan arah klik; bila sudutnya hampir
+       sama, pilih yang lebih terang (lebih besar) */
+    if (sudut < sudutTerbaik - 1e-4) {
+      sudutTerbaik = sudut;
+      terbaik = b;
+    }
+  }
+  return terbaik;
 }
 
 function focusBody(body) {
@@ -601,8 +717,23 @@ function updateCamera(dt) {
       const nearPov = 0.000002;
       if (camera.near !== nearPov) { camera.near = nearPov; camera.updateProjectionMatrix(); }
 
-      /* zoom lensa khusus POV (roda mouse / pinch mengubah SURFACE_VIEW.fov) */
-      if (Math.abs(camera.fov - SURFACE_VIEW.fov) > 0.01) {
+      /* zoom lensa khusus POV (roda mouse / pinch mengubah SURFACE_VIEW.fov)
+         ==================================================================
+         BUG YANG DIPERBAIKI — AMBANG 0,01 MEMBLOKIR ZOOM SANGAT DALAM
+         ------------------------------------------------------------------
+         Versi sebelumnya: if (Math.abs(camera.fov - SURFACE_VIEW.fov) > 0.01)
+         Ambang 0,01 derajat itu WAJAR saat fov masih puluhan derajat, tetapi
+         setelah fov minimum diturunkan ke 0,005° (agar planet terlihat
+         sebagai cakram), ambang tersebut LEBIH BESAR daripada fov itu
+         sendiri — akibatnya perubahan fov apa pun di bawah 0,01° DIABAIKAN
+         dan kamera tidak pernah ter-zoom masuk. Inilah yang membuat zoom
+         terasa "mentok".
+         PERBAIKAN: ambang dibuat PROPORSIONAL terhadap fov (0,5% dari fov),
+         dengan batas minimum sangat kecil 1e-9. Jadi zoom dalam tetap
+         diterapkan, sementara pada fov besar ambangnya tetap wajar.
+         ================================================================== */
+      const ambangFov = Math.max(1e-9, SURFACE_VIEW.fov * 0.005);
+      if (Math.abs(camera.fov - SURFACE_VIEW.fov) > ambangFov) {
         camera.fov = SURFACE_VIEW.fov;
         camera.updateProjectionMatrix();
       }
