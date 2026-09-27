@@ -72,8 +72,25 @@ function canvasTexture(canvas, srgb) {
   return tex;
 }
 
+/* ---------- bola planet ---------- */
+/* =======================================================================
+   SEGMEN BOLA — DIPERBANYAK UNTUK ZOOM DEKAT
+   -----------------------------------------------------------------------
+   KELUHAN PENGGUNA: "semakin di zoom malah makin jelek resolusinya, makin
+   rusak, makin blur bahkan tidak bisa sampai zoom nya" dibanding
+   Stellarium yang "semakin di zoom semakin jelas dan HD".
+
+   PENYEBAB (salah satu): bola planet hanya 80x56 segmen (planet) dan
+   48x32 (satelit). Saat kamera mendekat (fov kecil / jarak dekat), tepi
+   bola terlihat BERSUSUD/berpoligon — bukan karena tekstur, tetapi karena
+   geometri kurang halus.
+
+   PERBAIKAN: segmen dinaikkan 80x56 -> 128x96 (planet) dan 48x32 -> 96x64
+   (satelit). Biaya GPU masih kecil karena hanya satu mesh per benda dan
+   tidak semua benda tampil bersamaan; target 60 fps tetap aman.
+   ======================================================================= */
 function buildSphere(radiusUnits, flat, wSeg, hSeg) {
-  const geo = new THREE.SphereGeometry(radiusUnits, wSeg || 64, hSeg || 48);
+  const geo = new THREE.SphereGeometry(radiusUnits, wSeg || 128, hSeg || 96);
   if (flat && flat > 0.001) {
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) {
@@ -355,7 +372,7 @@ function buildBody(cfg, parentMoonPlane, hostBody) {
   }
 
   const mesh = new THREE.Mesh(
-    buildSphere(radiusUnits, cfg.flat || 0, isMoon ? 48 : 80, isMoon ? 32 : 56), mat);
+    buildSphere(radiusUnits, cfg.flat || 0, isMoon ? 96 : 128, isMoon ? 64 : 96), mat);
   spin.add(mesh);
   pickables.push(mesh);
 
