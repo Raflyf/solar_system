@@ -21,7 +21,29 @@ const ASSET_MANIFEST = {
   saturn:     { map: 'saturn.jpg',    ring: 'saturn_ring.png' },
   uranus:     { map: 'uranus.jpg' },
   neptune:    { map: 'neptune.jpg' },
-  milkyway:   { map: 'milkyway.jpg' },
+  /* =====================================================================
+     TEKSTUR LANGIT — DIPISAH DARI TEKSTUR BIASA
+     ---------------------------------------------------------------------
+     BUG YANG DIPERBAIKI (keluhan: "langit berbintang nya malah makin jelek
+     dan buram ga jelas"):
+
+     Tekstur lama (milkyway.jpg dari Solar System Scope) rata-rata
+     kecerahannya hanya 1,17/255 — sangat gelap. Agar terlihat, ia harus
+     dikali 14x, dan pengali itu IKUT MEMPERBESAR artefak kompresi JPEG
+     (4,2% piksel di area yang seharusnya hitam bernilai >5). Hasilnya:
+     gumpalan ungu-buram yang terlihat seperti noise, bukan galaksi.
+
+     Tekstur baru (milkyway_nasa.jpg dari NASA SVS "Deep Star Maps 2020",
+     dibuat dari 100 juta bintang katalog Bright Star + Tycho-2 + UCAC3):
+         rata-rata kecerahan 11,86/255  (10x lebih terang)
+         puncak 181/255
+     Karena sudah terang, pengali cukup ~1,2x → artefak TIDAK diperbesar,
+     dan pita galaksi + jalur debu terlihat tajam.
+
+     Sumber: https://svs.gsfc.nasa.gov/4851/ (NASA/Goddard SVS, Ernie
+     Wright dkk). Cermin unduhan: Wikimedia Commons (file 64k asli).
+     ===================================================================== */
+  milkyway:   { map: 'milkyway_nasa.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
   phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },

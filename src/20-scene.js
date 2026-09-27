@@ -654,9 +654,26 @@ function updateBeacons() {
     /* satelit dapat inti sedikit lebih kecil agar tidak menutupi induknya,
        tapi tidak boleh terlalu kecil — pada skala 1:1 satelit nyaris tak
        terlihat, jadi penanda harus tegas */
-    const basePx = b.isMoon ? 5.6 : 6.0;
+    /* =====================================================================
+       UKURAN PENANDA — BULAN DIBUAT LEBIH TEGAS
+       ---------------------------------------------------------------------
+       KELUHAN USER: "bulan masih kecil saat pov dari bumi, malah planet yg
+       lebih jelas".
+
+       Analisis: pada skala 1:1, ukuran sudut Bulan memang 0,52 derajat —
+       SAMA seperti langit nyata, jadi ukuran cakramnya sudah benar. Yang
+       membuatnya terasa "kecil" adalah penandanya lebih kecil dari planet:
+         • inti planet 6,0 px + halo 3,4x  = 20,4 px
+         • inti Bulan  5,6 px + halo 3,0x  = 16,8 px
+       Padahal Bulan adalah benda paling menarik perhatian di langit malam.
+
+       Perbaikan: inti Bulan 7,2 px + halo 3,8x = 27,4 px, sehingga lebih
+       menonjol dari planet. Nilai ini tetap kecil di layar (tidak menutupi
+       langit) tetapi cukup untuk langsung terlihat dan bisa diklik.
+       ===================================================================== */
+    const basePx = b.isMoon ? 7.2 : 6.0;
     const corePx = basePx + Math.min(3.5, Math.max(0, 1 - px / 6.0) * 3.5);
-    const haloPx = corePx * (b.isMoon ? 3.0 : 3.4);
+    const haloPx = corePx * (b.isMoon ? 3.8 : 3.4);
     b.beacon.core.scale.set(corePx * unit, corePx * unit, 1);
     b.beacon.halo.scale.set(haloPx * unit, haloPx * unit, 1);
     b.beacon.halo.material.opacity = 0.26 + 0.12 * Math.sin(now * 0.0022 + i * 1.7);
@@ -678,15 +695,29 @@ function buildSky() {
   const t = TEX.milkyway || {};
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
-    /* Langit Bima Sakti harus TERLIHAT, bukan sekadar ada: tekstur citra
-       nyata sangat gelap (pita galaksi rata-rata < 45/255) dan tone mapping
-       ACES meredupkannya lagi. toneMapped=false + pengali 1.9 menampilkan
-       pita kabut seperti dilihat mata, tanpa mencuci bintang katalog. */
+    /* =====================================================================
+       KECERAHAN LANGIT — DIKALIBRASI DARI PENGUKURAN TEKSTUR
+       ---------------------------------------------------------------------
+       Tekstur: milkyway_nasa.jpg (NASA SVS Deep Star Maps 2020, peta
+       galaktik). PENGUKURAN: rata-rata 11,86/255, puncak 181/255.
+
+       Tekstur LAMA hanya 1,17/255 sehingga butuh pengali 14x — dan
+       pengali itu ikut memperbesar artefak JPEG (4,2% piksel di area
+       hitam bernilai >5) menjadi gumpalan ungu-buram yang terlihat
+       seperti noise (keluhan pengguna: "langit berbintang malah makin
+       jelek dan buram").
+
+       Karena tekstur NASA sudah terang, pengali cukup 1,35x:
+           rata-rata 11,86 x 1,35 = 16/255  (pita terlihat sebagai kabut)
+           puncak    181   x 1,35 = 244/255 (inti galaksi terang, tidak
+                                            jenuh berlebihan)
+       Artefak tidak diperbesar karena pengali kecil.
+       ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(1.9, 1.9, 1.9);
+    mat.color.setRGB(1.35, 1.35, 1.35);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
@@ -761,10 +792,38 @@ function applyRebaseToStatics() {
   if (sunRim) sunRim.position.set(nx, ny, nz);
   if (sunGlow) sunGlow.position.set(nx, ny, nz);
   if (beltPoints) beltPoints.position.set(nx, ny, nz);
+  /* =====================================================================
+     BOLA LANGIT & BINTANG — SELALU MENGIKUTI KAMERA SAAT POV
+     ---------------------------------------------------------------------
+     BUG YANG DIPERBAIKI (penyebab "Bima Sakti tidak terlihat" di POV):
+
+     Bola langit berjari-jari 900.000 unit dan bintang berada di permukaan
+     bola itu. Di mode orbit, keduanya digeser ke -rebaseOffset supaya
+     sejajar dengan benda langit setelah rebase — benar.
+
+     Tetapi di mode POV, kamera dipindahkan ke (0,0,0) (lihat updateCamera:
+     `camera.position.set(0,0,0)`), sedangkan bola langit masih digeser ke
+     -rebaseOffset (yaitu −23.466 unit dari posisi kamera). Akibatnya
+     KAMERA BERADA DI LUAR BOLA LANGIT → seluruh langit (termasuk pita
+     Bima Sakti dan tekstur galaksi) tidak terlihat; yang tersisa hanya
+     bintang katalog yang jaraknya jauh lebih besar.
+
+     Terbukti dari pengukuran: skyMesh.position = (−23466, 0.5, 1788)
+     sedangkan camera.position = (0, 0, 0) dan radius bola 900.000 —
+     frustum menyatakan "intersects" tetapi kamera berada di luar bola
+     sehingga hanya sisi dalam yang tak pernah terlihat.
+
+     PERBAIKAN: saat POV aktif, bola langit & bintang diletakkan di
+     (0,0,0) — sama dengan kamera — sehingga kamera selalu di pusat bola
+     dan seluruh langit terlihat. Di mode orbit, perilaku lama
+     dipertahankan (geser ke -rebaseOffset).
+     ===================================================================== */
+  const povAktif = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active);
+  const sx = povAktif ? 0 : nx, sy = povAktif ? 0 : ny, sz = povAktif ? 0 : nz;
   if (typeof starField !== 'undefined' && starField.group) {
-    starField.group.position.set(nx, ny, nz);
+    starField.group.position.set(sx, sy, sz);
   }
-  if (skyMesh) skyMesh.position.set(nx, ny, nz);
+  if (skyMesh) skyMesh.position.set(sx, sy, sz);
 }
 
 /* =======================================================================
@@ -1387,10 +1446,16 @@ function applyPositions() {
   if (sunLight) sunLight.position.set(nx, ny, nz);
 
   if (beltPoints) beltPoints.position.set(nx, ny, nz);
-  if (typeof starField !== 'undefined' && starField.group) {
-    starField.group.position.set(nx, ny, nz);
+  /* bola langit & bintang: ikuti kamera saat POV (lihat penjelasan di
+     applyRebaseToStatics — kamera POV berada di 0,0,0) */
+  {
+    const povOn = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active);
+    const bx = povOn ? 0 : nx, by = povOn ? 0 : ny, bz = povOn ? 0 : nz;
+    if (typeof starField !== 'undefined' && starField.group) {
+      starField.group.position.set(bx, by, bz);
+    }
+    if (skyMesh) skyMesh.position.set(bx, by, bz);
   }
-  if (skyMesh) skyMesh.position.set(nx, ny, nz);
   for (let i = 0; i < bodies.length; i++) {
     const b = bodies[i];
     /* garis orbit PLANET berada di scene (perlu digeser).

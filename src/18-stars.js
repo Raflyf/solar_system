@@ -396,13 +396,27 @@ function buildStarField() {
       'varying vec3 vCol;',
       'varying float vAlpha;',
       'uniform float uOpacity;',
+      /* ==================================================================
+         PROFIL BINTANG — INTI TAJAM, HALO DIPERKECIL
+         ------------------------------------------------------------------
+         KELUHAN USER: "langit berbintang nya malah makin jelek dan buram
+         ga jelas" — bintang terang tampak seperti gumpalan blur.
+
+         Versi sebelumnya: core = smoothstep(1.0, 0.0, r*2.4) dengan
+         halo = (1-r)^2.6 * 0.42. Core-nya lembut (transisi 0..1 pada
+         rentang lebar) sehingga titik tampak sebagai cakram berbayang,
+         dan halo 42% menambah kabut di sekelilingnya.
+
+         Perbaikan: inti dibuat JAUH lebih tajam (r*4.5 → hanya ~22%
+         tengah titik yang terang penuh) dan halo dikurangi ke 0.18
+         supaya bintang tampak seperti titik cahaya presisi, bukan blur.
+         ================================================================== */
       'void main() {',
       '  vec2 d = gl_PointCoord - vec2(0.5);',
       '  float r = length(d) * 2.0;',
       '  if (r > 1.0) discard;',
-      /* inti tajam + halo lembut: meniru titik cahaya bintang */
-      '  float core = smoothstep(1.0, 0.0, r * 2.4);',
-      '  float halo = pow(1.0 - r, 2.6) * 0.42;',
+      '  float core = smoothstep(1.0, 0.0, r * 4.5);',
+      '  float halo = pow(1.0 - r, 3.0) * 0.18;',
       '  float a = clamp(core + halo, 0.0, 1.0) * vAlpha * uOpacity;',
       '  gl_FragColor = vec4(vCol, a);',
       '}',
