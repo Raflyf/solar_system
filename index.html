@@ -529,7 +529,7 @@ kbd {
     opacity: 0;
     pointer-events: none;
     z-index: 30;
-    top: 92px;
+    top: var(--title-bottom, 150px);
     max-height: calc(100vh - 260px);
   }
   .sidebar.open {
@@ -573,6 +573,25 @@ kbd {
        toolbar     : tepat di atas bilah waktu
        panel info  : di atas toolbar (bottom-sheet)
      ====================================================================== */
+
+  /* Sidebar jadi laci (drawer) di HP, sama seperti breakpoint 980px */
+  .sidebar {
+    width: 240px;
+    transform: translateX(-260px);
+    opacity: 0;
+    pointer-events: none;
+    z-index: 30;
+    top: var(--title-bottom, 150px);
+    max-height: calc(100vh - 260px);
+  }
+  .sidebar.open {
+    transform: none; opacity: 1; pointer-events: auto;
+  }
+  /* tombol buka/tutup sidebar */
+  #btnSidebar { display: block; }
+
+  /* ======================================================================
+     TATA LETAK HP — sistem "band" vertikal
 
   /* toolbar: tepat di atas bilah waktu */
   .top-buttons {
@@ -1608,17 +1627,17 @@ input[type="date"] { color-scheme: dark; }
          ================================================================ -->
     <div class="panel title-panel" id="titlePanel">
       <div class="title-main">TATA SURYA <span>3D</span></div>
-      <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
-      <!-- Pencarian benda langit (di dalam panel judul — lihat penjelasan) -->
-      <div class="search-box" id="searchPanel">
-        <span class="search-icon">⌕</span>
-        <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
-               placeholder="Cari bintang, planet, galaksi, satelit…">
-      </div>
-      <div class="search-results" id="searchResults"></div>
-      <!-- Lencana peristiwa langit — DI DALAM panel judul supaya tidak
-           pernah bertabrakan dengan toolbar atau panel lain -->
-      <div class="event-badge" id="eventBadge">—</div>
+        <div class="title-sub">Skala <b>1 : 1</b> · tekstur asli NASA/USGS · Bumi bisa di-zoom sampai permukaan</div>
+        <!-- Pencarian benda langit (di dalam panel judul — lihat penjelasan) -->
+        <div class="search-box" id="searchPanel">
+          <span class="search-icon">⌕</span>
+          <input id="searchInput" type="text" autocomplete="off" spellcheck="false"
+                 placeholder="Cari bintang, planet, galaksi, satelit…">
+        </div>
+        <div class="search-results" id="searchResults"></div>
+  <!-- Lencana peristiwa langit — DI DALAM panel judul supaya tidak
+       pernah bertabrakan dengan toolbar atau panel lain -->
+  <div class="event-badge" id="eventBadge">—</div>
     </div>
 
     <!-- Tombol kanan atas -->
@@ -120907,7 +120926,7 @@ function buildUI() {
   $('btnHelpClose').addEventListener('click', () => { $('helpPanel').classList.remove('show'); syncBackdrop(); });
   $('btnSidebar').addEventListener('click', () => {
     const sb = $('sidebar');
-    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.remove('open');
+    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.toggle('open');
     else sb.classList.toggle('hidden');
     syncBackdrop();
   });

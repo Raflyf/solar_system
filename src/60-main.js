@@ -464,7 +464,7 @@ function buildUI() {
   $('btnHelpClose').addEventListener('click', () => { $('helpPanel').classList.remove('show'); syncBackdrop(); });
   $('btnSidebar').addEventListener('click', () => {
     const sb = $('sidebar');
-    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.remove('open');
+    if (window.matchMedia('(max-width: 980px)').matches) sb.classList.toggle('open');
     else sb.classList.toggle('hidden');
     syncBackdrop();
   });
