@@ -55,22 +55,33 @@ def baca_iau_csn():
             if line.startswith('#') or not line.strip() or line.startswith('$'):
                 continue
             # ============================================================
-            # POLA PARSING — DIPERBAIKI
+            # POLA PARSING — DIPERBAIKI LAGI (nama bernomor dua kata)
             # ------------------------------------------------------------
-            # Versi pertama memakai pola kolom yang terlalu ketat sehingga
-            # hanya 6 dari 452 baris terbaca. Ternyata format IAU-CSN tidak
-            # seragam: beberapa kolom bisa berisi '_' atau kosong.
+            # Versi sebelumnya memakai line.split()[0] sehingga nama yang
+            # terdiri dari DUA KATA terpotong:
+            #     "Rigil Kentaurus"   -> "Rigil"      (SALAH)
+            #     "Barnard's Star"    -> "Barnard's"  (SALAH)
+            #     "Alula Australis"   -> "Alula"      (SALAH)
+            # Ada 40 nama seperti itu di katalog IAU.
             #
-            # Pola yang terbukti benar (diuji 4/4 baris contoh):
-            #   nama = kata pertama
-            #   RA & Dec = dua angka desimal TEPAT SEBELUM tanggal
-            #              (format YYYY-MM-DD di akhir baris)
-            # Ini kebal terhadap pergeseran kolom.
+            # FORMAT KOLOM IAU-CSN: dua kolom pertama adalah nama yang sama
+            # (ASCII dan berdiakritik). Jadi nama diambil sebagai teks
+            # sebelum kolom nama KEDUA yang identik — atau, lebih andal,
+            # sebagai segalanya sebelum penanda designasi (HR/HD/V* atau
+            # kode rasi 3 huruf).
+            #
+            # CARA YANG DIPAKAI: potong baris pada posisi kolom ke-2 yang
+            # sama dengan kolom ke-1. Bila tidak ketemu (nama ASCII berbeda
+            # dari berdiakritik, mis. "Belenos Bélénos"), pakai aturan:
+            # nama = semua kata sebelum kode rasi 3 huruf pertama.
             # ============================================================
             m = re.search(r'([\d.]+)\s+(-?[\d.]+)\s+\d{4}-\d{2}-\d{2}', line)
             if not m:
                 continue
-            nama = line.split()[0]
+
+            nama = ambil_nama(line)
+            if not nama:
+                continue
             try:
                 ra_f, dec_f = float(m.group(1)), float(m.group(2))
             except ValueError:
@@ -79,6 +90,64 @@ def baca_iau_csn():
                 continue
             hasil.append({'nama': nama, 'hip': '', 'ra': ra_f, 'dec': dec_f})
     return hasil
+
+
+# kode rasi 3 huruf resmi IAU (dipakai sebagai penanda batas nama)
+KODE_RASI = {
+    'And', 'Ant', 'Aps', 'Aqr', 'Aql', 'Ara', 'Ari', 'Aur', 'Boo', 'Cae',
+    'Cam', 'Cnc', 'CVn', 'CMa', 'CMi', 'Cap', 'Car', 'Cas', 'Cen', 'Cep',
+    'Cet', 'Cha', 'Cir', 'Col', 'Com', 'CrA', 'CrB', 'Crv', 'Crt', 'Cru',
+    'Cyg', 'Del', 'Dor', 'Dra', 'Equ', 'Eri', 'For', 'Gem', 'Gru', 'Her',
+    'Hor', 'Hya', 'Hyi', 'Ind', 'Lac', 'Leo', 'LMi', 'Lep', 'Lib', 'Lup',
+    'Lyn', 'Lyr', 'Men', 'Mic', 'Mon', 'Mus', 'Nor', 'Oct', 'Oph', 'Ori',
+    'Pav', 'Peg', 'Per', 'Phe', 'Pic', 'Psc', 'PsA', 'Pup', 'Pyx', 'Ret',
+    'Sge', 'Sgr', 'Sco', 'Scl', 'Sct', 'Ser', 'Sex', 'Tau', 'Tel', 'Tri',
+    'TrA', 'Tuc', 'UMa', 'UMi', 'Vel', 'Vir', 'Vol', 'Vul',
+}
+
+
+def ambil_nama(line):
+    """Ambil nama bintang (bisa dua kata) dari satu baris IAU-CSN.
+
+    Strategi:
+      1. Bila kolom 1 dan kolom 2 identik (nama ASCII = nama berdiakritik),
+         nama = teks sampai sebelum kolom 2.
+      2. Selain itu, cari kode rasi 3 huruf pertama; nama = kata-kata
+         sebelum kata yang mendahuluinya (designasi Bayer/HR).
+    """
+    kata = line.split()
+    if len(kata) < 3:
+        return kata[0] if kata else ''
+
+    # --- strategi 1: dua kolom nama identik ---
+    if kata[0] == kata[1]:
+        return kata[0]
+    # cari posisi kata yang sama dengan kata[0] (kolom 2)
+    for i in range(1, min(4, len(kata))):
+        if kata[i] == kata[0]:
+            return ' '.join(kata[:i])
+
+    # --- strategi 2: potong sebelum penanda designasi ---
+    # penanda: 'HR', 'HD', 'HIP', 'XO-', 'V*', 'Gl', 'KIC', 'TOI', atau kode rasi
+    for i, w in enumerate(kata[1:], start=1):
+        if w in KODE_RASI:
+            # kode rasi ditemukan; nama = kata sebelum designasi Bayer/HR
+            # mundur melewati penanda HR/angka/huruf Yunani
+            j = i - 1
+            while j > 0:
+                wj = kata[j]
+                if (re.match(r'^(HR|HD|HIP|Gl|KIC|TOI|XO-|V\*|WASP|HAT|Kepler)', wj)
+                        or re.match(r'^[\d.]+$', wj)
+                        or re.match(r'^[a-z]{2,3}\d*$', wj)     # alf, bet, tet01
+                        or re.match(r'^[α-ωΑ-Ω]', wj)            # huruf Yunani
+                        or wj in ('A', 'B', 'C', 'Aa', 'Ab', '_')):
+                    j -= 1
+                else:
+                    break
+            if j >= 1:
+                return ' '.join(kata[:j + 1])
+    # fallback: satu kata pertama
+    return kata[0]
 
 
 def baca_katalog_app():
