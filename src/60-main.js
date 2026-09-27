@@ -865,6 +865,11 @@ function buildUI() {
 
   /* ---- pintasan papan tombol ---- */
   window.addEventListener('keydown', (e) => {
+    /* Jangan aktifkan pintasan (L/O/H/P/Spasi/angka) saat sedang mengetik
+       di kotak teks — lihat guard yang sama di initControls. */
+    if (e.target && (
+      e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+      e.target.tagName === 'SELECT' || e.target.isContentEditable)) return;
     if (e.code === 'KeyL') toggleLabels();
     else if (e.code === 'KeyO') { $('chkOrbits').checked = !$('chkOrbits').checked; setOrbits($('chkOrbits').checked); }
     else if (e.code === 'KeyH') {
