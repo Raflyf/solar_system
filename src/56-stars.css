@@ -317,7 +317,20 @@
   font-size: 11.5px;
   transform: translateX(-50%);
   z-index: 26;
-  pointer-events: auto;
+  /* ====================================================================
+     BUG YANG DIPERBAIKI — PANEL INI MENANGKAP SCROLL MOUSE
+     --------------------------------------------------------------------
+     KELUHAN PENGGUNA: "untuk penamaan yg di dalam card gini coba buat jadi
+     text biasa saja, kalo cursor lewat ke sana jadi tidak bisa scroll zoom
+     in zoom out"
+
+     `pointer-events: auto` membuat panel ini MENERIMA event mouse. Saat
+     kursor melintasi panel, roda mouse tidak sampai ke canvas — sehingga
+     zoom masuk/keluar tidak berfungsi.
+     PERBAIKAN: pointer-events: none. Panel hanya menampilkan informasi,
+     tidak perlu interaksi (tombol tutup sudah dihapus).
+     ==================================================================== */
+  pointer-events: none;
   transition: opacity .18s;
 }
 .star-focus-panel.show { display: block; }
@@ -338,23 +351,26 @@
 .sf-row b { color: #e6eefc; font-variant-numeric: tabular-nums; }
 
 /* =======================================================================
-   PENCARIAN BENDA LANGIT
+   PENCARIAN BENDA LANGIT — DI DALAM PANEL JUDUL
    -----------------------------------------------------------------------
-   PERMINTAAN: "tambahkan fungsi search untuk mencari benda langit seperti
-   bintang, galaxy, planet, satelit, dan lainnya yg ada di langit secara
-   lengkap"
-   Panel di bawah judul; daftar hasil muncul saat mengetik.
+   KELUHAN BERULANG: "ui nya masih bertumpuk" / "ini ui search nya menimpa
+   ini tertumpuk"
+
+   Panel pencarian dahulu elemen `position: fixed` TERPISAH di top:92px,
+   sementara sidebar juga diposisikan fixed — dan setiap kali tinggi panel
+   judul berubah, keduanya saling menimpa.
+
+   Sekarang kotak pencarian berada DI DALAM panel judul (aliran normal),
+   jadi TIDAK MUNGKIN bertumpuk. Hanya daftar hasil yang mengambang
+   (position:absolute) supaya bisa keluar dari panel saat dibuka.
    ======================================================================= */
-.search-panel {
-  position: fixed;
-  top: 92px; left: 18px; width: 292px;
-  padding: 0;
-  z-index: 30;
-  overflow: visible;
-}
 .search-box {
   display: flex; align-items: center; gap: 7px;
-  padding: 8px 11px;
+  margin-top: 9px;
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: rgba(10, 16, 28, 0.55);
+  border: 1px solid rgba(120, 160, 220, 0.20);
 }
 .search-icon { color: #6f8bb0; font-size: 15px; flex: none; }
 #searchInput {
@@ -364,12 +380,23 @@
   font-family: inherit;
 }
 #searchInput::placeholder { color: #5d7794; }
+/* daftar hasil: mengambang di bawah kotak pencarian supaya bisa memanjang
+   keluar panel tanpa mengubah tinggi panel judul */
 .search-results {
   display: none;
+  position: absolute;
+  top: 100%; left: 0; right: 0;
+  margin-top: 6px;
+  border-radius: 10px;
+  background: rgba(9, 14, 26, 0.94);
+  border: 1px solid rgba(120, 160, 220, 0.22);
+  box-shadow: 0 10px 28px rgba(0,0,0,.55);
   max-height: 320px; overflow-y: auto;
-  border-top: 1px solid rgba(120,160,220,.14);
+  z-index: 40;
 }
-.search-panel.show .search-results { display: block; }
+.title-panel { position: fixed; }
+.title-panel.show .search-results,
+.search-results.show { display: block; }
 .sr-item {
   display: flex; align-items: center; gap: 7px;
   padding: 6px 11px; cursor: pointer;
@@ -393,5 +420,5 @@
 .sr-info { font-size: 10px; color: #6f8bb0; flex: none; }
 .sr-kosong { padding: 10px 11px; font-size: 11.5px; color: #7f9cc0; }
 @media (max-width: 640px) {
-  .search-panel { width: calc(100vw - 36px); }
+  .search-results { max-height: 220px; }
 }

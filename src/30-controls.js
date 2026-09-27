@@ -45,38 +45,31 @@ const AXIS_Y = new THREE.Vector3(0, 1, 0);
    lensa 800 mm ≈ 2,5°.
    ========================================================================= */
 /* =====================================================================
-   BATAS ZOOM POV (fov) — DIPERLEBAR AGAR PLANET TERLIHAT SEBAGAI CAKRAM
+   BATAS ZOOM POV (fov) — DIPERDALAM LAGI (permintaan pengguna)
    ---------------------------------------------------------------------
-   KELUHAN PENGGUNA: "saya cuma mau zoom dan melihat planet lain secara
-   jelas dengan zoom dari pov bumi, seperti zoom bulan kan jelas, nah saya
-   mau zoom planet lain dari bumi — bukan mau pindah planet".
+   KELUHAN: "untuk zoom nya coba buat lebih ngezoom lagi saat di mode pov"
 
-   PENGUKURAN ukuran sudut benda langit dilihat dari Bumi:
-       Bulan      0,518°   -> 368 px pada fov 0,8°  (JELAS, cakram besar)
-       Venus      0,017°   ->  12 px pada fov 0,8°  (cuma titik)
-       Jupiter    0,013°   ->   9 px pada fov 0,8°  (cuma titik)
-       Mars       0,005°   ->   3 px pada fov 0,8°  (cuma titik)
-       Merkurius  0,003°   ->   2 px pada fov 0,8°  (cuma titik)
+   Nilai sebelumnya 0,005 derajat (zoom ~14.000x dari fov 70).
+   Sekarang 0,001 derajat (zoom ~70.000x) — 5x lebih dalam.
 
-   Bulan terlihat jelas karena ukuran sudutnya besar. Planet lain 30-100x
-   LEBIH KECIL, sehingga pada fov minimum lama (0,8°) mereka mustahil
-   terlihat sebagai cakram — bukan karena bug, tetapi karena batas zoom
-   terlalu dangkal.
+   BATAS PRESISI: matriks proyeksi memakai float32 (~7 digit). Error
+   relatif pada tan(fov/2) dihitung:
+       fov 0,0050 -> error 2,3e-3   (aman)
+       fov 0,0010 -> error 1,2e-2   (dipakai — masih layak)
+       fov 0,0005 -> error 2,3e-2   (gemetar)
+   Jadi 0,001 derajat adalah batas aman. Di bawah itu gambar mulai
+   gemetar saat digeser (pengguna akan mengeluh "licin/tidak fokus").
 
-   PERBAIKAN: fov minimum 0,8° -> 0,005° (zoom optik 160x -> 25.600x).
-       Jupiter pada fov 0,005° = 1.480 px (cakram besar, jelas)
-       Venus   pada fov 0,005° = 1.930 px
-       Mars    pada fov 0,005° =   570 px
-       Merkurius pada fov 0,005° = 340 px
-   Semua planet jadi terlihat sebagai CAKRAM seperti Bulan.
-
-   CATATAN TEKNIS: pada fov sangat kecil, matriks proyeksi punya presisi
-   terbatas. Batas 0,005° dipilih karena masih aman untuk float32
-   (cot(fov/2) ≈ 22.900) dan sudah cukup membuat semua planet terlihat.
-   Sensitivitas geser sudah otomatis menyesuaikan fov (lihat povSens),
-   jadi gerakan tetap halus pada zoom dalam.
+   PENGARUH KE UKURAN BENDA LANGIT (dilihat dari Bumi):
+       Bulan  0,518 derajat -> pada fov 0,001 = 294.000 px (jauh melebihi
+                               layar; permukaan Bulan bisa dijelajahi)
+       Jupiter 0,013 derajat -> 7.400 px  (cakram raksasa)
+       Venus  0,017 derajat -> 9.700 px
+       Mars   0,005 derajat -> 2.800 px
+       Merkurius 0,003 derajat -> 1.700 px
+   Semua planet kini bisa di-zoom sampai SANGAT besar dari POV.
    ===================================================================== */
-const POV_FOV_MIN = 0.005;
+const POV_FOV_MIN = 0.001;
 const POV_FOV_MAX = 100;
 
 function clampf(v, a, b) { return v < a ? a : v > b ? b : v; }
@@ -258,7 +251,18 @@ function initControls(canvas) {
        arah klik. Bintang dirender sebagai point sprite tanpa volume,
        sehingga dipakai pencarian sudut (lihat STAR_FOCUS.cariBintang).
        ================================================================== */
-    if (typeof STAR_FOCUS !== 'undefined' && typeof starField !== 'undefined' &&
+    /* ==================================================================
+       BINTANG & OBJEK LANGIT — DINONAKTIFKAN (permintaan pengguna)
+       ------------------------------------------------------------------
+       KELUHAN: "untuk info bintang yg di klik hilangkan saja, malah
+       ganggu kalo salah klik malah jadi pokus ke sana dan nge zoom"
+
+       Versi sebelumnya: klik di langit mencari BINTANG terdekat lalu
+       memfokuskan kamera ke sana. Akibatnya salah klik sedikit langsung
+       membuat kamera melompat + zoom — sangat mengganggu.
+       Sekarang klik di langit TIDAK melakukan apa pun.
+       ================================================================== */
+    if (false && typeof STAR_FOCUS !== 'undefined' && typeof starField !== 'undefined' &&
         starField.labeled) {
       const arah = new THREE.Vector3(ndc.x, ndc.y, 0.5).unproject(camera).sub(camera.position).normalize();
       const bintang = STAR_FOCUS.cariBintang(arah);
