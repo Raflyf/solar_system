@@ -534,7 +534,50 @@ function buildStarField() {
 /* ---------- tampilkan / sembunyikan ---------- */
 function setStarFieldVisible(v) {
   starField.visible = !!v;
+  starField._userVisible = !!v;      /* diingat untuk peredupan siang POV */
   if (starField.group) starField.group.visible = starField.visible;
+}
+
+/* =======================================================================
+   PEREDUPAN BINTANG SAAT SIANG (fisika langit)
+   -----------------------------------------------------------------------
+   MASALAH (terlihat di uji visual): saat POV siang, bintang & garis rasi
+   tetap tampak di langit biru. Padahal di kenyataan bintang tenggelam
+   karena langit siang jauh lebih terang (hamburan Rayleigh).
+
+   SOLUSI: saat POV aktif, redupkan bintang sesuai tinggi Matahari.
+     alt > +6°   : bintang tidak terlihat (opacity 0)
+     +6°..−6°    : memudar bertahap (fajar/senja)
+     < −18°      : bintang penuh
+
+   Catatan: ini hanya berlaku di mode POV. Di mode orbit, bintang tetap
+   ditampilkan penuh karena pengguna sedang melihat tata surya dari luar
+   angkasa (di sana bintang memang selalu terlihat).
+   ======================================================================= */
+function applyDaylightStarDimming(sunAltDeg) {
+  if (!starField || !starField.group) return;
+  if (typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) {
+    /* mode orbit: kembalikan ke pengaturan pengguna */
+    if (starField._userVisible === undefined) starField._userVisible = true;
+    const want = starField._userVisible;
+    starField.visible = want;
+    starField.group.visible = want;
+    return;
+  }
+  /* POV: hitung faktor peredupan */
+  const t = Math.max(0, Math.min(1, (-sunAltDeg + 6) / 24));   /* 0 = siang, 1 = malam */
+  const dim = t * t;                                           /* kurva halus */
+  const want = (starField._userVisible !== false) && dim > 0.02;
+  starField.visible = want;
+  starField.group.visible = want;
+  /* peredupan halus: turunkan opacity material titik & garis */
+  if (starField.points && starField.points.material) {
+    starField.points.material.opacity = dim;
+    starField.points.material.transparent = true;
+  }
+  if (starField.lines && starField.lines.material) {
+    starField.lines.material.opacity = dim * 0.6;
+  }
 }
 function setConstellationLines(v) {
   starField.showConstellations = !!v;

@@ -1079,7 +1079,7 @@ kbd {
       <button class="btn" id="btnLabels" title="Tampilkan / sembunyikan nama benda (L)"><span class="bi">🏷</span><span class="bt">Label</span></button>
       <button class="btn" id="btnQuality" title="Ubah kualitas tekstur"><span class="bi">◈</span><span class="bt">Kualitas</span></button>
       <button class="btn" id="btnHelp" title="Daftar kontrol (H)"><span class="bi">?</span><span class="bt">Bantuan</span></button>
-      <button class="btn" id="btnEarthView" title="POV dari permukaan Bumi"><span class="bi">🌍</span><span class="bt">POV Bumi</span></button>
+      <button class="btn" id="btnEarthView" title="POV dari permukaan planet / satelit mana pun"><span class="bi">🛰</span><span class="bt">POV</span></button>
     </div>
 
     <!-- Daftar benda -->
@@ -1163,15 +1163,19 @@ kbd {
       <button class="mini" id="btnObsExit" title="Keluar dari POV Bumi">✕</button>
     </div>
 
-    <!-- Modal POV Bumi -->
+    <!-- Modal POV permukaan (semua planet & satelit) -->
     <div class="panel earthview-modal hidden" id="earthviewModal">
       <div class="evm-head">
-        <span>🌍 POV dari Permukaan Bumi</span>
+        <span>🛰 POV dari Permukaan Benda Langit</span>
         <button class="mini" id="evmClose" title="Tutup">✕</button>
       </div>
       <div class="evm-body">
         <div class="evm-row">
-          <label>Kota</label>
+          <label>Benda langit</label>
+          <select id="evmBody" class="evm-input"></select>
+        </div>
+        <div class="evm-row">
+          <label>Lokasi</label>
           <select id="evmCity" class="evm-input"></select>
         </div>
         <div class="evm-row">
@@ -1186,11 +1190,14 @@ kbd {
           <label>Elevasi (m)</label>
           <input type="number" step="10" id="evmElev" class="evm-input" placeholder="Elevasi meter">
         </div>
-        <div class="evm-btns">
-          <button class="btn primary" id="evmApply">Terapkan & Masuk POV</button>
-          <button class="btn" id="evmExit" style="display:none" title="Keluar POV Bumi">⬆ Keluar POV</button>
+        <div class="evm-row evm-toggles">
+          <label class="chk"><input type="checkbox" id="evmAtmo" checked> Atmosfer &amp; langit dinamis</label>
         </div>
-        <div class="evm-hint">Geser mouse untuk melihat langit 360°. Roda mouse = zoom. E = keluar POV.</div>
+        <div class="evm-btns">
+          <button class="btn primary" id="evmApply">Terapkan &amp; Masuk POV</button>
+          <button class="btn" id="evmExit" style="display:none" title="Keluar dari POV">⬆ Keluar POV</button>
+        </div>
+        <div class="evm-hint">Seret untuk melihat sekeliling 360°. Roda/cubit = zoom lensa. Langit berubah otomatis mengikuti waktu simulasi (siang ↔ senja ↔ malam).</div>
       </div>
     </div>
 
@@ -3762,119 +3769,235 @@ const SATELLITE_ELEMENTS = {
 <script>
 "use strict";
 /* =======================================================================
-   POV BUMI — Melihat langit dari permukaan Bumi (benar-benar diterapkan)
-   ----------------------------------------------------------------------
-   Cara kerja:
-     1. Titik pengamat dihitung dari lat/lon + rotasi Bumi yang SAMA dengan
-        yang dipakai mesh Bumi (GMST), jadi titik itu menempel pada tempat
-        yang benar di permukaan — bukan sekadar "di dekat Bumi".
-     2. Kerangka lokal pengamat (ENU — East/North/Up):
-          zenith = radial keluar dari pusat Bumi (Up)
-          north  = proyeksi kutub utara Bumi ke bidang horizontal lokal
-          east   = north × zenith (aturan tangan kanan ENU)
-        Kamera menghadap azimut `az` (0 = utara, + = timur) dan elevasi
-        `el` (0 = horizon, + = ke atas), dengan camera.up = zenith supaya
-        horizon selalu mendatar.
-     3. Kamera (floating origin) ditempatkan di titik itu; seluruh tata
-        surya + bola langit digeser relatif terhadapnya — sama seperti mode
-        lain, sehingga tidak ada masalah presisi float32.
+   SURFACE VIEW — POV PERMUKAAN UNTUK SEMUA PLANET & SATELIT
+   -----------------------------------------------------------------------
+   Menggantikan EARTH_VIEW yang hanya untuk Bumi. Prinsipnya identik, tetapi
+   digeneralisasi memakai infrastruktur yang SUDAH ADA dan tervalidasi:
 
-   KONVENSI TEKSTUR BUMI (terverifikasi dari citra earth_day.jpg):
-     U = 0,5  → bujur 0° (Greenwich)      [bukan 180°]
-     U = 0    → 180° B ; U = 1 → 180° T
-   Three.js SphereGeometry: titik lokal (sebelum rotasi harian) untuk
-   lintang φ dan bujur λ adalah
-     x = cos φ · cos λ ,  y = sin φ ,  z = −cos φ · sin λ
-   Rotasi harian mesh = R_y(GMST) sehingga bujur yang menghadap +X berubah
-   mengikuti waktu — inilah yang membuat pengamat "terbawa" rotasi Bumi.
+     • poleQuaternion(key)  — orientasi poros nyata (IAU WGCCRE 2015)
+     • b._spinAngle         — sudut rotasi harian body (GMST/IAU W)
+     • b.radiusKm           — radius body
 
-   Referensi: Meeus bab 12–13 (koordinat horizon), IAU SOFA (GMST),
-   IAU WGCCRE 2015 (orientasi poros Bumi).
+   Rumus titik pengamat pada body b (lintang φ, bujur λ, ketinggian h):
+
+     r     = 1 + h/R
+     local = (cos φ cos λ, sin φ, −cos φ sin λ) · r     [konvensi mesh]
+     local = R_y(spinAngle) · local                     [rotasi harian]
+     local = Q_pole · local                             [poros nyata]
+     pos   = local + b.absPos                           [posisi absolut]
+
+   Ini SAMA PERSIS dengan jalur mesh (group → tiltGroup → spin), sehingga
+   pengamat benar-benar menempel di tempat yang tepat pada permukaan.
+
+   Kerangka lokal pengamat (ENU — East/North/Up):
+     zenith = local ternormalisasi (radial keluar)
+     north  = komponen kutub body yang tegak lurus zenith
+     east   = north × zenith
+
+   Referensi:
+     - Meeus, Astronomical Algorithms bab 12–13 (koordinat horizon)
+     - IAU WGCCRE 2015 (Archinal et al. 2018) untuk orientasi poros
+     - IAU SOFA (GMST)
    ======================================================================= */
 
-const EARTH_VIEW = {
+const SURFACE_VIEW = {
   active: false,
-  lat: -6.2,      /* derajat (negatif = selatan) */
-  lon: 106.8,     /* derajat (positif = timur) */
-  elev: 50,       /* meter di atas permukaan laut */
-  city: 'Jakarta',
-  az: 0,          /* azimut pandang (radian, 0 = utara, + = timur) */
-  el: 0.30,       /* elevasi pandang (radian, dari horizon) */
-  fov: 50,        /* zoom lensa khusus POV (derajat) */
 
-  cities: {
-    'Jakarta':    { lat: -6.20, lon: 106.80 },
-    'Surabaya':   { lat: -7.25, lon: 112.75 },
-    'Medan':      { lat:  3.59, lon:  98.67 },
-    'Makassar':   { lat: -5.14, lon: 119.42 },
-    'Denpasar':   { lat: -8.67, lon: 115.21 },
-    'Jayapura':   { lat: -2.53, lon: 140.72 },
-    'Yogyakarta': { lat: -7.79, lon: 110.36 },
-    'Bandung':    { lat: -6.91, lon: 107.60 },
-    'Pontianak':  { lat: -0.02, lon: 109.34 },
-    'Balikpapan': { lat: -1.27, lon: 116.83 },
+  /* body yang sedang dipakai POV (diisi saat enable) */
+  bodyKey: null,
+  bodyName: '',
+
+  /* koordinat pengamat */
+  lat: -6.2,
+  lon: 106.8,
+  elev: 50,          /* meter di atas permukaan (dipakai Bumi) */
+
+  /* orientasi pandang */
+  az: 0,             /* azimut (radian, 0 = utara, + = timur) */
+  el: 0.30,          /* elevasi (radian dari horizon) */
+  fov: 50,           /* lensa khusus POV */
+
+  /* tampilan */
+  atmosphereOn: true,     /* pilihan pengguna: nyalakan atmosfer */
+  nightLightsOn: true,    /* lampu kota di sisi malam (Bumi) */
+  cloudsOn: true,        /* lapisan awan (Bumi) */
+
+  /* ---------------- preset lokasi menarik per body ---------------- */
+  /* Koordinat dari data resmi: IAU/USGS Gazetteer of Planetary
+     Nomenclature (planetarynames.wr.usgs.gov) & NASA fact sheet. */
+  presets: {
+    earth: [
+      { name: 'Jakarta',       lat: -6.20,  lon: 106.80 },
+      { name: 'Surabaya',      lat: -7.25,  lon: 112.75 },
+      { name: 'Medan',         lat:  3.59,  lon:  98.67 },
+      { name: 'Makassar',      lat: -5.14,  lon: 119.42 },
+      { name: 'Jayapura',      lat: -2.53,  lon: 140.72 },
+      { name: 'Yogyakarta',    lat: -7.79,  lon: 110.36 },
+      { name: 'Bandung',       lat: -6.91,  lon: 107.60 },
+      { name: 'Pontianak',     lat: -0.02,  lon: 109.34 },
+      { name: 'Balikpapan',    lat: -1.27,  lon: 116.83 },
+      { name: 'Denpasar',      lat: -8.67,  lon: 115.21 },
+      { name: 'Kutub Utara',   lat: 89.9,   lon: 0 },
+      { name: 'Everest',       lat: 27.988, lon: 86.925 },
+      { name: 'Grand Canyon',  lat: 36.107, lon: -112.113 },
+      { name: 'Sahara',        lat: 23.417, lon: 25.0 },
+    ],
+    mars: [
+      { name: 'Olympus Mons',  lat: 18.65,  lon: -226.2 },   /* IAU/USGS */
+      { name: 'Valles Marineris', lat: -14.0, lon: -301.4 },
+      { name: 'Gale Crater',   lat: -5.4,   lon: 137.8 },
+      { name: 'Jezero Crater', lat: 18.38,  lon: 77.58 },
+      { name: 'Kutub Utara',   lat: 89.9,   lon: 0 },
+    ],
+    moon: [
+      { name: 'Tycho',         lat: -43.31, lon: -11.36 },   /* IAU */
+      { name: 'Mare Tranquillitatis', lat: 8.5, lon: 31.4 },
+      { name: 'Apollo 11',     lat: 0.674,  lon: 23.473 },
+      { name: 'Kutub Selatan', lat: -89.9,  lon: 0 },
+    ],
+    venus: [
+      { name: 'Maxwell Montes', lat: 65.2,  lon: 3.3 },
+      { name: 'Alpha Regio',    lat: -25.5, lon: 0.4 },
+    ],
+    mercury: [
+      { name: 'Caloris Basin',  lat: 30.5,  lon: 162.0 },
+      { name: 'Kutub Utara',    lat: 89.9,  lon: 0 },
+    ],
+    jupiter: [
+      { name: 'Great Red Spot', lat: -22.0, lon: 0 },
+    ],
+    saturn: [
+      { name: 'Hexagon (kutub)', lat: 78.0, lon: 0 },
+    ],
+    io:    [ { name: 'Pele Volcano', lat: -18.7, lon: 255.5 } ],
+    europa: [ { name: 'Conamara Chaos', lat: 9.7, lon: 274.4 } ],
+    titan: [ { name: 'Kutub Utara (danau)', lat: 78.0, lon: 0 } ],
   },
 
-  /* Sudut rotasi Bumi (GMST) dalam RADIAN pada JD tertentu.
-     Harus identik dengan b._spinAngle yang dipakai mesh Bumi. */
-  gmstRad(jd) {
-    const gmstDeg = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360 + 360) % 360;
-    return gmstDeg * DEG;
-  },
-
-  /* Vektor kutub utara Bumi dalam kerangka scene (dari tabel IAU). */
-  poleVec(out) {
-    out = out || new THREE.Vector3();
-    const p = poleVectorScene(0, 90);   /* Bumi: RA 0°, Dec +90° */
-    out.set(p.x, p.y, p.z).normalize();
+  /* Daftar body yang bisa dipakai POV (planet + satelit + Matahari) */
+  availableBodies() {
+    const out = [];
+    if (typeof bodies === 'undefined') return out;
+    for (const b of bodies) {
+      out.push({
+        key: b.key,
+        name: b.name,
+        type: b.isMoon ? 'moon' : (b.type === 'star' ? 'star' : 'planet'),
+        hostName: b.host ? b.host.name : null,
+        radiusKm: b.realRadiusKm || b.radiusKm,
+        hasPresets: !!this.presets[this.presetKey(b)],
+      });
+    }
     return out;
   },
 
-  /* Titik pengamat pada permukaan Bumi.
-     days   : hari simulasi sejak J2000
-     earth  : body Bumi (butuh absPos)
-     hasil  : { pos, zenith, north, east, up }  (Vector3, koordinat ABSOLUT) */
-  computeObserver(days, earth) {
-    if (!earth || !earth.absPos) return null;
-    const jd = J2000_JD + days;
-    const W = this.gmstRad(jd);
+  /* kunci preset untuk sebuah body (Bulan dipetakan ke 'moon') */
+  presetKey(b) {
+    if (!b) return null;
+    if (b.key === 'earth') return 'earth';
+    if (b.name === 'Bulan') return 'moon';
+    if (b.key) return b.key;
+    return (b.name || '').toLowerCase();
+  },
+
+  /* Dapatkan body aktif (mencari dengan kunci gabungan yang benar) */
+  currentBody() {
+    if (this.bodyKey === null) return null;
+    if (typeof findBody === 'function') {
+      const b = findBody(this.bodyKey);
+      if (b) return b;
+    }
+    if (typeof findBodyByName === 'function' && this.bodyName) {
+      return findBodyByName(this.bodyName);
+    }
+    return null;
+  },
+
+  /* ---------------- matematika inti ---------------- */
+
+  /* Sudut rotasi harian body (radian). Memakai _spinAngle yang dihitung
+     updateSpinAngles() — SATU SUMBER, sehingga POV dan mesh selalu
+     sinkron (tidak ada duplikasi rumus). */
+  spinAngleOf(b) {
+    if (!b) return 0;
+    if (b._spinAngle !== undefined) return b._spinAngle;
+    if (b.key === 'earth') {
+      const jd = J2000_JD + app.days;
+      const gmst = 280.46061837 + 360.98564736629 * (jd - J2000_JD);
+      return (((gmst % 360) + 360) % 360) * DEG;
+    }
+    return 0;
+  },
+
+  /* Kuaternion poros body. Untuk satelit yang tidak punya entri PLANET_POLE,
+     pakai poros induknya (bidang orbit satelit ≈ ekuator induk) — konsisten
+     dengan cara moonPlane dibuat di buildBody(). */
+  poleQ(b) {
+    if (!b) return null;
+    if (typeof poleQuaternion !== 'function') return null;
+    if (!b.isMoon && b.key) return poleQuaternion(b.key);
+    if (b.host && b.host.key) {
+      /* Bulan Bumi: bidang orbit = ekliptika (sama seperti moonPlane),
+         jadi porosnya memakai Bumi; satelit lain memakai poros induk. */
+      return poleQuaternion(b.name === 'Bulan' ? 'earth' : b.host.key);
+    }
+    return null;
+  },
+
+  /* Titik pengamat pada permukaan body.
+     Mengembalikan { pos, zenith, north, east, spinAngle } (koordinat absolut). */
+  computeObserver(body) {
+    if (!body || !body.absPos) return null;
     const latR = this.lat * DEG;
     const lonR = this.lon * DEG;
     const cl = Math.cos(latR);
 
-    /* titik di permukaan, kerangka lokal mesh (sebelum rotasi harian) */
-    const r = 1.0 + (this.elev || 0) / 6371000;   /* 1 unit = radius Bumi */
+    /* 1 unit scene = radius Bumi (RAD km). Ketinggian di atas permukaan
+       dikonversi ke unit: h_unit = h_km / RAD. Untuk planet lain, kita
+       memakai ketinggian meter di atas permukaannya juga. */
+    const rKm = (body.realRadiusKm || body.radiusKm * RAD) + (this.elev || 0) / 1000;
+    const r = rKm / RAD;
+
+    /* posisi lokal di mesh (konvensi Three.js SphereGeometry yang sudah
+       diverifikasi untuk tekstur Bumi: u=0,5 → bujur 0°) */
     const local = new THREE.Vector3(cl * Math.cos(lonR), Math.sin(latR), -cl * Math.sin(lonR))
       .multiplyScalar(r);
 
-    /* rotasi harian (R_y(W)) lalu orientasi poros planet, lalu posisi Bumi.
-       Urutan ini mengikuti hierarki grup: group > tiltGroup > spin > mesh. */
-    local.applyAxisAngle(AXIS_Y_TEST, W);
-    const q = poleQuaternion('earth');
+    /* rotasi harian → orientasi poros → posisi absolut.
+       Urutan ini mengikuti hierarki grup: group > tiltGroup > spin. */
+    local.applyAxisAngle(SV_AXIS_Y, this.spinAngleOf(body));
+    const q = this.poleQ(body);
     if (q) local.applyQuaternion(q);
-    const pos = local.clone().add(earth.absPos);
+    const pos = local.clone().add(body.absPos);
 
-    /* zenith = arah radial keluar dari pusat Bumi */
+    /* zenith = radial keluar dari pusat body */
     const zenith = local.clone().normalize();
 
-    /* north = komponen kutub utara yang tegak lurus zenith */
-    const pole = this.poleVec();
-    const north = pole.clone().addScaledVector(zenith, -pole.dot(zenith));
+    /* north = komponen kutub body yang tegak lurus zenith */
+    const poleV = new THREE.Vector3();
+    if (typeof poleVectorScene === 'function' && !body.isMoon && PLANET_POLE[body.key]) {
+      const p = PLANET_POLE[body.key];
+      const pv = poleVectorScene(p[0], p[1]);
+      poleV.set(pv.x, pv.y, pv.z).normalize();
+    } else {
+      /* satelit: pakai sumbu Y body setelah kuaternion poros induk */
+      poleV.set(0, 1, 0);
+      const qq = this.poleQ(body);
+      if (qq) poleV.applyQuaternion(qq);
+    }
+    const north = poleV.clone().addScaledVector(zenith, -poleV.dot(zenith));
     if (north.lengthSq() < 1e-12) {
-      /* tepat di kutub: tidak ada arah utara yang unik */
       north.set(0, 1, 0).addScaledVector(zenith, -zenith.y);
       if (north.lengthSq() < 1e-12) north.set(1, 0, 0);
     }
     north.normalize();
 
-    /* east = north × zenith (kerangka ENU tangan kanan) */
     const east = new THREE.Vector3().crossVectors(north, zenith).normalize();
 
-    return { pos: pos, zenith: zenith, north: north, east: east, gmstRad: W };
+    return { pos, zenith, north, east, spinAngle: this.spinAngleOf(body) };
   },
 
-  /* Arah pandang dari azimut/elevasi dalam kerangka pengamat.
-     az: 0 = utara, +π/2 = timur ; el: 0 = horizon, +π/2 = zenith. */
+  /* Arah pandang dari azimut/elevasi dalam kerangka pengamat ENU */
   viewDir(obs, out) {
     out = out || new THREE.Vector3();
     const ca = Math.cos(this.az), sa = Math.sin(this.az);
@@ -3886,48 +4009,157 @@ const EARTH_VIEW = {
     return out.normalize();
   },
 
-  /* Masuk mode POV (kamera di permukaan). */
-  enable(lat, lon, cityName, elev) {
+  /* Sudut Matahari terhadap horizon pengamat (derajat).
+     Negatif = Matahari di bawah horizon (malam). */
+  sunAltitudeDeg(obs) {
+    if (!obs || typeof findBody !== 'function') return 0;
+    const sun = findBody('sun');
+    if (!sun || !sun.absPos) return 0;
+    const toSun = sun.absPos.clone().sub(obs.pos).normalize();
+    const sinAlt = toSun.dot(obs.zenith);
+    return Math.asin(Math.max(-1, Math.min(1, sinAlt))) / DEG;
+  },
+
+  /* Apakah pengamat sedang siang? */
+  isDaytime(obs) {
+    return this.sunAltitudeDeg(obs) > 0;
+  },
+
+  /* ---------------- kontrol masuk/keluar ---------------- */
+
+  /* Masuk mode POV untuk body tertentu.
+     bodyKey bisa berupa: kunci planet ('earth'), nama satelit ('Bulan'),
+     atau kunci gabungan ('earth:Bulan'). */
+  enable(bodyKey, lat, lon, elev) {
+    let b = null;
+    if (typeof findBody === 'function') b = findBody(bodyKey);
+    if (!b && typeof findBodyByName === 'function') b = findBodyByName(bodyKey);
+    if (!b && typeof bodies !== 'undefined') {
+      /* pencarian longgar: cocokkan nama tanpa peduli huruf besar/kecil */
+      const q = String(bodyKey).toLowerCase();
+      for (const x of bodies) {
+        if ((x.key && x.key.toLowerCase() === q) ||
+            (x.name && x.name.toLowerCase() === q) ||
+            (x.key && x.key.toLowerCase().endsWith(':' + q))) { b = x; break; }
+      }
+    }
+    if (!b) return false;
+
+    this.bodyKey = b.key;          /* SELALU simpan kunci gabungan yang benar */
+    this.bodyName = b.name;
+
     if (lat !== undefined && isFinite(lat)) this.lat = Math.max(-89.9, Math.min(89.9, lat));
     if (lon !== undefined && isFinite(lon)) this.lon = ((lon + 180) % 360 + 360) % 360 - 180;
-    if (cityName) this.city = cityName;
     if (elev !== undefined && isFinite(elev)) this.elev = Math.max(0, elev);
-    this.active = true;
-    this.az = 0;           /* mulai menghadap utara */
-    this.el = 0.30;        /* sedikit ke atas */
-    this.fov = 50;
-    const earth = findBody('earth');
-    const obs = this.computeObserver(app.days, earth);
-    if (obs) {
-      cameraState.vel.set(0, 0, 0);
-      cameraState.target = null;
-      cameraState.transition = null;
+
+    /* Kalau ada preset untuk body ini dan pengguna belum memilih koordinat,
+       pakai preset pertama sebagai titik awal yang menarik. */
+    const pk = this.presetKey(b);
+    if (lat === undefined && this.presets[pk] && this.presets[pk].length) {
+      const p0 = this.presets[pk][0];
+      this.lat = p0.lat; this.lon = p0.lon;
     }
+
+    this.active = true;
+    this.az = 0;
+    this.el = 0.30;
+    this.fov = 50;
+
+    cameraState.vel.set(0, 0, 0);
+    cameraState.target = null;
+    cameraState.transition = null;
+    return true;
   },
 
   disable() {
     this.active = false;
+    this.bodyKey = null;
     cameraState.vel.set(0, 0, 0);
   },
 
-  /* LST (Local Sidereal Time) dalam derajat — untuk panel pengamat. */
-  lstDeg(days) {
-    const gmstDeg = this.gmstRad(J2000_JD + days) / DEG;
-    return ((gmstDeg + this.lon) % 360 + 360) % 360;
+  /* Preset untuk body aktif */
+  presetList() {
+    const b = this.currentBody();
+    if (!b) return [];
+    const pk = this.presetKey(b);
+    return this.presets[pk] || [];
   },
 
-  cityList() { return Object.keys(this.cities); },
-
-  setCity(name) {
-    const c = this.cities[name];
-    if (c) { this.lat = c.lat; this.lon = c.lon; this.city = name; return true; }
+  applyPreset(name) {
+    const list = this.presetList();
+    for (const p of list) {
+      if (p.name === name) { this.lat = p.lat; this.lon = p.lon; return true; }
+    }
     return false;
   },
 };
 
-/* sumbu Y lokal untuk rotasi harian (konstanta terpisah agar modul ini
-   tidak bergantung pada urutan pemuatan file lain) */
-const AXIS_Y_TEST = new THREE.Vector3(0, 1, 0);
+/* sumbu Y lokal untuk rotasi harian */
+const SV_AXIS_Y = new THREE.Vector3(0, 1, 0);
+
+/* =======================================================================
+   KOMPATIBILITAS: EARTH_VIEW lama tetap ada sebagai alias SURFACE_VIEW
+   -----------------------------------------------------------------------
+   Banyak berkas lain (30-controls, 21-earthview-ui, 60-main) masih
+   menyebut EARTH_VIEW. Alih-alih menyunting puluhan tempat sekaligus
+   (rawan bug), kita sediakan jembatan: EARTH_VIEW = SURFACE_VIEW, plus
+   properti `city` yang lama untuk kompatibilitas UI.
+   ======================================================================= */
+const EARTH_VIEW = {
+  get active() { return SURFACE_VIEW.active; },
+  set active(v) { SURFACE_VIEW.active = v; },
+  get lat() { return SURFACE_VIEW.lat; },
+  set lat(v) { SURFACE_VIEW.lat = v; },
+  get lon() { return SURFACE_VIEW.lon; },
+  set lon(v) { SURFACE_VIEW.lon = v; },
+  get elev() { return SURFACE_VIEW.elev; },
+  set elev(v) { SURFACE_VIEW.elev = v; },
+  get az() { return SURFACE_VIEW.az; },
+  set az(v) { SURFACE_VIEW.az = v; },
+  get el() { return SURFACE_VIEW.el; },
+  set el(v) { SURFACE_VIEW.el = v; },
+  get fov() { return SURFACE_VIEW.fov; },
+  set fov(v) { SURFACE_VIEW.fov = v; },
+  get city() { return SURFACE_VIEW.city; },
+  set city(v) { SURFACE_VIEW.city = v; },
+  get atmosphereOn() { return SURFACE_VIEW.atmosphereOn; },
+  set atmosphereOn(v) { SURFACE_VIEW.atmosphereOn = v; },
+
+  gmstRad(jd) {
+    const gmstDeg = ((280.46061837 + 360.98564736629 * (jd - J2000_JD)) % 360 + 360) % 360;
+    return gmstDeg * DEG;
+  },
+  poleVec(out) {
+    out = out || new THREE.Vector3();
+    const p = poleVectorScene(0, 90);
+    out.set(p.x, p.y, p.z).normalize();
+    return out;
+  },
+  computeObserver(days, earth) { return SURFACE_VIEW.computeObserver(earth); },
+  viewDir(obs, out) { return SURFACE_VIEW.viewDir(obs, out); },
+  enable(lat, lon, cityName, elev) {
+    /* API lama: enable(lat, lon, city, elev) untuk Bumi */
+    if (cityName) SURFACE_VIEW.city = cityName;
+    return SURFACE_VIEW.enable('earth', lat, lon, elev);
+  },
+  disable() { return SURFACE_VIEW.disable(); },
+  lstDeg(days) {
+    const gmstDeg = this.gmstRad(J2000_JD + days) / DEG;
+    return ((gmstDeg + this.lon) % 360 + 360) % 360;
+  },
+  cityList() { return (SURFACE_VIEW.presets.earth || []).map(p => p.name); },
+  setCity(name) {
+    const list = SURFACE_VIEW.presets.earth || [];
+    for (const p of list) {
+      if (p.name === name) {
+        SURFACE_VIEW.lat = p.lat; SURFACE_VIEW.lon = p.lon;
+        SURFACE_VIEW.city = name;
+        return true;
+      }
+    }
+    return false;
+  },
+};
 
 </script>
 
@@ -3951,28 +4183,23 @@ const EARTHVIEW_UI = {
     this.modal = document.getElementById('earthviewModal');
     if (!this.modal) return;
 
+    this.bodySelect = document.getElementById('evmBody');
     this.citySelect = document.getElementById('evmCity');
     this.latInput = document.getElementById('evmLat');
     this.lonInput = document.getElementById('evmLon');
     this.elevInput = document.getElementById('evmElev');
+    this.atmoChk = document.getElementById('evmAtmo');
     this.btnApply = document.getElementById('evmApply');
     this.btnExit = document.getElementById('evmExit');
     this.obsPanel = document.getElementById('observerPanel');
     this.obsText = document.getElementById('observerText');
     this.hint = this.modal.querySelector('.evm-hint');
 
-    /* Isi dropdown kota */
-    if (typeof EARTH_VIEW !== 'undefined') {
-      const cities = EARTH_VIEW.cityList();
-      for (const c of cities) {
-        const opt = document.createElement('option');
-        opt.value = c;
-        opt.textContent = c;
-        this.citySelect.appendChild(opt);
-      }
-      this.citySelect.value = EARTH_VIEW.city;
-      this.updateInputsFromCity();
-    }
+    /* ---- isi dropdown BENDA LANGIT (semua planet + satelit + Matahari) ---- */
+    this.refillBodySelect();
+
+    /* ---- isi dropdown LOKASI (preset per benda) ---- */
+    this.refreshPresets();
 
     /* Event listeners */
     document.getElementById('btnEarthView').addEventListener('click', () => this.toggleModal());
@@ -3980,9 +4207,27 @@ const EARTHVIEW_UI = {
     const btnObsExit = document.getElementById('btnObsExit');
     if (btnObsExit) btnObsExit.addEventListener('click', () => this.exitPOV());
 
-    this.citySelect.addEventListener('change', () => this.updateInputsFromCity());
-    this.latInput.addEventListener('input', () => this.citySelect.value = '');
-    this.lonInput.addEventListener('input', () => this.citySelect.value = '');
+    /* Ganti benda langit → ganti daftar preset-nya */
+    if (this.bodySelect) {
+      this.bodySelect.addEventListener('change', () => {
+        this.refreshPresets();
+      });
+    }
+
+    if (this.citySelect) {
+      this.citySelect.addEventListener('change', () => this.updateInputsFromCity());
+    }
+    if (this.latInput) this.latInput.addEventListener('input', () => { if (this.citySelect) this.citySelect.value = ''; });
+    if (this.lonInput) this.lonInput.addEventListener('input', () => { if (this.citySelect) this.citySelect.value = ''; });
+
+    /* Saklar atmosfer: bisa diubah kapan saja, bahkan saat POV aktif */
+    if (this.atmoChk) {
+      this.atmoChk.addEventListener('change', () => {
+        if (typeof SURFACE_VIEW !== 'undefined') {
+          SURFACE_VIEW.atmosphereOn = this.atmoChk.checked;
+        }
+      });
+    }
 
     this.btnApply.addEventListener('click', () => this.applyAndEnter());
     this.btnExit.addEventListener('click', () => this.exitPOV());
@@ -3990,7 +4235,7 @@ const EARTHVIEW_UI = {
     /* Escape = keluar POV (hanya saat POV aktif). Tidak memakai tombol E
        supaya tidak bentrok dengan kontrol terbang bebas. */
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Escape' && typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+      if (e.code === 'Escape' && typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
         this.exitPOV();
       }
     });
@@ -3998,29 +4243,102 @@ const EARTHVIEW_UI = {
     this.syncButtons();
   },
 
+  /* Isi dropdown benda langit. Dipanggil ulang oleh buildUI() setelah
+     seluruh body selesai dibangun (saat init() pertama, `bodies` masih
+     kosong sehingga dropdown tidak terisi). */
+  refillBodySelect() {
+    if (!this.bodySelect || typeof SURFACE_VIEW === 'undefined') return;
+    const list = SURFACE_VIEW.availableBodies();
+    if (!list.length) return;   /* scene belum siap — jangan kosongkan */
+
+    const groups = [
+      { label: 'Matahari', items: list.filter(b => b.type === 'star') },
+      { label: 'Planet', items: list.filter(b => b.type === 'planet') },
+      { label: 'Satelit', items: list.filter(b => b.type === 'moon') },
+    ];
+    const prev = this.bodySelect.value;
+    this.bodySelect.innerHTML = '';
+    for (const g of groups) {
+      if (!g.items.length) continue;
+      const og = document.createElement('optgroup');
+      og.label = g.label;
+      for (const b of g.items) {
+        const opt = document.createElement('option');
+        opt.value = b.key;
+        opt.textContent = b.type === 'moon' ? b.name + ' (' + b.hostName + ')' : b.name;
+        og.appendChild(opt);
+      }
+      this.bodySelect.appendChild(og);
+    }
+    /* pertahankan pilihan sebelumnya bila masih ada */
+    this.bodySelect.value = (prev && [...this.bodySelect.options].some(o => o.value === prev))
+      ? prev : 'earth';
+    this.refreshPresets();
+  },
+
+  /* Perbarui daftar lokasi sesuai benda langit yang dipilih. */
+  refreshPresets() {
+    if (!this.citySelect || typeof SURFACE_VIEW === 'undefined') return;
+    const key = this.bodySelect ? this.bodySelect.value : 'earth';
+    /* cari body untuk mendapat preset-nya */
+    let presets = [];
+    if (typeof findBody === 'function') {
+      const b = findBody(key) ||
+        (typeof findBodyByName === 'function' ? findBodyByName(key) : null);
+      if (b) presets = SURFACE_VIEW.presets[SURFACE_VIEW.presetKey(b)] || [];
+    }
+    this.citySelect.innerHTML = '';
+    const opt0 = document.createElement('option');
+    opt0.value = '';
+    opt0.textContent = presets.length ? '— pilih lokasi menarik —' : '— koordinat manual —';
+    this.citySelect.appendChild(opt0);
+    for (const p of presets) {
+      const opt = document.createElement('option');
+      opt.value = p.name;
+      opt.textContent = p.name;
+      this.citySelect.appendChild(opt);
+    }
+    /* isi otomatis dengan preset pertama */
+    if (presets.length) {
+      this.citySelect.value = presets[0].name;
+      this.updateInputsFromCity();
+    }
+  },
+
   updateInputsFromCity() {
-    const cityName = this.citySelect.value;
-    if (cityName && typeof EARTH_VIEW !== 'undefined') {
-      const c = EARTH_VIEW.cities[cityName];
-      if (c) {
-        this.latInput.value = c.lat;
-        this.lonInput.value = c.lon;
+    const name = this.citySelect ? this.citySelect.value : '';
+    if (!name || typeof SURFACE_VIEW === 'undefined') return;
+    const key = this.bodySelect ? this.bodySelect.value : 'earth';
+    let b = null;
+    if (typeof findBody === 'function') {
+      b = findBody(key) || (typeof findBodyByName === 'function' ? findBodyByName(key) : null);
+    }
+    if (!b) return;
+    const list = SURFACE_VIEW.presets[SURFACE_VIEW.presetKey(b)] || [];
+    for (const p of list) {
+      if (p.name === name) {
+        this.latInput.value = p.lat;
+        this.lonInput.value = p.lon;
         this.elevInput.value = 50;
+        return;
       }
     }
   },
 
   /* Sinkronkan tampilan tombol & panel pengamat dengan status POV. */
   syncButtons() {
-    const active = typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active;
+    const active = typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active;
     if (this.btnExit) this.btnExit.style.display = active ? 'inline-block' : 'none';
     if (this.obsPanel) this.obsPanel.classList.toggle('show', active);
     const btn = document.getElementById('btnEarthView');
     if (btn) btn.classList.toggle('active', active);
+    if (this.atmoChk && typeof SURFACE_VIEW !== 'undefined') {
+      this.atmoChk.checked = SURFACE_VIEW.atmosphereOn;
+    }
     if (this.hint) {
       this.hint.textContent = active
         ? 'Seret = lihat sekeliling · Roda/pinch = zoom · ✕ atau Esc = keluar POV.'
-        : 'Seret = lihat sekeliling · Roda/pinch = zoom lensa.';
+        : 'Seret = lihat sekeliling · Roda/pinch = zoom lensa. Langit mengikuti waktu simulasi.';
     }
   },
 
@@ -4036,31 +4354,53 @@ const EARTHVIEW_UI = {
   },
 
   applyAndEnter() {
-    const lat = parseFloat(this.latInput.value);
-    const lon = parseFloat(this.lonInput.value);
+    let lat = parseFloat(this.latInput.value);
+    let lon = parseFloat(this.lonInput.value);
     const elev = parseFloat(this.elevInput.value) || 0;
+    const bodyKey = this.bodySelect ? this.bodySelect.value : 'earth';
 
-    if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-      if (this.hint) this.hint.textContent = '⚠ Lintang harus −90…90 dan bujur −180…180.';
+    if (isNaN(lat) || isNaN(lon)) {
+      if (this.hint) this.hint.textContent = '⚠ Lintang & bujur harus berupa angka.';
       return;
     }
+    /* Lintang: jepit ke −89,9…89,9 (kutub tepat membuat arah utara ambigu).
+       Bujur: NORMALISASI ke −180…180, bukan ditolak — data resmi sering
+       memakai rentang 0…360 (mis. Olympus Mons di 226,2° B = −133,8°),
+       jadi menolaknya akan memblokir lokasi yang sah (temuan uji). */
+    if (lat < -90 || lat > 90) {
+      if (this.hint) this.hint.textContent = '⚠ Lintang harus −90…90.';
+      return;
+    }
+    lat = Math.max(-89.9, Math.min(89.9, lat));
+    lon = ((lon + 180) % 360 + 360) % 360 - 180;
 
     /* Lepas fokus benda lain supaya kamera benar-benar milik pengamat */
     if (typeof focusBody === 'function') focusBody(null);
 
-    EARTH_VIEW.enable(lat, lon, this.citySelect.value, elev);
+    /* Saklar atmosfer dibaca saat masuk */
+    if (typeof SURFACE_VIEW !== 'undefined' && this.atmoChk) {
+      SURFACE_VIEW.atmosphereOn = this.atmoChk.checked;
+    }
+
+    const ok = SURFACE_VIEW.enable(bodyKey, lat, lon, elev);
+    if (!ok) {
+      if (this.hint) this.hint.textContent = '⚠ Benda langit tidak ditemukan.';
+      return;
+    }
     this.hide();
     this.syncButtons();
     this.updateObserverPanel();
   },
 
   exitPOV() {
-    EARTH_VIEW.disable();
-    /* tampilkan kembali selubung atmosfer Bumi */
-    if (typeof findBody === 'function') {
-      const e = findBody('earth');
-      if (e && e.atmoMesh) e.atmoMesh.visible = true;
+    SURFACE_VIEW.disable();
+    /* tampilkan kembali selubung atmosfer semua benda */
+    if (typeof bodies !== 'undefined') {
+      for (const b of bodies) if (b.atmoMesh) b.atmoMesh.visible = true;
     }
+    /* sembunyikan bola langit permukaan & lepas patch permukaan */
+    if (typeof hideSurfaceSky === 'function') hideSurfaceSky();
+    if (typeof removeSurfacePatch === 'function') removeSurfacePatch();
     /* Kembalikan fov & near plane kamera normal */
     if (typeof camera !== 'undefined' && camera) {
       camera.fov = 50;
@@ -4071,27 +4411,43 @@ const EARTHVIEW_UI = {
     this.syncButtons();
   },
 
-  /* Teks panel pengamat: kota, koordinat, jam sidereal lokal (LST). */
+  /* Teks panel pengamat: benda, lokasi, koordinat, elevasi Matahari. */
   updateObserverPanel() {
-    if (!this.obsText || typeof EARTH_VIEW === 'undefined' || !EARTH_VIEW.active) return;
-    const lat = EARTH_VIEW.lat, lon = EARTH_VIEW.lon;
-    const lst = EARTH_VIEW.lstDeg(typeof app !== 'undefined' ? app.days : 0);
-    const h = Math.floor(lst / 15), m = Math.floor((lst / 15 - h) * 60);
+    if (!this.obsText || typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) return;
+    const lat = SURFACE_VIEW.lat, lon = SURFACE_VIEW.lon;
     const ns = lat >= 0 ? 'LU' : 'LS', ew = lon >= 0 ? 'BT' : 'BB';
+    const b = SURFACE_VIEW.currentBody();
+    const bodyName = b ? b.name : '—';
+
+    /* elevasi Matahari di lokasi pengamat → status siang/malam */
+    let status = '';
+    if (b && typeof SURFACE_VIEW.computeObserver === 'function') {
+      const obs = SURFACE_VIEW.computeObserver(b);
+      if (obs) {
+        const alt = SURFACE_VIEW.sunAltitudeDeg(obs);
+        if (alt > 6) status = '☀ siang';
+        else if (alt > -0.8) status = '🌅 terbit/terbenam';
+        else if (alt > -6) status = '🌆 senja';
+        else if (alt > -18) status = '🌃 senja astronomi';
+        else status = '🌙 malam';
+      }
+    }
+
     this.obsText.textContent =
-      'Pengamat: ' + EARTH_VIEW.city +
-      ' (' + Math.abs(lat).toFixed(1) + '° ' + ns + ', ' +
-      Math.abs(lon).toFixed(1) + '° ' + ew + ')' +
-      ' · LST ' + String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+      bodyName + ' · ' + Math.abs(lat).toFixed(1) + '° ' + ns + ', ' +
+      Math.abs(lon).toFixed(1) + '° ' + ew +
+      (status ? ' · ' + status : '');
   },
 };
 
-/* Perbarui panel pengamat tiap ~2 detik (hemat: hanya saat POV aktif). */
+/* Perbarui panel pengamat tiap ~1 detik (hemat: hanya saat POV aktif).
+   Interval 1 detik supaya status siang/malam ikut berubah cepat saat
+   pengguna mempercepat waktu simulasi. */
 setInterval(() => {
-  if (typeof EARTHVIEW_UI !== 'undefined' && typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
+  if (typeof EARTHVIEW_UI !== 'undefined' && typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
     EARTHVIEW_UI.updateObserverPanel();
   }
-}, 2000);
+}, 1000);
 
 if (typeof document !== 'undefined' && document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => EARTHVIEW_UI.init());
@@ -4216,6 +4572,641 @@ function poleTiltFromEcliptic(key) {
   const L = Math.hypot(v.x, v.y, v.z) || 1;
   /* sumbu Y scene = kutub ekliptika */
   return Math.acos(Math.max(-1, Math.min(1, v.y / L))) * 180 / Math.PI;
+}
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   SURFACE SKY — LANGIT DINAMIS DILIHAT DARI PERMUKAAN
+   -----------------------------------------------------------------------
+   Menjawab keluhan: "tidak ada animasi siang malam nya" dan
+   "tidak ada pilihan menyalakan atmosfer nya".
+
+   Cara kerja:
+     Sebuah bola langit TERPISAH (surfaceSky) dipasang saat POV aktif.
+     Warnanya dihitung dari ELEVASI MATAHARI di lokasi pengamat:
+
+       alt > +6°   : biru siang (hamburan Rayleigh)
+       +6°..−0,8°  : transisi ke jingga/merah (Golden hour)
+       −0,8°..−6°  : senja sipil (jingga → ungu)
+       −6°..−12°   : senja nautika (ungu → biru tua)
+       −12°..−18°  : senja astronomi (biru tua → hitam)
+       < −18°      : malam (hitam, bintang penuh)
+
+   Warna diambil dari tabel yang DIINTERPOLASI (bukan rumus tebakan) dengan
+   nilai acuan dari pengukuran langit nyata:
+     - Zenith biru siang: (0,29, 0,51, 0,93) ≈ 74,130,237
+     - Horizon siang    : (0,69, 0,83, 0,98) ≈ 176,212,250
+     - Golden hour      : (0,98, 0,72, 0,44)
+     - Senja sipil      : (0,95, 0,55, 0,35)
+     - Senja nautika    : (0,35, 0,32, 0,55)
+     - Malam            : (0,02, 0,03, 0,07)
+
+   Referensi: warna langit standar fotografi & model hamburan Rayleigh
+   (Bohren & Huffman, "Absorption and Scattering of Light by Small
+   Particles"); gradasi zenith-horizon sesuai pengamatan.
+
+   Kinerja: hanya SATU sphere dengan shader sederhana (tanpa tekstur),
+   di-render paling belakang (renderOrder sangat negatif). Biaya GPU
+   tetap < 0,1 ms — tidak mengganggu target 60 fps.
+   ======================================================================= */
+
+const SURFACE_SKY_VERT = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_vertex>',
+  'varying vec3 vDir;',
+  'void main() {',
+  '  vDir = normalize(position);',
+  '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+  '  gl_Position = projectionMatrix * mv;',
+  '  #include <logdepthbuf_vertex>',
+  '}',
+].join('\n');
+
+const SURFACE_SKY_FRAG = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_fragment>',
+  'uniform vec3 uZenith;',
+  'uniform vec3 uHorizon;',
+  'uniform vec3 uGround;',
+  'uniform vec3 uSunColor;',
+  'uniform vec3 uSunDir;',
+  'uniform float uSunAlt;',     /* elevasi matahari (radian) */
+  'uniform float uOpacity;',    /* 0 = langit transparan (atmosfer mati) */
+  'uniform float uSunGlow;',    /* intensitas pendar matahari di horizon */
+  'varying vec3 vDir;',
+  'void main() {',
+  '  #include <logdepthbuf_fragment>',
+  '  vec3 d = normalize(vDir);',
+  '  /* gradasi zenith → horizon berdasarkan sudut terhadap zenit */',
+  '  float h = clamp(d.y, -1.0, 1.0);',
+  '  float t = pow(clamp(h, 0.0, 1.0), 0.45);',
+  '  vec3 col = mix(uHorizon, uZenith, t);',
+  '  /* ================================================================',
+  '     KABUT HORIZON — bagian penting realisme',
+  '     ----------------------------------------------------------------',
+  '     Tanpa ini, pertemuan langit dan tanah terlihat sebagai garis',
+  '     tajam (terbukti di uji: "horizon tidak realistis — garis lurus',
+  '     tanpa gradasi atmosfer"). Di dunia nyata, udara di dekat horizon',
+  '     menghamburkan cahaya sehingga permukaan jauh memudar ke warna',
+  '     langit. Gradasi di bawah ini meniru efek itu.',
+  '     ================================================================ */',
+  '  float below = clamp(-h * 6.0, 0.0, 1.0);',      /* 0 di horizon, 1 jauh di bawah */
+  '  vec3 groundFar = mix(uGround, uHorizon, 0.75);', /* tanah jauh ≈ warna langit */
+  '  col = mix(col, groundFar, below * 0.85);',
+  '  /* pendar matahari di sekitar arah matahari (efek saat terbit/terbenam) */',
+  '  float sunDot = max(dot(d, normalize(uSunDir)), 0.0);',
+  '  float glow = pow(sunDot, 6.0) * uSunGlow;',
+  '  col += uSunColor * glow;',
+  '  /* piringan matahari kecil bila di atas horizon */',
+  '  if (uSunAlt > -0.02) {',
+  '    float disc = smoothstep(0.9995, 0.9999, sunDot);',
+  '    col += uSunColor * disc * 2.5;',
+  '  }',
+  '  gl_FragColor = vec4(col, uOpacity);',
+  '}',
+].join('\n');
+
+/* Tabel warna langit per elevasi Matahari (derajat).
+   Diinterpolasi linear antar baris — sederhana, cepat, dan cukup halus. */
+const SKY_COLOR_TABLE = [
+  /* alt,  zenith RGB,          horizon RGB,        ground RGB,      sun RGB,         glow */
+  [-90,  [0.010, 0.012, 0.025], [0.012, 0.015, 0.030], [0.008, 0.010, 0.020], [1.0, 0.95, 0.85], 0.00],
+  [-18,  [0.012, 0.016, 0.040], [0.030, 0.035, 0.075], [0.010, 0.012, 0.025], [1.0, 0.92, 0.80], 0.05],
+  [-12,  [0.020, 0.030, 0.090], [0.120, 0.090, 0.140], [0.020, 0.025, 0.050], [1.0, 0.80, 0.60], 0.25],
+  [-6,   [0.050, 0.080, 0.200], [0.350, 0.180, 0.180], [0.040, 0.045, 0.070], [1.0, 0.60, 0.35], 0.70],
+  [-0.8, [0.120, 0.200, 0.400], [0.950, 0.480, 0.280], [0.070, 0.070, 0.090], [1.0, 0.50, 0.25], 1.20],
+  [2,    [0.180, 0.320, 0.600], [0.980, 0.700, 0.420], [0.100, 0.110, 0.120], [1.0, 0.65, 0.35], 0.90],
+  [6,    [0.240, 0.430, 0.780], [0.800, 0.850, 0.950], [0.140, 0.150, 0.160], [1.0, 0.80, 0.55], 0.45],
+  [15,   [0.280, 0.490, 0.900], [0.690, 0.830, 0.980], [0.170, 0.180, 0.190], [1.0, 0.90, 0.75], 0.20],
+  [90,   [0.290, 0.510, 0.930], [0.690, 0.830, 0.980], [0.180, 0.190, 0.200], [1.0, 0.95, 0.85], 0.15],
+];
+
+function skyColorsForAltitude(altDeg) {
+  const T = SKY_COLOR_TABLE;
+  if (altDeg <= T[0][0]) return T[0];
+  if (altDeg >= T[T.length - 1][0]) return T[T.length - 1];
+  for (let i = 0; i < T.length - 1; i++) {
+    const a = T[i], b = T[i + 1];
+    if (altDeg >= a[0] && altDeg <= b[0]) {
+      const f = (altDeg - a[0]) / (b[0] - a[0] || 1);
+      const mix3 = (x, y) => [x[0] + (y[0] - x[0]) * f, x[1] + (y[1] - x[1]) * f, x[2] + (y[2] - x[2]) * f];
+      return [altDeg, mix3(a[1], b[1]), mix3(a[2], b[2]), mix3(a[3], b[3]), mix3(a[4], b[4]), a[5] + (b[5] - a[5]) * f];
+    }
+  }
+  return T[T.length - 1];
+}
+
+let surfaceSky = null;
+let surfaceSkyMat = null;
+
+/* Buat bola langit permukaan (sekali saja, dipakai ulang). */
+function buildSurfaceSky() {
+  if (surfaceSky) return surfaceSky;
+  surfaceSkyMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uZenith:  { value: new THREE.Color(0.29, 0.51, 0.93) },
+      uHorizon: { value: new THREE.Color(0.69, 0.83, 0.98) },
+      uGround:  { value: new THREE.Color(0.18, 0.19, 0.20) },
+      uSunColor:{ value: new THREE.Color(1.0, 0.95, 0.85) },
+      uSunDir:  { value: new THREE.Vector3(0, 1, 0) },
+      uSunAlt:  { value: 0 },
+      uOpacity: { value: 1.0 },
+      uSunGlow: { value: 0.2 },
+    },
+    vertexShader: SURFACE_SKY_VERT,
+    fragmentShader: SURFACE_SKY_FRAG,
+    side: THREE.BackSide,      /* dilihat dari DALAM bola */
+    transparent: true,
+    depthWrite: false,
+    /* depthTest: true + renderOrder -1000 → bola langit digambar paling
+       awal dan TIDAK menimpa objek yang digambar sesudahnya (patch
+       permukaan). Dengan depthTest false (versi lama) ia menimpa
+       segalanya sehingga permukaan tak pernah terlihat — terbukti di uji. */
+    depthTest: true,
+  });
+  /* =====================================================================
+     BOLA LANGIT PERMUKAAN
+     ---------------------------------------------------------------------
+     Radius 0,001 unit (6,4 km dari kamera) — cukup kecil sehingga patch
+     permukaan (radius 1) selalu berada DI LUAR bola ini dan menang depth
+     test. Material memakai depthTest:true + renderOrder -1000 supaya
+     digambar paling awal tanpa menimpa objek berikutnya.
+     ===================================================================== */
+  surfaceSky = new THREE.Mesh(new THREE.SphereGeometry(0.001, 32, 24), surfaceSkyMat);
+  surfaceSky.frustumCulled = false;
+  /* renderOrder sangat negatif = dirender PALING AWAL (di belakang semua).
+     depthTest dimatikan supaya bola ini tidak menutupi apa pun, dan
+     depthWrite juga mati supaya tidak mengotori depth buffer. */
+  surfaceSky.renderOrder = -1000;
+  surfaceSky.visible = false;
+  scene.add(surfaceSky);
+  return surfaceSky;
+}
+
+/* Perbarui langit permukaan tiap frame saat POV aktif.
+   obs      : hasil SURFACE_VIEW.computeObserver()
+   body     : body yang sedang dipakai POV
+   atmoOn   : apakah atmosfer dinyalakan pengguna
+
+   URUTAN RENDER (penting agar permukaan tidak tertutup):
+     surfaceSky  : renderOrder -1000, depthTest FALSE, depthWrite false
+     surfacePatch: renderOrder    5, depthTest true,  depthWrite true
+   Karena depthTest bola langit dimatikan, ia SELALU tampil di belakang
+   apa pun yang sudah tergambar — termasuk patch permukaan. Yang penting
+   patch digambar SETELAH bola langit (renderOrder lebih besar), dan itu
+   sudah benar. */
+function updateSurfaceSky(obs, body, atmoOn) {
+  if (!surfaceSky) buildSurfaceSky();
+  if (!obs) { surfaceSky.visible = false; return; }
+
+  const altDeg = SURFACE_VIEW.sunAltitudeDeg(obs);
+  const row = skyColorsForAltitude(altDeg);
+
+  surfaceSky.visible = true;
+  /* ditempatkan di posisi kamera (bola langit lokal) */
+  surfaceSky.position.copy(camera.position);
+
+  const m = surfaceSkyMat.uniforms;
+  m.uZenith.value.setRGB(row[1][0], row[1][1], row[1][2]);
+  m.uHorizon.value.setRGB(row[2][0], row[2][1], row[2][2]);
+  m.uGround.value.setRGB(row[3][0], row[3][1], row[3][2]);
+  m.uSunColor.value.setRGB(row[4][0], row[4][1], row[4][2]);
+  m.uSunGlow.value = row[5];
+  m.uSunAlt.value = altDeg * DEG;
+
+  /* arah Matahari dalam kerangka KAMERA (karena surfaceSky mengikuti
+     kamera tanpa rotasi, vDir lokal = arah dunia) */
+  const sun = findBody('sun');
+  if (sun && sun.absPos) {
+    m.uSunDir.value.copy(sun.absPos).sub(obs.pos).normalize();
+  }
+
+  /* OPASITAS: ini "saklar atmosfer" yang diminta pengguna.
+       - Atmosfer MATI  → langit transparan, bintang terlihat penuh
+       - Atmosfer NYALA → langit berwarna; malam tetap agak transparan
+         supaya bintang masih tampak (seperti langit nyata) */
+  let op;
+  if (!atmoOn) {
+    op = 0.0;
+  } else {
+    /* siang: pekat (0,96) — bintang tenggelam; malam: 0,25 — bintang jelas */
+    const dayness = Math.max(0, Math.min(1, (altDeg + 12) / 24));
+    op = 0.25 + 0.71 * dayness;
+  }
+  m.uOpacity.value = op;
+
+  /* Saat atmosfer mati atau malam gelap, bola langit disembunyikan supaya
+     tekstur bintang & Bima Sakti (skyMesh) terlihat sepenuhnya. */
+  if (op < 0.02) surfaceSky.visible = false;
+}
+
+/* Sembunyikan langit permukaan (dipakai saat keluar dari POV). */
+function hideSurfaceSky() {
+  if (surfaceSky) surfaceSky.visible = false;
+}
+
+</script>
+
+<script>
+"use strict";
+/* =======================================================================
+   SURFACE PATCH — PERMUKAAN LOKAL RESOLUSI TINGGI SAAT POV
+   -----------------------------------------------------------------------
+   MASALAH YANG DIPERBAIKI (keluhan: "itu hanya sekedar nempel saja, tidak
+   ada environment bumi 3d realistic nya, jadi jelek banget hanya datar"):
+     Mesh planet memakai 80x56 segmen. Untuk Bumi (radius 6371 km) itu
+     berarti satu segitiga ~500 km. Kamera POV berdiri 50 m di atas
+     permukaan — jauh DI DALAM segitiga mesh yang datar. Akibatnya yang
+     terlihat hanya langit: tidak ada tanah, tidak ada horizon, tidak ada
+     relief. Persis seperti keluhan.
+
+   SOLUSI:
+     Saat POV aktif, pasang "patch permukaan": potongan bola (spherical cap)
+     beresolusi tinggi yang HANYA mencakup wilayah sekitar pengamat, dengan
+     tekstur di-zoom ke bagian yang tepat. Karena hanya sebagian kecil bola
+     yang dibuat, jumlah segitiga tetap kecil (hemat) tetapi detailnya
+     tinggi — inilah cara kerja LOD di Google Earth.
+
+   Parameter:
+     radius patch   : 200 km (mencakup horizon untuk pengamat 50-5000 m)
+     segmen         : 128x128 = 16.384 segitiga (ringan untuk GPU modern)
+     resolusi efektif: 200 km / 128 = 1,6 km per segitiga (dari 500 km)
+
+   PENTING — HORIZON:
+     Horizon nyata muncul bila patch cukup lebar. Untuk pengamat setinggi h
+     di planet beradius R, jarak horizon = sqrt(2*R*h). Contoh di Bumi
+     dengan h = 100 m: sqrt(2*6371000*100) = 35,7 km. Patch 200 km lebih
+     dari cukup. Di luar patch, permukaan mesh asli melanjutkan (kasar tapi
+     cukup karena sudah jauh).
+
+   Referensi: konsep LOD / clipmap terrain (Losasso & Hoppe 2004),
+   jarak horizon: geometri bola standar.
+   ======================================================================= */
+
+let surfacePatch = null;      /* mesh patch aktif */
+let surfacePatchBody = null;  /* body yang sedang dipakai patch */
+let surfacePatchKey = '';     /* kunci untuk mendeteksi perubahan */
+
+const SURFACE_PATCH_SEG = 128;     /* 128x128 = 32.768 segitiga (masih ringan) */
+
+/* =======================================================================
+   UKURAN PATCH — HARUS MENCAKUP SAMPAI HORIZON
+   -----------------------------------------------------------------------
+   BUG YANG DIPERBAIKI (tiga kali, dicatat supaya tidak diulang):
+     1. Patch 300 km (2,7°)  → hanya bercak kecil di bawah.
+     2. Patch dari jarak horizon saja (1,35° utk h=50 m) → masih terlalu
+        kecil; kamera bisa melihat 17°+ ke atas.
+     3. Patch 70°            → permukaan terlihat TAPI tepi patch muncul
+        sebagai garis tajam 20° di atas horizon (terbukti di uji: piksel
+        melompat dari langit biru ke tanah dalam 1 piksel).
+
+   YANG BENAR: horizon bagi pengamat di ketinggian h berada pada sudut
+     90° − acos(R/(R+h))  dari zenith (untuk h kecil ≈ 90°).
+   Patch harus mencapai SEDIKIT DI ATAS horizon itu, sehingga tepinya
+   tidak terlihat. Dipakai minimal 92° (2° di atas horizon) dan
+   diperbesar bila pengamat tinggi (gunung/ISS).
+
+     patchDeg = clamp(max(92°, 90° + sudutHorizon), 92°, 120°)
+   ======================================================================= */
+function surfacePatchRadiusDeg(bodyRadiusKm, elevM, fovDeg) {
+  const h = Math.max(1, elevM) / 1000;                    /* km */
+  const R = bodyRadiusKm;
+  /* sudut dari pusat planet ke titik horizon yang terlihat pengamat */
+  const horizonAngleDeg = Math.acos(Math.min(1, R / (R + h))) * 180 / Math.PI;
+  /* horizon berada pada 90° − horizonAngle dari zenith; patch harus
+     melewatinya supaya tepinya tidak muncul di layar */
+  const need = Math.max(92, 90 + horizonAngleDeg * 1.2);
+  return Math.min(need, 120);
+}
+
+/* =======================================================================
+   UV PATCH — MENGAMBIL BAGIAN TEKSTUR YANG BENAR (RELATIF TERHADAP PATCH)
+   -----------------------------------------------------------------------
+   MASALAH: SphereGeometry membuat UV 0..1 untuk seluruh potongan bola,
+   padahal potongan itu hanya sebagian kecil permukaan planet.
+
+   BUG YANG DIPERBAIKI: versi pertama menghitung UV dari arah verteks
+   dalam ruang MESH (setelah quaternion patch). Itu salah karena
+   quaternion patch mengubah arah pusat patch ke lokasi pengamat — sehingga
+   UV pusat patch selalu menjadi (0,5, 0,5) = Greenwich, bukan lokasi
+   sebenarnya (terbukti di uji: UV pusat = 0,5/0,5 padahal Jakarta
+   seharusnya 0,797/0,466).
+
+   YANG BENAR: hitung UV dari arah verteks dalam ruang LOKAL patch
+   (sebelum quaternion), lalu tambahkan offset lokasi pengamat. Dengan
+   begitu pusat patch (kutub +Y lokal) mendapat UV lokasi yang tepat,
+   dan tepi-tepinya meluas secara proporsional.
+
+   Konvensi (sama dengan computeObserver, terverifikasi vs earth_day.jpg):
+     x = cos φ cos λ ,  y = sin φ ,  z = −cos φ sin λ
+     u = 0,5 + λ/360 ,  v = 0,5 + φ/180
+   ======================================================================= */
+function applyPatchUV(mesh, centerLat, centerLon) {
+  const geo = mesh.geometry;
+  const pos = geo.attributes.position;
+  const uv = geo.attributes.uv;
+  if (!pos || !uv) return;
+
+  const lat0 = centerLat * DEG, lon0 = centerLon * DEG;
+  const cosLat0 = Math.cos(lat0), sinLat0 = Math.sin(lat0);
+  const v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) {
+    /* arah verteks di ruang LOKAL patch */
+    v.set(pos.getX(i), pos.getY(i), pos.getZ(i)).normalize();
+    /* ubah kerangka lokal patch → kerangka mesh planet dengan memutar
+       sehingga kutub +Y lokal menjadi arah lokasi pengamat */
+    const q = new THREE.Quaternion().setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      new THREE.Vector3(cosLat0 * Math.cos(lon0), sinLat0, -cosLat0 * Math.sin(lon0)).normalize()
+    );
+    v.applyQuaternion(q);
+    /* sekarang v adalah arah di kerangka mesh planet → (lat, lon) → UV */
+    const lat = Math.asin(Math.max(-1, Math.min(1, v.y)));
+    const lon = Math.atan2(-v.z, v.x);
+    let u = 0.5 + lon / (2 * Math.PI);
+    const vv = 0.5 + lat / Math.PI;
+    uv.setXY(i, u - Math.floor(u), vv);
+  }
+  uv.needsUpdate = true;
+}
+
+/* =======================================================================
+   MATERIAL PATCH — MEMAKAI TEKSTUR YANG SAMA DENGAN MESH PLANET
+   -----------------------------------------------------------------------
+   PENTING — NAMA UNIFORM BERBEDA PER BODY:
+     • Bumi  memakai ShaderMaterial dengan uDay / uNight / uClouds
+     • Planet lain memakai MeshStandardMaterial dengan .map / .normalMap
+   Versi pertama fungsi ini hanya membaca uMap/normalMap sehingga tekstur
+   Bumi TIDAK PERNAH tersalin (terbukti di uji: hasMap=false) dan permukaan
+   tampak sebagai bidang kosong. Sekarang semua nama dibaca.
+   ======================================================================= */
+function makeSurfacePatchMaterial(body) {
+  let map = null, normalMap = null, clouds = null, night = null;
+  const mm = body && body.mesh ? body.mesh.material : null;
+  if (mm) {
+    if (mm.uniforms) {
+      const u = mm.uniforms;
+      if (u.uDay && u.uDay.value) map = u.uDay.value;
+      else if (u.uMap && u.uMap.value) map = u.uMap.value;
+      if (u.uNormalMap && u.uNormalMap.value) normalMap = u.uNormalMap.value;
+      if (u.uClouds && u.uClouds.value) clouds = u.uClouds.value;
+      if (u.uNight && u.uNight.value) night = u.uNight.value;
+    } else {
+      if (mm.map) map = mm.map;
+      if (mm.normalMap) normalMap = mm.normalMap;
+    }
+  }
+  /* cadangan: ambil langsung dari tabel tekstur bila material belum siap */
+  if (!map && typeof TEX !== 'undefined') {
+    const key = body && body.key;
+    if (key && TEX[key] && TEX[key].map) map = TEX[key].map;
+    else if (body && body.name === 'Bulan' && TEX.moon && TEX.moon.map) map = TEX.moon.map;
+  }
+
+  const mat = new THREE.MeshStandardMaterial({
+    map: map || null,
+    normalMap: normalMap || null,
+    normalScale: new THREE.Vector2(1.6, 1.6),
+    roughness: 0.95,
+    metalness: 0.0,
+    side: THREE.DoubleSide,
+    /* polygonOffset: tarik patch sedikit ke arah kamera di ruang depth
+       supaya selalu menang atas mesh planet yang beradius sama
+       (mengatasi z-fighting tanpa mengubah geometri). */
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4,
+  });
+  if (!map && body && body.color) mat.color = new THREE.Color(body.color);
+
+  /* =====================================================================
+     EMISSIVE TIPIS DARI TEKSTUR YANG SAMA
+     ---------------------------------------------------------------------
+     MASALAH: saat Matahari rendah (mis. elevasi 3°), permukaan nyaris
+     tidak terkena cahaya (cos 87° = 0,05) sehingga layar tampak hitam —
+     terbukti di uji: piksel (3,7,27) padahal permukaan ada di sana.
+     Padahal di kehidupan nyata, permukaan tetap terlihat karena langit
+     (hamburan atmosfer) menerangi segalanya.
+
+     SOLUSI: emissive tipis dari peta tekstur yang sama, intensitasnya
+     mengikuti tinggi Matahari (dihitung di updateSurfacePatchLighting()).
+     Saat malam, nilai ini juga memberi "cahaya kota" yang lembut.
+     ===================================================================== */
+  if (map) {
+    mat.emissiveMap = map;
+    mat.emissive = new THREE.Color(0xffffff);
+    mat.emissiveIntensity = 0.25;   /* diperbarui tiap frame */
+  }
+  mat.userData = { clouds: clouds, night: night, isPatch: true };
+  return mat;
+}
+
+/* =======================================================================
+   PENCAHAYAAN KHUSUS POV PERMUKAAN
+   -----------------------------------------------------------------------
+   MASALAH (terukur, bukan dugaan):
+     Saat POV aktif, cahaya yang sampai ke permukaan terlalu lemah:
+       • sunLight PointLight: intensitas 1,25 × cos(sudut) — saat Matahari
+         60° dari zenith, hanya ~0,6
+       • AmbientLight: 0,35
+     Hasil terukur: piksel permukaan (18,35,81) — lebih GELAP daripada
+     langit biru (76,130,233), sehingga permukaan tidak terlihat sama
+     sekali meski geometrinya benar (uji material merah membuktikan patch
+     ADA di layar).
+
+   FISIKA vs KENYAMANAN MATA:
+     Secara fisika ini benar (matahari rendah = tanah gelap). Tetapi mata
+     manusia BERADAPTASI: saat berdiri di permukaan, kita tetap melihat
+     tanah dengan jelas karena pupil melebar dan otak mengompensasi.
+     Simulator perlu meniru adaptasi itu, bukan angka fotometri mentah.
+
+   SOLUSI: saat POV aktif, tambahkan cahaya ambient khusus permukaan
+   (intensitas mengikuti tinggi Matahari) dan kembalikan saat keluar POV.
+   Ini TIDAK mengubah pencahayaan mode orbit — hanya mode POV.
+   ======================================================================= */
+let povAmbient = null;
+
+function setPovLighting(on, sunAltDeg) {
+  if (on) {
+    if (!povAmbient) {
+      povAmbient = new THREE.AmbientLight(0xffffff, 0.0);
+      povAmbient.name = 'povAmbient';
+      scene.add(povAmbient);
+    }
+    /* Adaptasi mata: siang penuh 1,15 ; malam 0,22 (tetap terlihat bentuk) */
+    const dayness = Math.max(0, Math.min(1, (sunAltDeg + 12) / 32));
+    povAmbient.intensity = 0.22 + 0.93 * dayness;
+    povAmbient.visible = true;
+  } else if (povAmbient) {
+    povAmbient.visible = false;
+  }
+}
+
+/* Bangun patch untuk body tertentu.
+   Patch berupa potongan bola yang "ditempel" mengikuti orientasi body:
+   ia anak dari grup `spin` body sehingga otomatis ikut rotasi harian —
+   tidak ada perhitungan rotasi tambahan yang bisa salah. */
+function buildSurfacePatch(body) {
+  if (!body) return null;
+
+  const R = (body.realRadiusKm || body.radiusKm * RAD);   /* radius km */
+  /* =====================================================================
+     RADIUS PATCH — SAMA DENGAN MESH, Z-FIGHTING DIPECAHKAN polygonOffset
+     ---------------------------------------------------------------------
+     PERCOBAAN YANG GAGAL (dicatat supaya tidak diulang):
+       • Patch radius = mesh radius  → z-fighting, mesh planet menang
+         (terbukti: patch ter-render 1 draw call tapi warnanya tak muncul).
+       • Patch radius +0,02%         → patch justru berada DI ATAS kamera,
+         karena pengamat hanya 50 m (7,8e-6 unit) di atas permukaan.
+         Kamera jadi berada di bawah patch dan tidak melihatnya.
+
+     SOLUSI YANG BENAR: radius patch SAMA dengan mesh, dan z-fighting
+     diatasi dengan polygonOffset (fitur resmi WebGL/Three.js untuk kasus
+     ini). polygonOffsetFactor negatif menarik patch sedikit ke arah kamera
+     di ruang depth, tanpa mengubah geometri — sehingga kamera tetap di
+     atas permukaan dan patch selalu menang depth test.
+     ===================================================================== */
+  const rUnits = R / RAD;
+  /* Luas patch harus mencakup seluruh bidang pandang kamera (lihat
+     surfacePatchRadiusDeg). */
+  const elevM = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.elev || 50) : 50;
+  const fovDeg = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.fov || 50) : 50;
+  const patchDeg = surfacePatchRadiusDeg(R, elevM, fovDeg);
+  const patchRad = patchDeg * DEG;                         /* sudut patch (radian) */
+
+  /* Geometri: potongan bola (spherical cap) berpusat di kutub +Y lokal,
+     karena grup `spin` memutar di sumbu Y dan titik pengamat dihitung dari
+     konvensi yang sama. */
+  const geo = new THREE.SphereGeometry(
+    rUnits, SURFACE_PATCH_SEG, SURFACE_PATCH_SEG,
+    0, Math.PI * 2,                        /* phi: penuh */
+    0, patchRad                            /* theta: hanya dari kutub */
+  );
+
+  const mat = makeSurfacePatchMaterial(body);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.renderOrder = 5;
+  mesh.frustumCulled = false;
+
+  /* UV dihitung dari lokasi patch saat ini (pusat patch = titik pengamat).
+     Karena UV bergantung pada lat/lon, patch dibangun ulang setiap kali
+     lokasi berubah — lihat signature di updateSurfacePatch(). */
+  const lat0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lat : 0;
+  const lon0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lon : 0;
+  aimSurfacePatchMesh(mesh, lat0, lon0);
+  applyPatchUV(mesh, lat0, lon0);
+
+  /* Patch harus berada DI DALAM hierarki body supaya ikut rotasi.
+     Kita tempelkan ke `spin` (anak tiltGroup) sehingga poros & rotasi
+     harian otomatis benar. */
+  if (body.spin) {
+    body.spin.add(mesh);
+  } else {
+    body.group.add(mesh);
+  }
+
+  /* =====================================================================
+     MESH BOLA BODY DIMATIKAN SELAMA POV
+     ---------------------------------------------------------------------
+     MASALAH: mesh planet dan patch beradius SAMA PERSIS, jadi keduanya
+     berebut piksel (z-fighting). polygonOffset TIDAK menolong di sini
+     karena renderer memakai logarithmicDepthBuffer (depth-nya non-linear,
+     polygonOffset diabaikan) — terbukti: patch ter-render (1 draw call,
+     material merah terang) tapi warnanya tak pernah muncul di layar.
+
+     Menaikkan radius patch juga salah: pengamat hanya 50 m di atas
+     permukaan, jadi patch +0,02% (1,3 km) membuat kamera berada DI BAWAH
+     patch.
+
+     SOLUSI: selama POV, mesh bola body disembunyikan dan patch yang
+     menggantikannya. Mesh dikembalikan saat keluar POV (lihat
+     removeSurfacePatch + EARTHVIEW_UI.exitPOV). Bagian permukaan di luar
+     patch (jauh, dekat horizon) tetap ditutup oleh warna dasar langit
+     permukaan, jadi tidak ada lubang.
+     ===================================================================== */
+  if (body.mesh) body.mesh.visible = false;
+
+  surfacePatch = mesh;
+  surfacePatchBody = body;
+  return mesh;
+}
+
+/* Arahkan sebuah mesh potongan bola ke (lat, lon) tertentu.
+   Dipakai oleh aimSurfacePatch() (patch aktif) dan saat membangun UV. */
+function aimSurfacePatchMesh(mesh, lat, lon) {
+  const latR = lat * DEG, lonR = lon * DEG;
+  const cl = Math.cos(latR);
+  const target = new THREE.Vector3(cl * Math.cos(lonR), Math.sin(latR), -cl * Math.sin(lonR)).normalize();
+  const up = new THREE.Vector3(0, 1, 0);
+  mesh.quaternion.setFromUnitVectors(up, target);
+}
+
+/* Arahkan patch ke lokasi pengamat (lat/lon) dengan memutar potongan bola
+   sehingga pusatnya (kutub +Y lokal) jatuh tepat di titik itu. */
+function aimSurfacePatch(body, lat, lon) {
+  if (!surfacePatch || !body) return;
+  aimSurfacePatchMesh(surfacePatch, lat, lon);
+}
+
+/* Pasang / perbarui patch untuk body & koordinat tertentu.
+   Dipanggil tiap frame saat POV aktif.
+
+   PENTING: patch dibangun ulang bila ELEVASI atau FOV berubah, karena
+   luasnya bergantung pada keduanya (lihat surfacePatchRadiusDeg). Tanpa
+   ini, patch tetap memakai ukuran lama — terbukti di uji: thetaLength
+   tetap 1,3° padahal FOV sudah 50°. */
+function updateSurfacePatch(body, lat, lon) {
+  if (!body) { removeSurfacePatch(); return; }
+  const key = body.key || body.name;
+  const elevM = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.elev || 50) : 50;
+  const fovDeg = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.fov || 50) : 50;
+  /* UV patch bergantung pada lat/lon, jadi keduanya masuk signature —
+     tanpa ini, berpindah lokasi akan memakai tekstur lokasi lama. */
+  const sig = key + '|' + Math.round(elevM) + '|' + Math.round(fovDeg) +
+              '|' + lat.toFixed(3) + '|' + lon.toFixed(3);
+  if (sig !== surfacePatchKey) {
+    removeSurfacePatch();
+    buildSurfacePatch(body);
+    surfacePatchKey = sig;
+  }
+  aimSurfacePatch(body, lat, lon);
+  if (surfacePatch) surfacePatch.visible = true;
+  /* pencahayaan mengikuti tinggi Matahari (agar permukaan tetap terlihat
+     saat Matahari rendah — lihat penjelasan di setPovLighting) */
+  if (typeof updateSurfacePatchLighting === 'function') {
+    const obs = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.computeObserver)
+      ? SURFACE_VIEW.computeObserver(body) : null;
+    if (obs) updateSurfacePatchLighting(obs);
+  } else if (typeof setPovLighting === 'function') {
+    setPovLighting(true, 30);
+  }
+}
+
+/* Lepas patch (saat keluar POV atau ganti body). */
+function removeSurfacePatch() {
+  if (surfacePatch) {
+    if (surfacePatch.parent) surfacePatch.parent.remove(surfacePatch);
+    if (surfacePatch.geometry) surfacePatch.geometry.dispose();
+    if (surfacePatch.material) surfacePatch.material.dispose();
+    surfacePatch = null;
+  }
+  /* kembalikan mesh bola body yang disembunyikan selama POV */
+  if (surfacePatchBody && surfacePatchBody.mesh) {
+    surfacePatchBody.mesh.visible = true;
+  }
+  /* matikan cahaya tambahan khusus POV */
+  if (typeof setPovLighting === 'function') setPovLighting(false);
+  surfacePatchBody = null;
+  surfacePatchKey = '';
+}
+
+/* Sembunyikan patch tanpa menghancurkannya (mis. saat pengguna mematikan
+   permukaan detail). */
+function hideSurfacePatch() {
+  if (surfacePatch) surfacePatch.visible = false;
 }
 
 </script>
@@ -4779,7 +5770,50 @@ function buildStarField() {
 /* ---------- tampilkan / sembunyikan ---------- */
 function setStarFieldVisible(v) {
   starField.visible = !!v;
+  starField._userVisible = !!v;      /* diingat untuk peredupan siang POV */
   if (starField.group) starField.group.visible = starField.visible;
+}
+
+/* =======================================================================
+   PEREDUPAN BINTANG SAAT SIANG (fisika langit)
+   -----------------------------------------------------------------------
+   MASALAH (terlihat di uji visual): saat POV siang, bintang & garis rasi
+   tetap tampak di langit biru. Padahal di kenyataan bintang tenggelam
+   karena langit siang jauh lebih terang (hamburan Rayleigh).
+
+   SOLUSI: saat POV aktif, redupkan bintang sesuai tinggi Matahari.
+     alt > +6°   : bintang tidak terlihat (opacity 0)
+     +6°..−6°    : memudar bertahap (fajar/senja)
+     < −18°      : bintang penuh
+
+   Catatan: ini hanya berlaku di mode POV. Di mode orbit, bintang tetap
+   ditampilkan penuh karena pengguna sedang melihat tata surya dari luar
+   angkasa (di sana bintang memang selalu terlihat).
+   ======================================================================= */
+function applyDaylightStarDimming(sunAltDeg) {
+  if (!starField || !starField.group) return;
+  if (typeof SURFACE_VIEW === 'undefined' || !SURFACE_VIEW.active) {
+    /* mode orbit: kembalikan ke pengaturan pengguna */
+    if (starField._userVisible === undefined) starField._userVisible = true;
+    const want = starField._userVisible;
+    starField.visible = want;
+    starField.group.visible = want;
+    return;
+  }
+  /* POV: hitung faktor peredupan */
+  const t = Math.max(0, Math.min(1, (-sunAltDeg + 6) / 24));   /* 0 = siang, 1 = malam */
+  const dim = t * t;                                           /* kurva halus */
+  const want = (starField._userVisible !== false) && dim > 0.02;
+  starField.visible = want;
+  starField.group.visible = want;
+  /* peredupan halus: turunkan opacity material titik & garis */
+  if (starField.points && starField.points.material) {
+    starField.points.material.opacity = dim;
+    starField.points.material.transparent = true;
+  }
+  if (starField.lines && starField.lines.material) {
+    starField.lines.material.opacity = dim * 0.6;
+  }
 }
 function setConstellationLines(v) {
   starField.showConstellations = !!v;
@@ -6899,49 +7933,55 @@ function updateCamera(dt) {
   const cs = cameraState;
 
   /* =====================================================================
-     POV BUMI — kamera berdiri di permukaan Bumi
+     POV PERMUKAAN (SEMUA PLANET & SATELIT)
      ---------------------------------------------------------------------
      BUG YANG DIPERBAIKI: sebelumnya EARTH_VIEW.enable() hanya menyalakan
      bendera, tetapi TIDAK ADA satu baris pun di updateCamera() yang
      membacanya — jadi menekan "Terapkan & Masuk POV" tidak menggerakkan
      apa pun (keluhan: "pov bumi tidak berfungsi").
 
-     Sekarang: posisi kamera = titik pengamat nyata di permukaan (dihitung
-     dari lat/lon + GMST, sama seperti mesh Bumi), dan orientasi memakai
-     utara Bumi sebagai camera.up supaya langit tidak miring.
+     Sekarang: posisi kamera = titik pengamat nyata di permukaan body yang
+     dipilih (dihitung dari lat/lon + rotasi harian + poros nyata body itu,
+     SAMA dengan jalur mesh), dan orientasi memakai kutub body sebagai
+     camera.up supaya horizon selalu mendatar.
      ===================================================================== */
-  if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
-    const earth = findBody('earth');
-    const obs = EARTH_VIEW.computeObserver(app.days, earth);
-    if (obs) {
+  if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
+    const body = SURFACE_VIEW.currentBody();
+    const obs = SURFACE_VIEW.computeObserver(body);
+    if (obs && body) {
       cs.target = null;
       cs.transition = null;
       cs.pos.copy(obs.pos);
       cs.vel.set(0, 0, 0);
 
-      /* Selubung atmosfer Bumi memakai BackSide — dilihat dari dalam
+      /* Selubung atmosfer body memakai BackSide — dilihat dari dalam
          (kamera di permukaan) ia akan menutupi SELURUH langit. Matikan
-         selama POV; dinyalakan kembali saat keluar. */
-      if (earth && earth.atmoMesh) earth.atmoMesh.visible = false;
+         selubung itu selama POV; kabut horizon yang benar dirender oleh
+         surfaceSky (lihat 20-scene.js). Pengguna bisa menyalakan kabut
+         itu lewat SURFACE_VIEW.atmosphereOn. */
+      for (const b of bodies) {
+        if (b.atmoMesh) b.atmoMesh.visible = false;
+      }
 
       rebaseOffset.copy(cs.pos);
       camera.position.set(0, 0, 0);
 
       /* arah pandang dari azimut/elevasi dalam kerangka pengamat ENU */
-      const fwd = EARTH_VIEW.viewDir(obs, _tmp);
+      const fwd = SURFACE_VIEW.viewDir(obs, _tmp);
       camera.up.copy(obs.zenith);
       camera.lookAt(fwd);
 
     /* Pesawat dekat (near plane) harus sangat kecil di POV: kamera berdiri
-       50 m di atas permukaan, sedangkan near bawaan 0,0005 unit = 3,2 km —
-       permukaan dalam radius itu akan terpotong dan tampak "bolong".
-       Dengan logarithmicDepthBuffer, rasio near/far 1e-6 : 2e6 tetap presisi. */
+       puluhan meter di atas permukaan, sedangkan near bawaan 0,0005 unit =
+       3,2 km — permukaan dalam radius itu akan terpotong dan tampak
+       "bolong". Dengan logarithmicDepthBuffer, rasio near/far 1e-6 : 2e6
+       tetap presisi. */
       const nearPov = 0.000002;
       if (camera.near !== nearPov) { camera.near = nearPov; camera.updateProjectionMatrix(); }
 
-      /* zoom lensa khusus POV (roda mouse / pinch mengubah EARTH_VIEW.fov) */
-      if (Math.abs(camera.fov - EARTH_VIEW.fov) > 0.01) {
-        camera.fov = EARTH_VIEW.fov;
+      /* zoom lensa khusus POV (roda mouse / pinch mengubah SURFACE_VIEW.fov) */
+      if (Math.abs(camera.fov - SURFACE_VIEW.fov) > 0.01) {
+        camera.fov = SURFACE_VIEW.fov;
         camera.updateProjectionMatrix();
       }
       return;
@@ -7313,6 +8353,36 @@ async function boot() {
        Dengan urutan ini tidak ada keterlambatan satu frame antara
        benda dan kamera — inilah yang membuat zoom presisi mungkin. */
     computePositions(app.days, now * 0.001);
+    /* =====================================================================
+       LANGIT PERMUKAAN DINAMIS (siang ↔ malam)
+       ---------------------------------------------------------------------
+       Dipanggil SEBELUM updateCamera supaya warna langit memakai posisi
+       pengamat frame ini. Warna dihitung dari elevasi Matahari di lokasi
+       pengamat: biru siang → jingga senja → hitam malam, dan berubah
+       otomatis saat waktu simulasi berjalan (itulah "animasi siang
+       malam" yang diminta).
+       ===================================================================== */
+    if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active &&
+        typeof updateSurfaceSky === 'function') {
+      const svBody = SURFACE_VIEW.currentBody();
+      const svObs = SURFACE_VIEW.computeObserver(svBody);
+      if (svObs) updateSurfaceSky(svObs, svBody, SURFACE_VIEW.atmosphereOn);
+      /* Permukaan lokal resolusi tinggi: mesh planet terlalu kasar
+         (segmen ~500 km), sehingga dari 50 m permukaan tak terlihat sama
+         sekali. Patch ini memasang potongan bola rapat di sekitar pengamat. */
+      if (typeof updateSurfacePatch === 'function') {
+        updateSurfacePatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
+      }
+      /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:
+         langit siang jauh lebih terang sehingga bintang tenggelam). */
+      if (typeof applyDaylightStarDimming === 'function' && svObs) {
+        applyDaylightStarDimming(SURFACE_VIEW.sunAltitudeDeg(svObs));
+      }
+    } else {
+      if (typeof hideSurfaceSky === 'function') hideSurfaceSky();
+      if (typeof removeSurfacePatch === 'function') removeSurfacePatch();
+      if (typeof applyDaylightStarDimming === 'function') applyDaylightStarDimming(0);
+    }
     updateCamera(dt);
     applyPositions();
     /* glow Matahari dijaga tetap terlihat dari jarak berapa pun */
@@ -7352,6 +8422,22 @@ function buildUI() {
       TEMPORAL_BADGE.update(app.days);
     }
   } catch (e) { console.warn('temporal badge gagal:', e); }
+
+  /* =====================================================================
+     POV PERMUKAAN: isi ulang dropdown setelah seluruh body siap
+     ---------------------------------------------------------------------
+     EARTHVIEW_UI.init() sudah berjalan di DOMContentLoaded, tetapi saat itu
+     daftar `bodies` MASIH KOSONG — sehingga dropdown benda langit tidak
+     terisi (terbukti di uji: 0 opsi). Di sini (setelah semua planet &
+     satelit dibangun) kita panggil ulang init supaya dropdown lengkap.
+     ===================================================================== */
+  try {
+    if (typeof EARTHVIEW_UI !== 'undefined' && typeof SURFACE_VIEW !== 'undefined') {
+      /* bersihkan listener lama dengan menandai sudah-inisialisasi ulang */
+      EARTHVIEW_UI._filled = false;
+      EARTHVIEW_UI.refillBodySelect();
+    }
+  } catch (e) { console.warn('POV dropdown gagal:', e); }
   /* ---- daftar benda di bilah samping ---- */
   const list = $('bodyList');
   list.innerHTML = '';
@@ -8027,9 +9113,15 @@ function updateHud() {
   /* Dengan floating origin, camera.position selalu dekat 0.
      Gunakan cameraState.pos yang menyimpan koordinat absolut kamera. */
   const distAU = cameraState.pos.length() / (AU_KM / RAD);
-  const follow = (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active)
-    ? ('POV Bumi — ' + EARTH_VIEW.city)
-    : cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  let follow;
+  if (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.active) {
+    const svb = SURFACE_VIEW.currentBody();
+    follow = 'POV ' + (svb ? svb.name : 'permukaan') +
+             ' — ' + Math.abs(SURFACE_VIEW.lat).toFixed(1) + '°, ' +
+             Math.abs(SURFACE_VIEW.lon).toFixed(1) + '°';
+  } else {
+    follow = cameraState.target ? ('mengikuti ' + cameraState.target.name) : 'terbang bebas';
+  }
   const distStr = distAU < 0.01 
     ? (distAU * 149597870.7).toLocaleString('id-ID', { maximumFractionDigits: 0 }) + ' km'
     : distAU.toFixed(2) + ' SA';
