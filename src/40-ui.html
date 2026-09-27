@@ -2,6 +2,10 @@
   <canvas id="scene"></canvas>
   <button class="ui-show" id="btnShowUI" title="Tampilkan kembali UI (H)">👁 Tampilkan UI</button>
 
+  <!-- Label langit DI LUAR .ui supaya tetap terlihat saat panel UI disembunyikan. -->
+  <div id="constellationLabels" class="constellation-labels"></div>
+  <div id="labelLayer"></div>
+
   <!-- ======================= LAPISAN UI ======================= -->
   <div class="ui" id="uiRoot">
 
@@ -217,11 +221,6 @@
         waktu di bawah untuk mengamati rotasi serta revolusi.
       </div>
     </div>
-
-    <!-- Label benda (diposisikan oleh JS) -->
-    <!-- Lapisan label nama rasi bintang (diisi oleh 31-constellation-labels.js) -->
-    <div id="constellationLabels" class="constellation-labels"></div>
-    <div id="labelLayer"></div>
 
     <!-- Panel info bintang terfokus (diisi oleh 32-star-focus.js) -->
     <div class="panel star-focus-panel" id="starFocusPanel"></div>
