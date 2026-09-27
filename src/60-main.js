@@ -825,6 +825,39 @@ function buildUI() {
     url.searchParams.set('q', next);
     location.href = url.toString();
   });
+
+  /* =====================================================================
+     FULLSCREEN — LAYAR PENUH TANPA UI BROWSER
+     ---------------------------------------------------------------------
+     PERMINTAAN: "tambahkan fungsi untuk fullscreen agar tidak ada ui yg
+     menghalangi"
+
+     Memakai Fullscreen API standar. Fallback berlapis:
+       document.documentElement.requestFullscreen (standar)
+       webkitRequestFullscreen (Safari lama) / msRequestFullscreen (Edge lama)
+     Ikon tombol berubah: ⛶ masuk, ✕ keluar.
+     ===================================================================== */
+  const btnFS = $('btnFullscreen');
+  if (btnFS) {
+    const updFS = () => {
+      const fs = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      btnFS.classList.toggle('active', fs);
+      btnFS.title = fs ? 'Keluar layar penuh (F)' : 'Layar penuh (F)';
+    };
+    btnFS.addEventListener('click', () => {
+      if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+      } else {
+        const el = document.documentElement;
+        if (el.requestFullscreen) el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+      }
+    });
+    document.addEventListener('fullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
+    document.addEventListener('webkitfullscreenchange', () => { updFS(); setTimeout(measureBands, 60); });
+    updFS();
+  }
   {
     const lbl = $('btnQuality').querySelector('.bt');
     const txt = 'Kualitas: ' + (app.qualityTier === 'hi' ? 'Tinggi' : 'Ringan');
@@ -838,6 +871,7 @@ function buildUI() {
     if (e.code === 'KeyL') toggleLabels();
     else if (e.code === 'KeyO') { $('chkOrbits').checked = !$('chkOrbits').checked; setOrbits($('chkOrbits').checked); }
     else if (e.code === 'KeyH') $('helpPanel').classList.toggle('show');
+    else if (e.code === 'KeyF') { const b = $('btnFullscreen'); if (b) b.click(); }
     else if (e.code === 'KeyP') togglePause();
     else if (e.code === 'Space') {
       if (cameraState.target) focusBody(null);

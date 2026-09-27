@@ -381,7 +381,12 @@
 }
 #searchInput::placeholder { color: #5d7794; }
 /* daftar hasil: mengambang di bawah kotak pencarian supaya bisa memanjang
-   keluar panel tanpa mengubah tinggi panel judul */
+   keluar panel tanpa mengubah tinggi panel judul.
+   CATATAN z-index: sidebar (JELAJAHI) berada tepat di bawah panel judul
+   bila tidak di-hide. Agar daftar hasil TIDAK tertutup sidebar, z-indexnya
+   dinaikkan jauh di atas panel lain (sidebar/info-panel memakai z-index 5).
+   Daftar hanya muncul saat ada hasil pencarian, jadi tidak menghalangi
+   saat tidak dipakai. */
 .search-results {
   display: none;
   position: absolute;
@@ -392,7 +397,7 @@
   border: 1px solid rgba(120, 160, 220, 0.22);
   box-shadow: 0 10px 28px rgba(0,0,0,.55);
   max-height: 320px; overflow-y: auto;
-  z-index: 40;
+  z-index: 200;
 }
 .title-panel { position: fixed; }
 .title-panel.show .search-results,
