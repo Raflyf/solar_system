@@ -60,8 +60,27 @@ const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- ====================================================================
+     VIEWPORT — DIPERBAIKI UNTUK RESPONSIF SEMUA PERANGKAT
+     --------------------------------------------------------------------
+     PERMINTAAN PENGGUNA: "buat responsif juga di semua devices seperti
+     mobile"
+
+     Versi sebelumnya memakai:
+         maximum-scale=1, user-scalable=no
+     Dua penanda itu MEMBLOKIR pengguna melakukan pinch-zoom halaman —
+     melanggar aksesibilitas (WCAG 1.4.4) dan membuat pengguna tidak bisa
+     memperbesar teks kecil. Karena aplikasi ini sudah menangani pinch
+     sendiri di kanvas (untuk zoom kamera), memblokir zoom halaman tidak
+     diperlukan lagi.
+     viewport-fit=cover tetap dipakai agar aman di layar berponi (notch).
+     ==================================================================== -->
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#05070d">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="format-detection" content="telephone=no">
 <title>Tata Surya 3D — Skala 1:1 dengan Tekstur Asli NASA</title>
 <meta name="description" content="Tata surya 3D skala 1:1 dengan tekstur permukaan asli NASA/USGS. Zoom sampai permukaan planet, simulasi waktu dari detik hingga abad.">
 <style>
