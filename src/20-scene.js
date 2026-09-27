@@ -689,29 +689,25 @@ function updateBeacons() {
        langit) tetapi cukup untuk langsung terlihat dan bisa diklik.
        ===================================================================== */
     /* =====================================================================
-       UKURAN PENANDA — DIPERKECIL (keluhan: terlalu glow/bersinar)
-       ---------------------------------------------------------------------
-       KELUHAN: "planet dan satelit terlalu glow dan bersinar jadi malah
-       aneh, matahari pun malah tertutup glow dan cahaya dari planet dan
-       satelit"
+           UKURAN PENANDA — DIPERKECIL LAGI (keluhan: glow masih terlalu terang)
+           ---------------------------------------------------------------------
+           KELUHAN: "glow planet masih sedikit terlalu terang"
 
-       UKURAN LAMA:
-         inti planet 6,0 px + halo 3,4x = ~20 px
-         inti Bulan  7,2 px + halo 3,8x = ~27 px
-       Halo sebesar itu menutupi Matahari saat planet melintas di depannya
-       dan membuat semua benda tampak seperti bola cahaya.
+           UKURAN SEBELUMNYA:
+             inti planet 4,0 px + halo 2,2x = ~9 px
+             inti Bulan  5,0 px + halo 2,6x = ~13 px
 
-       UKURAN BARU:
-         inti planet 4,0 px + halo 2,2x = ~9 px  (tetap kelihatan, bisa diklik)
-         inti Bulan  5,0 px + halo 2,6x = ~13 px (Bulan tetap lebih menonjol)
-       Opacity halo 0,26+0,12sin -> 0,14 tetap (tidak berdenyut berlebihan).
-       ===================================================================== */
-    const basePx = b.isMoon ? 5.0 : 4.0;
-    const corePx = basePx + Math.min(2.5, Math.max(0, 1 - px / 6.0) * 2.5);
-    const haloPx = corePx * (b.isMoon ? 2.6 : 2.2);
-    b.beacon.core.scale.set(corePx * unit, corePx * unit, 1);
-    b.beacon.halo.scale.set(haloPx * unit, haloPx * unit, 1);
-    b.beacon.halo.material.opacity = 0.14;
+           UKURAN BARU (lebih halus, tidak menutupi Matahari):
+             inti planet 3,0 px + halo 1,8x = ~8 px
+             inti Bulan  4,0 px + halo 2,0x = ~12 px (Bulan tetap lebih menonjol)
+           Opacity halo 0,14 -> 0,10 (lebih tipis, tidak denatur).
+           ===================================================================== */
+        const basePx = b.isMoon ? 4.0 : 3.0;
+        const corePx = basePx + Math.min(2.0, Math.max(0, 1 - px / 6.0) * 2.0);
+        const haloPx = corePx * (b.isMoon ? 2.0 : 1.8);
+        b.beacon.core.scale.set(corePx * unit, corePx * unit, 1);
+        b.beacon.halo.scale.set(haloPx * unit, haloPx * unit, 1);
+        b.beacon.halo.material.opacity = 0.10;
     b.beacon.group.position.copy(_bp);
   }
 }
