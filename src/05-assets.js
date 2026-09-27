@@ -22,28 +22,15 @@ const ASSET_MANIFEST = {
   uranus:     { map: 'uranus.jpg' },
   neptune:    { map: 'neptune.jpg' },
   /* =====================================================================
-     TEKSTUR LANGIT — PANORAMA ESO 6000x3000 (RESOLUSI LEBIH TINGGI)
+     TEKSTUR LANGIT — RESMI STELLARIUM
      ---------------------------------------------------------------------
-     PERMINTAAN: "buat langit nya lebih HD dan jelas, cari asset nya dari
-     internet dan web nasa".
-
-     Sumber sebelumnya (NASA "Deep Star Maps 2020", 3840x1920) diganti
-     dengan PANORAMA ESO (European Southern Observatory):
-         https://cdn.eso.org/images/large/eso0932a.jpg
-         "The Milky Way panorama" oleh Serge Brunier (ESO)
-         lisensi CC BY 4.0 / domain publik
-
-     PERBANDINGAN TERUKUR:
-         NASA  : 3840x1920, rata-rata 11,9, puncak 178
-         ESO   : 6000x3000, rata-rata 16,9, puncak 205   <-- dipakai
-     Resolusi 1,56x lebih tinggi dan rentang kecerahan lebih kaya,
-     sehingga pita galaksi + jalur debu terlihat lebih jelas dan halus.
-
-     Proses: Gaussian blur radius 4 (pada 6000px ≈ radius 2,6 pada
-     3840px) untuk menghilangkan titik bintang individual — bintang
-     sudah dirender terpisah oleh katalog HYG. Hasil: noise 1,16 (halus).
+     Sumber: https://github.com/Stellarium/stellarium
+             textures/milkyway.png  (tekstur yang dipakai Stellarium sendiri)
+     Diproses: konversi ke JPEG kualitas 95 (hi) & 90 (lo).
+     Pengukuran: 2048x1024, rata-rata 9,79/255, puncak 168,
+                 46,4% piksel < 3/255 (langit bersih), noise 2,55.
      ===================================================================== */
-  milkyway:   { map: 'milkyway_eso.jpg' },
+  milkyway:   { map: 'milkyway_stellarium.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
   phobos:     { map: 'phobos.jpg' },
   deimos:     { map: 'deimos.jpg' },

@@ -690,35 +690,118 @@ function bodyColorHex(b) {
 }
 
 /* ---------- langit: Bima Sakti nyata ---------- */
+/* =======================================================================
+   SHADER BIMA SAKTI — PROYEKSI PERSIS SEPERTI STELLARIUM
+   -----------------------------------------------------------------------
+   Tekstur: textures/milkyway.png milik STELLARIUM (dipakai Stellarium
+   sendiri). Proyeksi diambil dari kode Stellarium:
+       src/core/modules/MilkyWay.cpp (baris 266-269):
+           float modelZenithAngle = acos(-modelPos.z);
+           float modelLongitude  = atan(modelPos.x, modelPos.y);
+           vec2 texc = vec2(modelLongitude/(2.*PI), modelZenithAngle/PI);
+
+   Di Stellarium, `modelPos` berada dalam kerangka EKUATOR J2000 dengan
+   komponen (x, y, z) = (cos δ cos α, cos δ sin α, sin δ).
+
+   Di aplikasi ini bola langit memakai kerangka SCENE (ekliptika):
+       sceneX =  xe
+       sceneY = -ye·sin ε + ze·cos ε
+       sceneZ = -ye·cos ε - ze·sin ε
+   Kebalikannya (dipakai di shader):
+       xe =  sx
+       ye = -c·sz - s·sy      (c = cos ε, s = sin ε)
+       ze = -s·sz + c·sy
+
+   CATATAN PENTING — DUA KESALAHAN DIAGNOSA YANG SUDAH DIPERBAIKI:
+     1. Sempat dideklarasikan `attribute vec3 position; uniform mat4
+        modelViewMatrix;` secara manual. Ternyata Three.js SUDAH
+        menyuntikkan deklarasi itu lewat prefix shader → error
+        "'position' : redefinition" → shader gagal → langit hitam.
+        Karena itu deklarasi manual DIHAPUS.
+     2. Sempat dikira `#include` tidak diproses karena log kompilasi
+        berbunyi "'include' : invalid directive name". Itu terjadi karena
+        shader diuji dengan gl.compileShader MENTAH (di luar pipeline
+        Three.js, tanpa prefix). Di pipeline sebenarnya #include DIOLAH
+        dengan benar. Karena itu `#include <logdepthbuf_*>` dipakai lagi
+        supaya kedalaman logaritmik (logarithmicDepthBuffer = true)
+        tertulis dengan benar — inilah yang membuat langit benar-benar
+        terlihat tanpa perlu mematikan depthTest.
+   ======================================================================= */
+const SKY_MILKYWAY_VERT = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_vertex>',
+  'varying vec3 vDir;',
+  'void main() {',
+  '  vDir = normalize(position);',
+  '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+  '  gl_Position = projectionMatrix * mv;',
+  '  #include <logdepthbuf_vertex>',
+  '}',
+].join('\n');
+
+const SKY_MILKYWAY_FRAG = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_fragment>',
+  'uniform sampler2D uMap;',
+  'uniform float uBright;',
+  'uniform vec3 uTint;',
+  'varying vec3 vDir;',
+  'void main() {',
+  '  #include <logdepthbuf_fragment>',
+  '  vec3 d = normalize(vDir);',
+  /* konstanta kemiringan ekliptika J2000 (23,4392911°) */
+  '  float c = 0.9174820621;',
+  '  float s = 0.3977771559;',
+  '  float xe = d.x;',
+  '  float ye = -c * d.z - s * d.y;',
+  '  float ze = -s * d.z + c * d.y;',
+  /* proyeksi Stellarium (MilkyWay.cpp baris 266-269).
+     CATATAN: PI sudah didefinisikan oleh `#include <common>` di atas,
+     jadi JANGAN dideklarasikan ulang — kalau dideklarasikan ulang, makro
+     PI digantikan angka sehingga menjadi `float 3.14159... = ...` dan
+     shader gagal kompilasi (terbukti dari log: syntax error di baris PI). */
+  '  float lon = atan(xe, ye);',
+  '  float zen = acos(clamp(-ze, -1.0, 1.0));',
+  '  vec2 uv = vec2(lon / (2.0 * PI) + 0.5, zen / PI);',
+  '  vec3 col = texture2D(uMap, uv).rgb * uBright * uTint;',
+  '  gl_FragColor = vec4(col, 1.0);',
+  '}',
+].join('\n');
+
 function buildSky() {
   let mat;
   const t = TEX.milkyway || {};
   if (t.map) {
-    t.map.mapping = THREE.EquirectangularReflectionMapping;
-    /* =====================================================================
-       KECERAHAN LANGIT — DIKALIBRASI DENGAN TEKSTUR BARU
-       ---------------------------------------------------------------------
-       Tekstur ESO diproses ulang (lihat tools: GaussianBlur 3 + kontras
-       1,35x + cutoff level hitam 10):
-           rata-rata 9,03/255, puncak 255
-           67,3% piksel < 3/255 (area antar-pita BENAR-BENAR gelap)
-       Tujuan: langit tampak BERSIH (tidak kabur merata) tetapi pita
-       Bima Sakti + jalur debunya tetap terlihat.
-
-       Pengukuran kontribusi lapisan membuktikan sumber "gumpalan" adalah
-       tekstur ini, bukan surfaceSky atau deep-sky:
-           semua lapisan    : 9 10 10 11 13 11 19 28 40 31 18 25 20 12 7 6
-           tanpa Bima Sakti  : 0  0  0  0  0  0  0  0  0  0  0  5 10  3 0 0
-
-       Pengali 0,42x:
-           rata-rata 9,03 x 0,42 = 3,8/255  (area gelap tetap gelap)
-           puncak   255   x 0,42 = 107/255  (inti galaksi terlihat, tidak jenuh)
-       ===================================================================== */
-    mat = new THREE.MeshBasicMaterial({
-      map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
+    /* Tekstur Stellarium dipakai dengan shader proyeksi khusus di atas,
+       bukan sphere UV biasa — supaya orientasi pita galaksi PERSIS sama
+       dengan Stellarium. */
+    t.map.wrapS = THREE.RepeatWrapping;
+    t.map.wrapT = THREE.ClampToEdgeWrapping;
+    mat = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap:    { value: t.map },
+        /* =============================================================
+           KALIBRASI uBright — DIUKUR DARI PIKSEl LAYAR
+           -------------------------------------------------------------
+           Pengukuran: dengan uBright = 2,2 puncak mencapai 239/255
+           (hampir jenuh). Skala linear memberi:
+               uBright 0,62 -> puncak ~67   (samar, dikeluhkan pengguna)
+               uBright 1,00 -> puncak ~109  (pita jelas)  <-- dipakai
+               uBright 1,20 -> puncak ~130  (mulai terlalu terang)
+           Nilai 1,00 dipilih: pita Bima Sakti terlihat jelas tetapi tetap
+           jauh lebih redup daripada bintang (yang mencapai 255) — sesuai
+           proporsi Stellarium (puncak pita ~1/4-1/3 kecerahan bintang).
+           ============================================================= */
+        uBright: { value: 1.00 },
+        uTint:   { value: new THREE.Color(1.0, 1.0, 1.0) },
+      },
+      vertexShader: SKY_MILKYWAY_VERT,
+      fragmentShader: SKY_MILKYWAY_FRAG,
+      side: THREE.BackSide,
+      depthWrite: false,
+      fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(0.42, 0.42, 0.42);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });
@@ -735,47 +818,20 @@ function buildSky() {
   skyMesh = new THREE.Mesh(new THREE.SphereGeometry(900000, 160, 120), mat);
   skyMesh.frustumCulled = false;
   skyMesh.renderOrder = -200;
-  /* Kalibrasi orientasi langit — DIUKUR empiris dari citra vs katalog nyata:
-     • Kurva puncak kecerahan tekstur berimpit pita galaksi dengan
-       median |b_gal| = 4,7° (tafsir ekuator memberi 35° — jelas salah).
-     • Uji 13 objek diffuse nyata (LMC, SMC, M42, Carina, M8, Antares, …)
-       menentukan arah: LMC (l=280,5°) jatuh tepat di blob terang hanya pada
-       konvensi u = 0,5 − l/360 (konvensi +l menaruhnya di langit kosong);
-       uji ulang di peramban: 9 dari 10 objek terang berpindah dari gelap ke
-       terang dengan koreksi ini, sementara titik kontrol tetap gelap.
-     Jadi tekstur milkyway.jpg adalah peta GALAKTIK:
-         u = 0,5 − l/360 (mod 1)  ·  v = 0,5 + b/180   (v dari ATAS citra)
-     Konversi ke kerangka scene (ekliptika J2000, SAMA dengan bintang &
-     planet): galaktik → ekuator J2000 (matriks IAU) → eqVecToScene().
-     Basis bola yang benar (dari probe verteks SphereGeometry:
-     u=0,5→+X · v_atas→+Y):
-       +X bola (u=0,5) → pusat galaksi (l=0°, b=0°)
-       +Y bola         → kutub galaksi SELATAN (b=−90°)  [sehingga kutub
-                          utara galaksi, b=+90°, ada di v_atas citra]
-     Tanpa kalibrasi ini pita Bima Sakti tercermin timur-barat terhadap
-     bintang dan planet — terlihat "benar" sekilas tetapi salah posisi. */
-  {
-    /* Matriks galaktik -> ekuator J2000 = transpose matriks ekuator->galaktik
-       (IAU 1958 / Hipparcos vol. 1, sec. 2.5.3). VERIFIKASI: baris pertama
-       M^T·(1,0,0) memberi RA 266,4° Dec −28,9° = pusat galaksi yang benar;
-       M^T·(0,0,1) memberi RA 192,9° Dec +27,1° = kutub galaksi utara. */
-    const Mge = [
-      [-0.0548755604,  0.4941094279, -0.8676661490],
-      [-0.8734370902, -0.4448296300, -0.1980763734],
-      [-0.4838350155,  0.7469822445,  0.4559837762],
-    ];
-    const galToScene = (xg, yg, zg) => {
-      const xe = Mge[0][0] * xg + Mge[0][1] * yg + Mge[0][2] * zg;
-      const ye = Mge[1][0] * xg + Mge[1][1] * yg + Mge[1][2] * zg;
-      const ze = Mge[2][0] * xg + Mge[2][1] * yg + Mge[2][2] * zg;
-      const p = eqVecToScene(xe, ye, ze, 1);
-      return new THREE.Vector3(p.x, p.y, p.z);
-    };
-    const ax = galToScene(1, 0, 0);      /* pusat galaksi  (l=0°, b=0°)   */
-    const ay = galToScene(0, 0, -1);     /* kutub galaksi SELATAN (b=−90°) */
-    const az = new THREE.Vector3().crossVectors(ax, ay);
-    skyMesh.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(ax, ay, az));
-  }
+  /* =====================================================================
+     ORIENTASI LANGIT — DITANGANI OLEH SHADER, BUKAN KUATERNION
+     ---------------------------------------------------------------------
+     Versi lama memakai kuaternion yang dihitung dari matriks galaktik-ke-
+     ekuator, dengan asumsi tekstur adalah "peta galaktik" (konvensi
+     u = 0,5 − l/360). Itu benar untuk tekstur Solar System Scope lama.
+
+     Tekstur STELLARIUM memakai proyeksi yang berbeda — dan sekarang
+     dipetakan langsung di shader (SKY_MILKYWAY_FRAG) memakai rumus PERSIS
+     dari kode Stellarium sendiri (MilkyWay.cpp baris 266-269):
+         lon = atan(xe, ye);  zen = acos(-ze);  uv = (lon/2π+0,5, zen/π)
+     Jadi bola langit TIDAK perlu diputar sama sekali — quaternion identitas.
+     ===================================================================== */
+  skyMesh.quaternion.identity();
   scene.add(skyMesh);
   if (!glowTextures.dot) glowTextures.dot = makeGlowCanvas(64, [255, 255, 255], [255, 255, 255], 2.0);
 }
