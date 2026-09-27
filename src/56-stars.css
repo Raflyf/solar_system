@@ -101,11 +101,24 @@
 
 /* =======================================================================
    PANEL PENGAMAT (mode POV Bumi)
-   Ditempatkan di TENGAH-BAWAH (di atas bilah waktu) supaya tidak pernah
-   bertabrakan dengan panel info (kanan-atas) atau daftar benda (kiri-atas).
+   =======================================================================
+   BUG YANG DIPERBAIKI (keluhan: "ui ini nya juga masih bertumpuk"):
+
+   Versi sebelumnya memakai `bottom: 96px` — angka TETAP. Tinggi bilah
+   waktu (timeBar) berubah-ubah: di desktop ~110 px, di jendela sempit
+   bisa ~150 px karena kontrolnya membungkus. Akibatnya panel pengamat
+   MENIMPA baris "WAKTU SIMULASI" di dalam bilah itu.
+
+   Terbukti dari tangkapan pengguna: pil "Bumi · 6.2° LS, 106.8° BT ·
+   🌙 malam" duduk tepat di atas label "WAKTU SIMULASI".
+
+   PERBAIKAN: pakai variabel --band-time yang SUDAH diukur oleh
+   measureBands() (tinggi bilah waktu + jarak lega 24 px). Dengan begitu
+   panel selalu berada DI ATAS bilah, berapa pun tingginya.
+   Cadangan 140px bila JS belum jalan (bilah waktu belum terukur).
    ======================================================================= */
 .observer-panel {
-  bottom: 96px; left: 50%; transform: translateX(-50%);
+  bottom: var(--band-time, 140px); left: 50%; transform: translateX(-50%);
   display: none;
   align-items: center;
   gap: 9px;

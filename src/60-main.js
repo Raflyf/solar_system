@@ -4,7 +4,7 @@
 
 const app = {
   days: 0,                 /* hari simulasi sejak 2000-01-01 */
-  daysPerSecond: 1,
+  daysPerSecond: 1 / 1440,   /* default 1 dtk = 1 menit (lihat DEFAULT_SPEED_INDEX) */
   paused: false,
   scrubbing: false,        /* true saat slider "Geser waktu" sedang ditarik */
   labelsOn: true,
@@ -378,7 +378,21 @@ function buildUI() {
   }
   const slider = $('speedSlider');
   slider.max = String(TIME_TABLE.length - 1);
-  slider.value = '5';                       /* default: 1 hari per detik */
+  /* ======================================================================
+     DEFAULT LAJU WAKTU — 1 DETIK = 1 MENIT
+     ----------------------------------------------------------------------
+     PERMINTAAN PENGGUNA: "buat default waktu simulasi nya itu 1 detik
+     1 menit saja".
+
+     TIME_TABLE[1] = 1/1440 hari per detik = 1 menit per detik.
+     Sebelumnya default-nya indeks 5 (1 hari per detik) — terlalu cepat
+     untuk pengamatan permukaan (Bumi berputar penuh dalam 1 detik),
+     sehingga pengguna harus memperlambat setiap kali membuka aplikasi.
+     Laju ini memberi siklus siang-malam ~24 menit — cukup tenang untuk
+     mengamati langit sambil tetap terasa berjalan.
+     ====================================================================== */
+  const DEFAULT_SPEED_INDEX = 1;            /* 1 dtk = 1 menit */
+  slider.value = String(DEFAULT_SPEED_INDEX);
   const upd = () => {
     const i = parseInt(slider.value, 10);
     app.daysPerSecond = TIME_TABLE[i];
@@ -407,18 +421,47 @@ function buildUI() {
   if (scrub) {
     let scrubBaseDays = app.days;   /* posisi waktu saat tarikan dimulai */
     let scrubStartVal = 500;
+    let scrubPxPerDay = null;       /* mode presisi: piksel per hari (diisi saat drag mulai) */
+    let scrubStartX = 0;
 
-    /* besar lompatan untuk tarikan penuh (setengah rentang slider).
-       Akar dari laju membuat slider berguna di semua tingkat:
-       1 hari/dtk -> 30 hari ; 1 abad/dtk -> ~3.000 hari (±8 tahun). */
+    /* ======================================================================
+       SKALA GESER WAKTU — DIPERBAIKI (keluhan: "slider maju mundur terlalu
+       sensitif, mau geser beberapa menit malah lompat puluhan jam/hari")
+       ----------------------------------------------------------------------
+       MASALAH versi lama:
+         scrubSpanDays() = max(1, sqrt(rate) * 30)
+         • Pada laju 1 detik/detik (rate = 1/86400): sqrt = 0,0034 → hasil
+           max(1, 0,1) = 1 HARI. Jadi tarikan sekecil apa pun minimal
+           menggeser 1 hari penuh — tidak mungkin menyetel beberapa menit.
+         • Pada laju 1 hari/detik: span = 30 hari untuk tarikan penuh.
+           Satu piksel (dari 500 px) = 30/500 hari = 86 menit → masih jauh
+           terlalu kasar untuk menyetel beberapa menit.
+
+       PERBAIKAN: skala dibuat dari LAJU WAKTU YANG AKTIF, dengan rentang
+       yang jauh lebih halus dan tanpa batas bawah 1 hari:
+           span penuh = rate (dalam hari) × 500 detik-tarik
+         Artinya tarikan penuh menggeser waktu sebanyak yang berjalan
+         selama 500 detik (8,3 menit) pada laju saat itu:
+           • laju 1 detik/detik  → span 5,8 menit  (1 px ≈ 0,7 detik)
+           • laju 1 menit/detik  → span 5,8 jam    (1 px ≈ 42 detik)
+           • laju 1 hari/detik   → span 8,3 hari   (1 px ≈ 24 menit)
+           • laju 1 tahun/detik  → span 8,3 tahun  (1 px ≈ 6 hari)
+         Dengan begitu pengguna SELALU bisa menyetel sekitar 1/500 dari
+         span — cukup halus untuk beberapa menit pada laju lambat, dan
+         tetap praktis pada laju cepat.
+       ====================================================================== */
     const scrubSpanDays = () => {
-      const rate = Math.max(1e-6, app.daysPerSecond);
-      return Math.max(1, Math.sqrt(rate) * 30);
+      const rate = Math.max(1e-9, app.daysPerSecond);   /* hari per detik */
+      /* tarikan penuh = waktu yang berjalan selama 500 detik pada laju ini */
+      return Math.max(1e-5, rate * 500);
     };
 
     const scrubApply = () => {
       const delta = (parseInt(scrub.value, 10) - scrubStartVal) / 500;  /* -1..1 */
-      const days = scrubBaseDays + delta * scrubSpanDays();
+      /* mode presisi: tahan Shift → skala 1/10 supaya bisa menyetel menit */
+      const presisi = (typeof window !== 'undefined' && window.__scrubPrecise)
+        ? window.__scrubPrecise : 1;
+      const days = scrubBaseDays + delta * scrubSpanDays() * presisi;
       app.days = days;
       computePositions(app.days, performance.now() * 0.001);
       applyPositions();
@@ -427,16 +470,25 @@ function buildUI() {
       updateEventBadge();
       if (typeof TEMPORAL_BADGE !== 'undefined') TEMPORAL_BADGE.update(app.days);
       if (datePanelState.open) renderDatePanel();
-      /* tampilkan besar pergeseran sebagai umpan balik */
+      /* tampilkan besar pergeseran sebagai umpan balik.
+         ==================================================================
+         SATUAN DIPERBAIKI: versi lama melompat dari "jam" ke "hari" — nilai
+         di bawah 1 hari selalu ditulis dalam jam dengan satu desimal
+         (mis. "0,1 jam" = 6 menit), sehingga pergeseran beberapa MENIT
+         tampak sebagai angka aneh atau "0,0 jam". Sekarang ditambah satuan
+         MENIT dan DETIK supaya pergeseran kecil terbaca jelas.
+         ================================================================== */
       if (scrubLabel) {
         const d = days - scrubBaseDays;
         const abs = Math.abs(d);
         let txt;
-        if (abs < 1) txt = (d * 24).toFixed(1) + ' jam';
-        else if (abs < 60) txt = d.toFixed(1) + ' hari';
-        else if (abs < 730) txt = (d / 30.44).toFixed(1) + ' bulan';
-        else txt = (d / 365.25).toFixed(1) + ' tahun';
-        scrubLabel.textContent = (d >= 0 ? '+' : '−') + txt.replace('-', '');
+        if (abs * 86400 < 90) txt = (abs * 86400).toFixed(0) + ' detik';
+        else if (abs * 1440 < 90) txt = (abs * 1440).toFixed(1) + ' menit';
+        else if (abs < 1) txt = (abs * 24).toFixed(1) + ' jam';
+        else if (abs < 60) txt = abs.toFixed(2) + ' hari';
+        else if (abs < 730) txt = (abs / 30.44).toFixed(1) + ' bulan';
+        else txt = (abs / 365.25).toFixed(1) + ' tahun';
+        scrubLabel.textContent = (d >= 0 ? '+' : '−') + txt;
         scrubLabel.classList.add('aktif');
       }
     };
@@ -459,6 +511,45 @@ function buildUI() {
         scrubLabel.classList.remove('aktif');
       }
     };
+
+    /* ======================================================================
+       MODE PRESISI — TAHAN SHIFT ATAU CTRL SAAT MENARIK
+       ----------------------------------------------------------------------
+       Untuk menyetel waktu beberapa menit pada laju cepat (mis. 1 tahun/
+       detik), tarikan biasa masih terlalu kasar: satu piksel = 6 hari.
+       Dengan menahan Shift, skala dikali 1/10 sehingga satu piksel = 14 jam;
+       dengan Shift+Ctrl dikali 1/100 → 1,4 jam.
+
+       Pelacakan tombol: didengarkan di window supaya status Shift terbaca
+       walau fokus berada di slider (bukan di body).
+       ====================================================================== */
+    let shiftDown = false, ctrlDown = false;
+    const updatePrecise = () => {
+      const p = (shiftDown && ctrlDown) ? 0.01 : (shiftDown || ctrlDown) ? 0.1 : 1;
+      window.__scrubPrecise = p;
+      /* perbarui label petunjuk agar pengguna tahu mode presisi aktif */
+      if (scrub && !app.scrubbing) {
+        const el = $('scrubHint');
+        if (el) {
+          el.textContent = p === 1 ? 'mundur ⟷ maju'
+            : (p === 0.1 ? 'presisi 1/10 (lepas Shift untuk normal)'
+                         : 'presisi 1/100 (lepas Shift+Ctrl untuk normal)');
+          el.classList.toggle('presisi', p !== 1);
+        }
+      }
+    };
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Shift') { shiftDown = true; updatePrecise(); }
+      if (e.key === 'Control') { ctrlDown = true; updatePrecise(); }
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift') { shiftDown = false; updatePrecise(); }
+      if (e.key === 'Control') { ctrlDown = false; updatePrecise(); }
+    });
+    window.addEventListener('blur', () => {
+      shiftDown = false; ctrlDown = false; updatePrecise();
+    });
+    window.__scrubPrecise = 1;
 
     /* pointer events mencakup mouse + sentuh + stylus */
     scrub.addEventListener('pointerdown', () => scrubBegin(true));

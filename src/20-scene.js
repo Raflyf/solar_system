@@ -696,28 +696,34 @@ function buildSky() {
   if (t.map) {
     t.map.mapping = THREE.EquirectangularReflectionMapping;
     /* =====================================================================
-       KECERAHAN LANGIT — DIKALIBRASI DARI PENGUKURAN TEKSTUR
+       KECERAHAN LANGIT — DITURUNKAN LAGI (keluhan: "milkyway nya terlalu
+       mencolok, terlalu tajam jadi banyak noise, bintang lain malah tidak
+       terlihat")
        ---------------------------------------------------------------------
-       Tekstur: milkyway_nasa.jpg (NASA SVS Deep Star Maps 2020, peta
-       galaktik). PENGUKURAN: rata-rata 11,86/255, puncak 181/255.
+       PENGUKURAN tekstur milkyway_nasa.jpg ASLI NASA (tanpa enhancement):
+           rata-rata 11,86/255, puncak 181/255, piksel >50 hanya 3,65%
 
-       Tekstur LAMA hanya 1,17/255 sehingga butuh pengali 14x — dan
-       pengali itu ikut memperbesar artefak JPEG (4,2% piksel di area
-       hitam bernilai >5) menjadi gumpalan ungu-buram yang terlihat
-       seperti noise (keluhan pengguna: "langit berbintang malah makin
-       jelek dan buram").
+       Iterasi pengali (semua diukur, bukan ditebak):
+           1,35x -> puncak 244  : terlalu terang, pita seperti awan
+           0,75x -> puncak 135  : masih dominan (verifikasi visual 6/10)
+           0,45x -> puncak  81  : pita SAMAR, bintang menonjol  <-- dipakai
 
-       Karena tekstur NASA sudah terang, pengali cukup 1,35x:
-           rata-rata 11,86 x 1,35 = 16/255  (pita terlihat sebagai kabut)
-           puncak    181   x 1,35 = 244/255 (inti galaksi terang, tidak
-                                            jenuh berlebihan)
-       Artefak tidak diperbesar karena pengali kecil.
+       Referensi Stellarium (dari analisis gambar referensi pengguna):
+           • puncak pita hanya ~1/4-1/3 kecerahan bintang terang
+           • tepi pita hanya 1,2-2x di atas latar langit
+           • jalur debu gelap LEBIH gelap dari pita sekitarnya
+       Dengan pengali 0,45: rata-rata 5,3/255 (tepi pita ~2x latar) dan
+       puncak 81/255 — sesuai proporsi Stellarium, sehingga bintang
+       (yang mencapai 255) jauh lebih menonjol daripada pita.
+
+       CATATAN: tekstur juga dikembalikan ke citra NASA ASLI (enhancement
+       kontras 1,5x sebelumnya menambah noise yang dikeluhkan pengguna).
        ===================================================================== */
     mat = new THREE.MeshBasicMaterial({
       map: t.map, side: THREE.BackSide, depthWrite: false, fog: false,
       toneMapped: false,
     });
-    mat.color.setRGB(1.35, 1.35, 1.35);
+    mat.color.setRGB(0.45, 0.45, 0.45);
   } else {
     const canvas = makeSkyCanvas(2048, 1024, 909);
     mat = new THREE.MeshBasicMaterial({ map: canvasTexture(canvas, true), side: THREE.BackSide, depthWrite: false, fog: false });

@@ -73,6 +73,34 @@ const SURFACE_SKY_FRAG = [
   '     menghamburkan cahaya sehingga permukaan jauh memudar ke warna',
   '     langit. Gradasi di bawah ini meniru efek itu.',
   '     ================================================================ */',
+  /* ================================================================
+     KABUT & GRADASI ATMOSFER DI HORIZON — SEPERTI STELLARIUM
+     ----------------------------------------------------------------
+     Referensi pengguna (Stellarium POV Bumi) menunjukkan dua hal yang
+     membuat horizon terasa nyata:
+       1. Langit TERANG tepat di atas horizon (hamburan udara), lalu
+          meredup bertahap ke atas menuju zenith.
+       2. Permukaan jauh MEMUDAR ke warna langit (bukan garis tajam).
+
+     Versi sebelumnya hanya menangani (2) dengan `below`. Sekarang
+     ditambah gradasi (1): puncak kecerahan tepat di h=0 (horizon),
+     meluruh secara eksponensial seiring naiknya sudut.
+
+     Rumus: haze = exp(-h_above / 0.18)   (h_above dalam radian, 0..1)
+       h=0     -> haze = 1.00  (paling terang di horizon)
+       h=0.1   -> haze = 0.57
+       h=0.3   -> haze = 0.19
+       h=0.6   -> haze = 0.04  (zenith bersih)
+
+     Nilai 0.18 dipilih dari pengamatan: gradasi Stellarium masih
+     terlihat pada ~10 derajat di atas horizon (0.17 rad).
+     ================================================================ */
+  '  float hAbove = max(h, 0.0);',
+  '  float haze = exp(-hAbove / 0.18);',
+  '  /* hanya saat Matahari dekat/bawah horizon efek ini kuat; siang sudah',
+  '     ditangani tabel warna (horizon siang memang lebih terang) */',
+  '  float hazeAmt = mix(0.10, 0.45, clamp((6.0 - uSunAlt * 57.2958) / 24.0, 0.0, 1.0));',
+  '  col = mix(col, uHorizon * 1.15, haze * hazeAmt);',
   '  float below = clamp(-h * 6.0, 0.0, 1.0);',      /* 0 di horizon, 1 jauh di bawah */
   '  vec3 groundFar = mix(uGround, uHorizon, 0.75);', /* tanah jauh ≈ warna langit */
   '  col = mix(col, groundFar, below * 0.85);',
