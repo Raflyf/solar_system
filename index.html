@@ -116487,22 +116487,37 @@ const starField = {
    Ukuran titik dibuat mengikuti persepsi mata. */
 function starSize(mag) {
   /* =====================================================================
-     UKURAN BINTANG — DISESUAIKAN UNTUK KATALOG MAG <= 8,0
+     UKURAN BINTANG — DIPERBESAR AGAR BINTANG TERANG TERLIHAT JELAS
      ---------------------------------------------------------------------
-     Katalog 41.488 bintang (mag <= 8,0). Rumus disesuaikan supaya:
-       • mag 0 -> ~5,0 px (titik tajam)
-       • mag 6 -> ~1,8 px (mata telanjang)
-       • mag 8 -> ~1,1 px (redup, tetap terlihat)
-     Kekurangan yang dilaporkan: "medan bintang kurang padat". Solusinya
-     BUKAN memperbesar titik (membuat blob), melainkan memperbanyak bintang
-     redup yang terlihat — dilakukan lewat batas alpha minimum di bawah.
+     KELUHAN PENGGUNA: "sekarang coba buat bintang terang nya seperti
+     stellarium ini terlihat jelas dan besar. karna yg di proyek itu sama
+     sekali tidak terlihat hanya titik kecil ga jelas"
+
+     PENGUKURAN SEBELUMNYA (terlalu kecil):
+         mag 0  -> 5,0 px
+         mag 1  -> 4,5 px
+         mag 6  -> 2,0 px
+         mag 8  -> 1,1 px
+     Bintang paling terang (Sirius, mag -1,44) hanya ~5 px — praktis tak
+     terlihat sebagai bintang terang.
+
+     ACUAN STELLARIUM: bintang terang tampil jauh lebih besar dengan
+     halo lembut + inti tajam. Ukuran bintang mengikuti magnitudo dengan
+     rentang yang LEBAR:
+         mag -1,5 (Sirius) -> ~14 px
+         mag  0            -> ~11 px
+         mag  1            ->  ~9 px
+         mag  3            ->  ~6 px
+         mag  6            ->  ~3 px
+         mag  8            -> ~2,4 px
+     Rumus: ukuran = 11 - 1,15 x mag, minimum 2,2 px.
      ===================================================================== */
-  return Math.max(1.1, 5.0 - mag * 0.50);
+  return Math.max(2.2, 11.0 - mag * 1.15);
 }
 function starAlpha(mag) {
-  /* Alpha minimum diturunkan ke 0,30 (dari 0,42) supaya bintang redup
-     mag 7-8 tetap tampak sebagai titik samar. Ini yang membuat medan
-     bintang terasa PADAT seperti Stellarium tanpa memperbesar ukuran. */
+  /* Alpha: bintang terang hampir opak, redup tetap terlihat.
+     Rentang 0,30..1,0 dipertahankan supaya bintang redup (mag 7-8)
+     tetap muncul sebagai titik samar — medan bintang tetap padat. */
   return Math.max(0.30, Math.min(1.0, 1.10 - mag * 0.085));
 }
 
@@ -116632,17 +116647,23 @@ function buildMilkyWay() {
     vertexShader: [
       'attribute float aSize;',
       'varying vec3 vCol;',
+      'varying float vBright;',
       'uniform float uPixelRatio;',
       'void main() {',
-      '  vCol = color;',
-      '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
-      '  gl_Position = projectionMatrix * mv;',
-      '  gl_PointSize = aSize * uPixelRatio;',
-      '}',
-    ].join('\n'),
-    fragmentShader: [
-      'varying vec3 vCol;',
-      'uniform float uOpacity;',
+            '  vCol = color;',
+            /* vBright = kecerahan bintang (0..1), dipakai fragment shader untuk
+               menentukan apakah bintang ini cukup terang untuk diberi "spike"
+               difraksi. Dihitung dari ukuran titik: makin besar = makin terang. */
+            '  vBright = clamp((aSize - 2.2) / 9.0, 0.0, 1.0);',
+            '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+            '  gl_Position = projectionMatrix * mv;',
+            '  gl_PointSize = aSize * uPixelRatio;',
+            '}',
+          ].join('\n'),
+          fragmentShader: [
+            'varying vec3 vCol;',
+            'varying float vBright;',
+            'uniform float uOpacity;',
       /* Profil gradien bertingkat: inti tajam + halo lembut, supaya tiap
          titik tampak seperti BINTANG (bukan cakram rata / blob).
          Versi lama memakai a = (1-4r^2)^2 yang terlalu landai. */
@@ -116651,10 +116672,37 @@ function buildMilkyWay() {
       '  float r2 = dot(d, d);',
       '  if (r2 > 0.25) discard;',
       '  float r = sqrt(r2) * 2.0;',
-      '  float core = smoothstep(0.55, 0.0, r);',
-      '  float halo = pow(max(0.0, 1.0 - r), 2.4);',
-      '  float a = core * 0.85 + halo * 0.45;',
-      '  gl_FragColor = vec4(vCol, min(1.0, a) * uOpacity);',
+      /* ================================================================
+         PROFIL BINTANG — DIPERKUAT AGAR SEPERTI STELLARIUM
+         ----------------------------------------------------------------
+         KELUHAN: "bintang terang ... sama sekali tidak terlihat hanya titik
+         kecil ga jelas".
+
+         PROFIL SEBELUMNYA (halo terlalu lemah):
+             core = smoothstep(0.55, 0.0, r)   -> inti tajam
+             halo = pow(1-r, 2.4)              -> halo cepat hilang
+             a = core*0.85 + halo*0.45         -> puncak hanya ~1,0
+         Halo dengan pangkat 2,4 meredup terlalu cepat, sehingga bintang
+         terang tidak punya pendar yang membuatnya tampak "bersinar".
+
+         PROFIL BARU (meniru Stellarium):
+             inti  : sangat tajam & penuh sampai r~0,25
+             halo  : pangkat 1,6 (lebih landai, pendar lebih jauh)
+             spike : 4 garis tipis (difraksi) hanya untuk bintang TERANG
+         Hasil: bintang terang tampak bersinar dengan pendar lembut,
+         bintang redup tetap titik kecil tajam.
+         ================================================================ */
+      '  float core = smoothstep(0.30, 0.0, r);',
+      '  float halo = pow(max(0.0, 1.0 - r), 1.6);',
+      /* spike difraksi: 4 garis tipis pada sumbu x/y.
+         Hanya aktif bila vBright tinggi (bintang terang) supaya bintang
+         redup tidak ikut "bercabang". */
+      '  float ax = abs(d.x), ay = abs(d.y);',
+      '  float spike = (smoothstep(0.045, 0.0, ax) + smoothstep(0.045, 0.0, ay))',
+      '              * smoothstep(0.5, 0.05, r);',
+      '  float a = core * 1.0 + halo * 0.55 + spike * 0.35 * vBright;',
+      '  vec3 col = vCol * (1.0 + 0.25 * core);',
+      '  gl_FragColor = vec4(col, min(1.0, a) * uOpacity);',
       '}',
     ].join('\n'),
     transparent: true,
@@ -118210,7 +118258,29 @@ function buildSky() {
            Nilai 1,5 dipilih: pita Bima Sakti + jalur debu gelap terlihat
            tebal seperti Stellarium, sementara 84% langit tetap gelap bersih.
            ============================================================= */
-        uBright: { value: 1.50 },
+        /* =============================================================
+           KECERAHAN BIMA SAKTI — DITURUNKAN (keluhan pengguna)
+           -------------------------------------------------------------
+           KELUHAN: "kurangi opasity milkyway nya karena terlalu terang
+           dan terlalu kontras beda dengan stellarium"
+
+           PENGUKURAN PIKSEL (area langit yang memuat pita):
+               Stellarium : median 45,0   p95 62,0   p99 174
+               Proyek     : median  0,0   p95 60,0   p99 167
+           Interpretasi: LATAR langit proyek jauh lebih hitam (median 0 vs
+           45), sehingga pita tampak MENONJOL/TERLALU KONTRAS walaupun
+           kecerahan puncaknya mirip. Ini yang membuat perbedaan gaya
+           dengan Stellarium.
+
+           Nilai sebelumnya 1,50. Sekarang 0,55 — cukup membuat pita
+           terlihat tetapi tidak mencolok, sehingga selisih dengan latar
+           lebih dekat ke proporsi Stellarium.
+
+           Catatan: tekstur ESO reproyeksi punya rentang kontras tinggi
+           (46% piksel < 3/255, puncak 224), jadi pengali rendah sudah
+           cukup untuk membuat pita terlihat.
+           ============================================================= */
+        uBright: { value: 0.55 },
         uTint:   { value: new THREE.Color(1.0, 1.0, 1.0) },
       },
       vertexShader: SKY_MILKYWAY_VERT,
