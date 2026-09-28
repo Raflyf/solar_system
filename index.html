@@ -119508,6 +119508,8 @@ const _tmp2 = new THREE.Vector3();
 const _tmp3 = new THREE.Vector3();
 const _look = new THREE.Vector3();
 const AXIS_Y = new THREE.Vector3(0, 1, 0);
+const _surfPos = new THREE.Vector3();
+const _surfRay = new THREE.Vector3();
 
 /* =========================================================================
    ZOOM POV — JANGKAUAN DIPERBESAR (permintaan "zoom in ala google earth")
@@ -119910,12 +119912,20 @@ function initControls(canvas) {
           cameraState.followDist = clampf(cameraState.followDist * k, minD, maxD);
           cameraState.userZoomed = true;
         } else {
-          /* mode bebas: cubit = gerak maju/mundur (dolly) — inilah yang
-             diharapkan pengguna HP. (Sebelumnya mengubah baseSpeed yang
-             tidak terlihat efeknya di layar, jadi terasa "tidak berfungsi".) */
+          /* mode bebas: cubit = gerak maju/mundur (dolly) proporsional terhadap
+             jarak ke permukaan benda di depan. Tidak licin dan tidak akan kelewat
+             karena langkah gerak mengecil secara adaptif saat mendekati planet. */
           const deltaPx = (d - touchDist);
-          const step = deltaPx * Math.max(autoSpeedFor(cameraState.pos), 0.05) * 0.05;
+          // Fraksi cubitan jari terkalibrasi halus (0.85) agar stabil dan presisi
+          const fraction = clampf((deltaPx / Math.max(touchDist, 80)) * 0.85, -0.30, 0.30);
           const fwd = dirFromAngles(cameraState.yaw, cameraState.pitch);
+          const targetInfo = getTargetDistanceInFront(cameraState.pos, fwd);
+          
+          let step = targetInfo.dist * fraction;
+          // Cegah menembus ke dalam permukaan benda saat mendekat (berhenti ~30 km di atas permukaan)
+          if (step > 0 && targetInfo.dist - step < 0.005) {
+            step = Math.max(0, targetInfo.dist - 0.005);
+          }
           cameraState.pos.addScaledVector(fwd, step);
           cameraState.vel.set(0, 0, 0);
         }
@@ -120097,20 +120107,75 @@ function hasMoons(body) {
   }
   return false;
 }
-/* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
-   penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
-/* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
-   penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
+/* Cari jarak ke permukaan benda langit terdekat (Matahari, planet, atau bulan). */
+function distanceToNearestSurface(pos) {
+  let minDist = Infinity;
+  if (typeof bodies !== 'undefined') {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      if (!b) continue;
+      bodyWorldPos(b, _surfPos);
+      const d = pos.distanceTo(_surfPos) - (b.radiusKm || 1);
+      if (d < minDist) minDist = d;
+    }
+  }
+  if (!isFinite(minDist)) {
+    minDist = Math.max(0.1, pos.length() - (696000 / RAD));
+  }
+  return Math.max(0.005, minDist);
+}
+
+/* Cari jarak ke permukaan benda di arah garis pandang kamera (fwd).
+   Bila kamera sedang mengarah ke planet/bulan/Matahari, kembalikan jarak
+   ke permukaan benda itu. Bila mengarah ke ruang hampa, kembalikan jarak
+   ke permukaan benda terdekat di sekeliling pengamat. */
+function getTargetDistanceInFront(cameraPos, fwd) {
+  let closestFrontDist = Infinity;
+  let targetBody = null;
+
+  if (typeof bodies !== 'undefined') {
+    for (let i = 0; i < bodies.length; i++) {
+      const b = bodies[i];
+      if (!b) continue;
+      bodyWorldPos(b, _surfPos);
+      _surfRay.subVectors(_surfPos, cameraPos);
+      const proj = _surfRay.dot(fwd);
+      if (proj > 0) {
+        const perpSq = _surfRay.lengthSq() - proj * proj;
+        const r = Math.max(b.radiusKm || 1, 0.05);
+        // Kerucut pandang: batas lebar sudut di depan kamera (~18-20 derajat)
+        const coneRadius = Math.max(r * 3.5, proj * 0.35);
+        if (perpSq <= coneRadius * coneRadius) {
+          const distToSurface = Math.max(0.005, proj - r);
+          if (distToSurface < closestFrontDist) {
+            closestFrontDist = distToSurface;
+            targetBody = b;
+          }
+        }
+      }
+    }
+  }
+
+  if (!isFinite(closestFrontDist)) {
+    closestFrontDist = distanceToNearestSurface(cameraPos);
+  }
+
+  return { dist: closestFrontDist, body: targetBody };
+}
+
+/* Kecepatan adaptif kamera: lambat saat dekat permukaan (agar presisi dan tidak kelewat),
+   cepat saat menyeberangi ruang antarplanet (agar jelajah lancar).
+   Mengukur jarak ke permukaan benda terdekat (Matahari, planet, atau bulan). */
 function autoSpeedFor(pos) {
-  const r = pos.length();
-  /* Gunakan jarak dari Matahari, tapi dengan minimum yang wajar supaya
-     pinch zoom di dekat Matahari tidak terlalu lambat (dahulu 0.6).
-     Skala logaritmik lebih halus: minimum 50, lalu naik log10(r). */
-  if (r < 200) return 50;           /* dekat Matahari: tetap wajar */
-  if (r < 2000) return 500;
-  if (r < 20000) return 1200;
-  if (r < 200000) return 15000;
-  return 120000;                    /* antarplanet */
+  const d = distanceToNearestSurface(pos);
+  if (d < 0.05) return 0.05;
+  if (d < 0.5) return d * 1.5;
+  if (d < 5) return d * 2.5;
+  if (d < 50) return d * 4.0;
+  if (d < 500) return d * 5.0;
+  if (d < 5000) return d * 6.0;
+  if (d < 50000) return d * 7.0;
+  return Math.min(120000, d * 8.0);
 }
 
 /* Tampilkan SELURUH sistem satelit sebuah planet: kamera ditarik ke jarak
