@@ -216,41 +216,6 @@ function skyColorsForAltitude(altDeg, body) {
   return T[T.length - 1];
 }
 
-/* Informasi pencahayaan permukaan & kabut horizon sesuai atmosfer benda langit */
-function getSurfaceAtmosphereInfo(body, altDeg) {
-  const hasAtmo = bodyHasAtmosphere(body);
-  if (!hasAtmo) {
-    return {
-      hasAtmosphere: false,
-      horizonFogColor: new THREE.Color(0x000000),
-      ambientColor: new THREE.Color(0.04, 0.04, 0.05),
-      sunColor: new THREE.Color(1.0, 0.98, 0.92),
-      fogDensity: 0.0,
-      sunIntensity: 1.35,
-    };
-  }
-
-  const res = skyColorsForAltitude(altDeg !== undefined ? altDeg : 30, body);
-  const zRGB = res[1], hRGB = res[2], gRGB = res[3], sRGB = res[4];
-  const atmoKey = getBodyAtmosphereKey(body);
-  let fogDensity = 0.025;
-  if (atmoKey === 'venus') fogDensity = 0.055;
-  else if (atmoKey === 'titan') fogDensity = 0.045;
-  else if (atmoKey === 'mars') fogDensity = 0.015;
-
-  const ambR = Math.max(0.04, zRGB[0] * 0.50 + hRGB[0] * 0.40);
-  const ambG = Math.max(0.04, zRGB[1] * 0.50 + hRGB[1] * 0.40);
-  const ambB = Math.max(0.04, zRGB[2] * 0.50 + hRGB[2] * 0.40);
-
-  return {
-    hasAtmosphere: true,
-    horizonFogColor: new THREE.Color(hRGB[0], hRGB[1], hRGB[2]),
-    ambientColor: new THREE.Color(ambR, ambG, ambB),
-    sunColor: new THREE.Color(sRGB[0], sRGB[1], sRGB[2]),
-    fogDensity: fogDensity,
-    sunIntensity: atmoKey === 'venus' ? 0.85 : (atmoKey === 'titan' ? 0.75 : 1.25),
-  };
-}
 
 let surfaceSky = null;
 let surfaceSkyMat = null;
@@ -309,7 +274,11 @@ function getSurfaceAtmosphereInfo(body, altDeg) {
   return {
     hasAtmosphere: true,
     horizonFogColor: new THREE.Color(row[2][0], row[2][1], row[2][2]),
-    ambientColor: new THREE.Color(row[1][0] * 0.45, row[1][1] * 0.45, row[1][2] * 0.45),
+    ambientColor: new THREE.Color(
+      Math.max(0.012, row[1][0] * 0.45),
+      Math.max(0.012, row[1][1] * 0.45),
+      Math.max(0.018, row[1][2] * 0.45)
+    ),
     sunColor: new THREE.Color(row[4][0], row[4][1], row[4][2]),
     fogDensity: fog,
     sunIntensity: 1.20,

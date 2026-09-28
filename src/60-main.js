@@ -220,13 +220,6 @@ async function boot() {
       if (typeof applyDaylightStarDimming === 'function' && svObs) {
         applyDaylightStarDimming(SURFACE_VIEW.sunAltitudeDeg(svObs));
       }
-      /* Tekstur DETAIL permukaan (tile NASA): menggantikan tekstur patch
-         dengan citra resolusi tinggi wilayah pengamat. Berlaku untuk
-         semua benda yang punya sumber tile resmi (Bumi, Mars, Bulan, Io)
-         — inilah yang membuat "zoom sampai darat" terlihat detail. */
-      if (typeof SURFACE_DETAIL !== 'undefined' && svBody) {
-        SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
-      }
       /* KOMPAS arah mata angin (permintaan pengguna: "tambahkan juga arah
          mata angin") — strip di atas layar yang bergeser mengikuti azimut. */
       if (typeof COMPASS !== 'undefined' && svObs) {

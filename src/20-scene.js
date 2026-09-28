@@ -1179,6 +1179,22 @@ function computePositions(days, elapsed) {
       b._spinAngle = rot - Math.PI;
     }
     b._theta = 0;
+
+    /* SINKRONISASI ROTASI & POSISI LOKAL REAL-TIME
+       Penting: b.spin.rotation.y dan b.group.position (untuk satelit)
+       HARUS diperbarui di sini, SEBELUM computeObserver() dan updateCamera()
+       dipanggil. Jika baru diperbarui di applyPositions(), kamera akan
+       selalu tertinggal 1 frame di belakang mesh (selisih hingga 15 derajat
+       per frame saat waktu simulasi berjalan cepat), yang menyebabkan
+       tekstur tanah tampak berputar/bergeser di bawah kaki pengamat. */
+    if (b.isMoon && b.absPos && b.host && b.host.absPos) {
+      const off = moonHostPlaneOffset(b, jd, false);
+      b.group.position.set(off.x, off.y, off.z);
+    }
+    if (b.spin && b._spinAngle !== undefined) {
+      b.spin.rotation.y = b._spinAngle;
+      if (b._libLat) b.spin.rotation.x = b._libLat;
+    }
   }
 }
 
