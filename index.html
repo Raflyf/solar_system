@@ -1188,7 +1188,7 @@ kbd {
    (terbukti di uji viewport 390×844). */
 @media (max-width: 640px) {
   #observerPanel {
-    top: calc(env(safe-area-inset-top, 0px) + 56px);
+    top: var(--title-bottom, 90px);
     left: calc(env(safe-area-inset-left, 0px) + 10px);
     right: calc(env(safe-area-inset-right, 0px) + 10px);
     bottom: auto;
@@ -1822,9 +1822,6 @@ input[type="date"] { color-scheme: dark; }
 
     <!-- Panel info bintang terfokus (diisi oleh 32-star-focus.js) -->
     <div class="panel star-focus-panel" id="starFocusPanel"></div>
-
-    <!-- Tombol lepas fokus (mobile: pengganti tombol Esc) -->
-    <button class="btn focus-exit" id="btnExitFocus" title="Lepas fokus — kembali terbang bebas">✕ Bebas</button>
 
     <!-- Latar gelap saat laci/bantuan/modal terbuka (tap untuk menutup) -->
     <div class="ui-backdrop" id="uiBackdrop"></div>
@@ -120941,8 +120938,8 @@ function buildUI() {
   });
 
   /* tombol lepas fokus (HP: pengganti Esc) */
-  const exitFocusBtn = $('btnExitFocus');
-  if (exitFocusBtn) exitFocusBtn.addEventListener('click', () => focusBody(null));
+    const exitFocusBtn = $('btnExitFocus');
+    if (exitFocusBtn) { exitFocusBtn.addEventListener('click', () => focusBody(null)); }
   $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
 
   $('btnFocus').addEventListener('click', () => {
@@ -121464,6 +121461,9 @@ function showInfo(body) {
   $('infoName').textContent = body.name;
   $('infoType').textContent = body.isMoon ? (TYPE_LABEL.moon + ' — ' + body.host.name) : TYPE_LABEL[body.type];
   const exitBtn = $('btnExitFocus');
+  // Tombol "✕ Bebas" sudah dihapus dari HTML (menimpa panel pencarian di HP).
+  // Guard null supaya tidak crash; lepas fokus tetap lewat Spasi/Esc,
+  // ketuk-2x, ketuk-2-jari, atau tombol "🕊 Bebas" di panel info.
   if (exitBtn) exitBtn.classList.toggle('show', !!cameraState.target);
   const t = $('infoTable');
   t.innerHTML = '';
@@ -121504,7 +121504,7 @@ function showInfo(body) {
 function hideInfo() {
   $('infoPanel').classList.remove('show');
   const exitBtn = $('btnExitFocus');
-  if (exitBtn) exitBtn.classList.remove('show');
+  if (exitBtn) { exitBtn.classList.remove('show'); }
   currentInfoBody = null;
   updateBodyListActive();
 }
