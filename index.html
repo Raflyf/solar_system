@@ -119798,6 +119798,7 @@ function initControls(canvas) {
      Tambahan: ketuk-2x dan ketuk-2-jari = lepas fokus (pengganti Esc di HP).
      ------------------------------------------------------------------ */
   let touchDist = 0;
+  let pinchDeltaTotal = 0;
   let touchMode = null;        /* null | 'drag' | 'pinch' */
   let multiGesture = false;    /* gestur 2 jari terjadi -> jangan dianggap tap */
   let lastTapT = 0, lastTapX = 0, lastTapY = 0;
@@ -119828,6 +119829,7 @@ function initControls(canvas) {
       /* jari kedua turun: beralih ke mode cubit, hentikan drag 1 jari */
       touchMode = 'pinch';
       multiGesture = true;
+      pinchDeltaTotal = 0;
       dragging = false;
       const dx = e.touches[0].clientX - e.touches[1].clientX;
       const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -119869,11 +119871,13 @@ function initControls(canvas) {
         /* dua jari turun tanpa touchstart 2-jari (mis. jari kedua cepat) */
         touchMode = 'pinch';
         multiGesture = true;
+        pinchDeltaTotal = 0;
         dragging = false;
         touchDist = d;
         if (cameraState.target) cameraState.followAutoFit = false;
       }
       if (touchDist > 0) {
+        pinchDeltaTotal += Math.abs(d - touchDist);
         const k = touchDist / d;
         if (typeof EARTH_VIEW !== 'undefined' && EARTH_VIEW.active) {
           /* POV Bumi: cubit melebar = zoom lensa masuk */
@@ -119918,7 +119922,9 @@ function initControls(canvas) {
       dragging = true;
       lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
       moved += 100;              /* pasti bukan tap */
-      touchDist = 0;
+      // JANGAN set touchDist = 0 di sini, karena touchDist dipakai di
+      // fase touches=0 nanti untuk membedakan "cubit" vs "ketuk 2 jari".
+      // Jika di-set 0, cubitan biasa akan dianggap "ketuk 2 jari" lalu melepas fokus.
       return;
     }
     if (e.touches.length === 0) {
@@ -119941,14 +119947,12 @@ function initControls(canvas) {
             /* ketukan di langit kosong: jangan apa-apa (biar tidak salah) */
           }
         }
-      } else if (wasMulti && touchDist === 0) {
-        /* ketuk 2 jari tanpa gerak = lepas fokus */
-        if (cameraState.target) focusBody(null);
+                dragging = false;
+        touchMode = null;
+        multiGesture = false;
+        touchDist = 0;
+        pinchDeltaTotal = 0;
       }
-      dragging = false;
-      touchMode = null;
-      multiGesture = false;
-      touchDist = 0;
     }
   }, { passive: true });
 
@@ -119957,6 +119961,7 @@ function initControls(canvas) {
     touchMode = null;
     multiGesture = false;
     touchDist = 0;
+    pinchDeltaTotal = 0;
   }, { passive: true });
 }
 
