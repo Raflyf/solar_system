@@ -479,8 +479,8 @@ function buildUI() {
   });
 
   /* tombol lepas fokus (HP: pengganti Esc) */
-  const exitFocusBtn = $('btnExitFocus');
-  if (exitFocusBtn) exitFocusBtn.addEventListener('click', () => focusBody(null));
+    const exitFocusBtn = $('btnExitFocus');
+    if (exitFocusBtn) { exitFocusBtn.addEventListener('click', () => focusBody(null)); }
   $('btnInfoClose').addEventListener('click', () => { $('infoPanel').classList.remove('show'); });
 
   $('btnFocus').addEventListener('click', () => {
@@ -1002,6 +1002,9 @@ function showInfo(body) {
   $('infoName').textContent = body.name;
   $('infoType').textContent = body.isMoon ? (TYPE_LABEL.moon + ' — ' + body.host.name) : TYPE_LABEL[body.type];
   const exitBtn = $('btnExitFocus');
+  // Tombol "✕ Bebas" sudah dihapus dari HTML (menimpa panel pencarian di HP).
+  // Guard null supaya tidak crash; lepas fokus tetap lewat Spasi/Esc,
+  // ketuk-2x, ketuk-2-jari, atau tombol "🕊 Bebas" di panel info.
   if (exitBtn) exitBtn.classList.toggle('show', !!cameraState.target);
   const t = $('infoTable');
   t.innerHTML = '';
@@ -1042,7 +1045,7 @@ function showInfo(body) {
 function hideInfo() {
   $('infoPanel').classList.remove('show');
   const exitBtn = $('btnExitFocus');
-  if (exitBtn) exitBtn.classList.remove('show');
+  if (exitBtn) { exitBtn.classList.remove('show'); }
   currentInfoBody = null;
   updateBodyListActive();
 }
