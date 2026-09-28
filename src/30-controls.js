@@ -620,13 +620,18 @@ function hasMoons(body) {
 }
 /* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
    penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
+/* perbesar kecepatan terbang otomatis sesuai jarak dari Matahari supaya
+   penerbangan tetap nyaman baik di dekat Bumi maupun di luar Neptunus */
 function autoSpeedFor(pos) {
   const r = pos.length();
-  if (r < 200) return 0.6;          /* dekat permukaan planet */
-  if (r < 2000) return 6;
-  if (r < 20000) return 120;
-  if (r < 200000) return 1500;
-  return 12000;                     /* antarplanet */
+  /* Gunakan jarak dari Matahari, tapi dengan minimum yang wajar supaya
+     pinch zoom di dekat Matahari tidak terlalu lambat (dahulu 0.6).
+     Skala logaritmik lebih halus: minimum 50, lalu naik log10(r). */
+  if (r < 200) return 50;           /* dekat Matahari: tetap wajar */
+  if (r < 2000) return 500;
+  if (r < 20000) return 1200;
+  if (r < 200000) return 15000;
+  return 120000;                    /* antarplanet */
 }
 
 /* Tampilkan SELURUH sistem satelit sebuah planet: kamera ditarik ke jarak

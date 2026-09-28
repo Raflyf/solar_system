@@ -930,7 +930,14 @@ function makeItem(body, num, level) {
     meta.textContent = (body.aKm / AU_KM).toFixed(1) + ' SA';
     d.appendChild(meta);
   }
-  d.addEventListener('click', () => { focusBody(body); });
+  d.addEventListener('click', () => {
+    focusBody(body);
+    if (window.matchMedia('(max-width: 980px)').matches) {
+      const sb = $('sidebar');
+      if (sb) sb.classList.remove('open');
+      if (typeof window.__syncBackdrop === 'function') window.__syncBackdrop();
+    }
+  });
   return d;
 }
 
