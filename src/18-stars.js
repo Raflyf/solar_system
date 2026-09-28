@@ -762,7 +762,24 @@ function applyDaylightStarDimming(sunAltDeg) {
     starField.group.visible = want;
     return;
   }
-  /* POV: hitung faktor peredupan */
+  const body = (typeof SURFACE_VIEW.currentBody === 'function') ? SURFACE_VIEW.currentBody() : null;
+  const hasAtmo = (typeof bodyHasAtmosphere === 'function') ? bodyHasAtmosphere(body) : true;
+  if (!hasAtmo) {
+    /* Benda tanpa atmosfer (Bulan, Merkurius, satelit): langit selalu hitam antariksa, bintang selalu terlihat */
+    const want = starField._userVisible !== false;
+    starField.visible = want;
+    starField.group.visible = want;
+    if (starField.points && starField.points.material &&
+        starField.points.material.uniforms &&
+        starField.points.material.uniforms.uOpacity) {
+      starField.points.material.uniforms.uOpacity.value = 1.0;
+    }
+    if (starField.constellationLines && starField.constellationLines.material) {
+      starField.constellationLines.material.opacity = 0.42;
+    }
+    return;
+  }
+  /* POV beratmosfer: hamburan udara meredupkan bintang di siang hari */
   const t = Math.max(0, Math.min(1, (-sunAltDeg + 6) / 24));   /* 0 = siang, 1 = malam */
   const dim = t * t;                                           /* kurva halus */
   const want = (starField._userVisible !== false) && dim > 0.02;

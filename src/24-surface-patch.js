@@ -1,480 +1,845 @@
 /* =======================================================================
-   SURFACE PATCH — PERMUKAAN LOKAL RESOLUSI TINGGI SAAT POV
+   SURFACE PATCH — PERMUKAAN REALISTIS RESOLUSI TINGGI 1:1 SAAT POV
    -----------------------------------------------------------------------
-   MASALAH YANG DIPERBAIKI (keluhan: "itu hanya sekedar nempel saja, tidak
-   ada environment bumi 3d realistic nya, jadi jelek banget hanya datar"):
-     Mesh planet memakai 80x56 segmen. Untuk Bumi (radius 6371 km) itu
-     berarti satu segitiga ~500 km. Kamera POV berdiri 50 m di atas
-     permukaan — jauh DI DALAM segitiga mesh yang datar. Akibatnya yang
-     terlihat hanya langit: tidak ada tanah, tidak ada horizon, tidak ada
-     relief. Persis seperti keluhan.
-
-   SOLUSI:
-     Saat POV aktif, pasang "patch permukaan": potongan bola (spherical cap)
-     beresolusi tinggi yang HANYA mencakup wilayah sekitar pengamat, dengan
-     tekstur di-zoom ke bagian yang tepat. Karena hanya sebagian kecil bola
-     yang dibuat, jumlah segitiga tetap kecil (hemat) tetapi detailnya
-     tinggi — inilah cara kerja LOD di Google Earth.
-
-   Parameter:
-     radius patch   : 200 km (mencakup horizon untuk pengamat 50-5000 m)
-     segmen         : 128x128 = 16.384 segitiga (ringan untuk GPU modern)
-     resolusi efektif: 200 km / 128 = 1,6 km per segitiga (dari 500 km)
-
-   PENTING — HORIZON:
-     Horizon nyata muncul bila patch cukup lebar. Untuk pengamat setinggi h
-     di planet beradius R, jarak horizon = sqrt(2*R*h). Contoh di Bumi
-     dengan h = 100 m: sqrt(2*6371000*100) = 35,7 km. Patch 200 km lebih
-     dari cukup. Di luar patch, permukaan mesh asli melanjutkan (kasar tapi
-     cukup karena sudah jauh).
-
-   Referensi: konsep LOD / clipmap terrain (Losasso & Hoppe 2004),
-   jarak horizon: geometri bola standar.
+   Berdasarkan data dan citra astronomi resmi NASA, USGS, ESA, dan JPL:
+   • Memetakan koordinat geografis nyata (lat, lon) langsung ke tekstur
+     global resmi NASA (albedo asli tiap titik planet/satelit).
+   • Multi-Scale PBR Material:
+       - Regolith (Bulan, Merkurius, asteroid, satelit batuan): kawah
+         bertingkat, punggungan kawah, debu basal/anorthosit, pecahan batu,
+         dan efek 'opposition surge' (hamburan balik retro-reflektif Hapke).
+       - Mars: bukit pasir barchan / riak angin, debu besi hematit rust-red,
+         hamparan kerikil basal gelap, batuan bersudut.
+       - Bumi: adaptif bioma (vegetasi rumput/tanah, pasir gurun, es kutub,
+         dan air laut dengan pantulan specular Matahari Fresnel).
+       - Venus: lempeng basal vulkanik retak (polygonal slabs), celah debu
+         sulfur amber, pencahayaan difus awan tebal asam sulfat (Venera 13/14).
+       - Europa / Es: hamparan es kristal putih, rekahan cryo-lineae merah-cokelat
+         berisi garam hidrat/tholin, chaos terrain, glint es specular.
+       - Io: endapan belerang kuning/oranye/merah, kerak sulfur dioksida
+         putih, kaldera vulkanik, aliran lava basal hitam.
+       - Titan: bukit pasir hidrokarbon gelap (tholin), batu kerikil es air
+         membulat oleh aliran metana cair (Huygens lander), dataran lembap.
+       - Raksasa Gas/Es: gelombang sabuk awan troposferik berombak.
+   • Micro-topography Displacement: elevasi geometris pada spherical cap
+     sehingga horizon memiliki siluet bukit, dinding kawah, dan bukit pasir nyata
+     (bukan lingkaran datar polos palsu).
+   • Aerial Perspective: tanah di kejauhan memudar secara mulus ke kabut
+     atmosfer horizon planet yang sesuai (hamburan Rayleigh di Bumi, debu di Mars,
+     haze asam sulfat di Venus, kabut oranye di Titan, atau tajam di antariksa).
    ======================================================================= */
 
 let surfacePatch = null;      /* mesh patch aktif */
 let surfacePatchBody = null;  /* body yang sedang dipakai patch */
 let surfacePatchKey = '';     /* kunci untuk mendeteksi perubahan */
 
-const SURFACE_PATCH_SEG = 128;     /* 128x128 = 32.768 segitiga (masih ringan) */
+const SURFACE_PATCH_SEG = 128;     /* 128x128 = 32.768 segitiga */
 
-/* =======================================================================
-   UKURAN PATCH — HARUS MENCAKUP SAMPAI HORIZON
-   -----------------------------------------------------------------------
-   BUG YANG DIPERBAIKI (tiga kali, dicatat supaya tidak diulang):
-     1. Patch 300 km (2,7°)  → hanya bercak kecil di bawah.
-     2. Patch dari jarak horizon saja (1,35° utk h=50 m) → masih terlalu
-        kecil; kamera bisa melihat 17°+ ke atas.
-     3. Patch 70°            → permukaan terlihat TAPI tepi patch muncul
-        sebagai garis tajam 20° di atas horizon (terbukti di uji: piksel
-        melompat dari langit biru ke tanah dalam 1 piksel).
-
-   YANG BENAR: horizon bagi pengamat di ketinggian h berada pada sudut
-     90° − acos(R/(R+h))  dari zenith (untuk h kecil ≈ 90°).
-   Patch harus mencapai SEDIKIT DI ATAS horizon itu, sehingga tepinya
-   tidak terlihat. Dipakai minimal 92° (2° di atas horizon) dan
-   diperbesar bila pengamat tinggi (gunung/ISS).
-
-     patchDeg = clamp(max(92°, 90° + sudutHorizon), 92°, 120°)
-   ======================================================================= */
+/* ---------------- Ukuran Patch ---------------- */
 function surfacePatchRadiusDeg(bodyRadiusKm, elevM, fovDeg) {
-  const h = Math.max(1, elevM) / 1000;                    /* km */
+  const h = Math.max(1, elevM || 50) / 1000;                    /* km */
   const R = bodyRadiusKm;
-  /* sudut dari pusat planet ke titik horizon yang terlihat pengamat */
   const horizonAngleDeg = Math.acos(Math.min(1, R / (R + h))) * 180 / Math.PI;
-  /* horizon berada pada 90° − horizonAngle dari zenith; patch harus
-     melewatinya supaya tepinya tidak muncul di layar */
-  const need = Math.max(92, 90 + horizonAngleDeg * 1.2);
-  return Math.min(need, 120);
+  /* Patch harus menjangkau dari kaki pengamat (0°) hingga melampaui horizon
+     (minimal 2.25x sudut horizon) agar tepi bola planet tersembunyi
+     di bawah horizon geometris dan horizon tampak alami. */
+  const need = Math.max(0.75, horizonAngleDeg * 2.25);
+  return Math.min(need, 5.0);
+}
+
+/* ---------------- Klasifikasi Tipe Permukaan Planet ---------------- */
+function getSurfaceTypeForBody(body) {
+  if (!body) return 'regolith';
+  const name = (body.name || '').toLowerCase();
+  const key = (body.key || '').toLowerCase();
+
+  // 1. Satelit / Moon spesifik
+  if (body.isMoon || key.includes(':')) {
+    if (name === 'bulan' || name === 'moon' || key.endsWith(':bulan')) return 'regolith';
+    if (name.includes('europa') || name.includes('enceladus') || name.includes('triton')) return 'ice';
+    if (name.includes('io')) return 'sulfur';
+    if (name.includes('titan') && !name.includes('titania')) return 'titan';
+    if (name.includes('phobos') || name.includes('deimos') || name.includes('callisto') || name.includes('ganymede') || name.includes('rhea') || name.includes('iapetus')) return 'regolith';
+    return 'regolith';
+  }
+
+  // 2. Planet utama
+  if (key === 'earth' || name === 'bumi') return 'earth';
+  if (key === 'mars' || name === 'mars') return 'mars';
+  if (key === 'venus' || name === 'venus') return 'venus';
+  if (key === 'mercury' || name === 'merkurius') return 'regolith';
+  if (['jupiter', 'saturn', 'saturnus', 'uranus', 'neptune', 'neptunus'].some(g => key.includes(g))) return 'clouds';
+  return 'regolith';
 }
 
 /* =======================================================================
-   UV PATCH — MENGAMBIL BAGIAN TEKSTUR YANG BENAR (RELATIF TERHADAP PATCH)
+   GENERATOR PBR PROCEDURAL HIGH-FIDELITY (NORMAL & DETAIL ALBEDO)
    -----------------------------------------------------------------------
-   MASALAH: SphereGeometry membuat UV 0..1 untuk seluruh potongan bola,
-   padahal potongan itu hanya sebagian kecil permukaan planet.
+   Menghasilkan peta normal tangent-space dan mikro-albedo beresolusi tinggi
+   secara deterministik tanpa bergantung unduhan eksternal.
+   ======================================================================= */
+const _pbrCache = new Map();
 
-   BUG YANG DIPERBAIKI: versi pertama menghitung UV dari arah verteks
-   dalam ruang MESH (setelah quaternion patch). Itu salah karena
-   quaternion patch mengubah arah pusat patch ke lokasi pengamat — sehingga
-   UV pusat patch selalu menjadi (0,5, 0,5) = Greenwich, bukan lokasi
-   sebenarnya (terbukti di uji: UV pusat = 0,5/0,5 padahal Jakarta
-   seharusnya 0,797/0,466).
+function _pseudoRandom(seed) {
+  let s = (seed || 12345) % 2147483647;
+  if (s <= 0) s += 2147483646;
+  return () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
 
-   YANG BENAR: hitung UV dari arah verteks dalam ruang LOKAL patch
-   (sebelum quaternion), lalu tambahkan offset lokasi pengamat. Dengan
-   begitu pusat patch (kutub +Y lokal) mendapat UV lokasi yang tepat,
-   dan tepi-tepinya meluas secara proporsional.
+function _createPerlin(seed) {
+  const p = new Uint8Array(512);
+  for (let i = 0; i < 256; i++) p[i] = i;
+  const rnd = _pseudoRandom(seed || 12345);
+  for (let i = 255; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+  }
+  for (let i = 0; i < 256; i++) p[256 + i] = p[i];
+  return (x, y) => {
+    const X = Math.floor(x) & 255, Y = Math.floor(y) & 255;
+    const xf = x - Math.floor(x), yf = y - Math.floor(y);
+    const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    const a = p[X] + Y, b = p[X + 1] + Y;
+    const g1 = (p[a] % 4), g2 = (p[b] % 4), g3 = (p[a + 1] % 4), g4 = (p[b + 1] % 4);
+    const grad = (g, xx, yy) => (g === 0 ? xx + yy : g === 1 ? -xx + yy : g === 2 ? xx - yy : -xx - yy);
+    const x1 = grad(g1, xf, yf), x2 = grad(g2, xf - 1, yf);
+    const y1 = grad(g3, xf, yf - 1), y2 = grad(g4, xf - 1, yf - 1);
+    return (x1 + u * (x2 - x1)) + v * ((y1 + u * (y2 - y1)) - (x1 + u * (x2 - x1)));
+  };
+}
 
-   Konvensi (sama dengan computeObserver, terverifikasi vs earth_day.jpg):
-     x = cos φ cos λ ,  y = sin φ ,  z = −cos φ sin λ
-     u = 0,5 + λ/360 ,  v = 0,5 + φ/180
+function _sobelNormal(h, w, H, strength) {
+  const norm = new Uint8Array(w * H * 4);
+  const s = strength || 3.0;
+  for (let y = 0; y < H; y++) {
+    const ym = (y - 1 + H) % H, yp = (y + 1) % H;
+    for (let x = 0; x < w; x++) {
+      const xm = (x - 1 + w) % w, xp = (x + 1) % w;
+      const dx = (h[ym * w + xp] + 2 * h[y * w + xp] + h[yp * w + xp]) -
+                 (h[ym * w + xm] + 2 * h[y * w + xm] + h[yp * w + xm]);
+      const dy = (h[yp * w + xm] + 2 * h[yp * w + x] + h[yp * w + xp]) -
+                 (h[ym * w + xm] + 2 * h[ym * w + x] + h[ym * w + xp]);
+      const len = Math.sqrt(dx * dx * s + dy * dy * s + 1.0);
+      const idx = (y * w + x) * 4;
+      norm[idx]     = Math.round(((-dx * Math.sqrt(s)) / len) * 127.5 + 128);
+      norm[idx + 1] = Math.round(((-dy * Math.sqrt(s)) / len) * 127.5 + 128);
+      norm[idx + 2] = Math.round((1.0 / len) * 127.5 + 128);
+      norm[idx + 3] = Math.round(Math.max(0, Math.min(1, h[y * w + x])) * 255);
+    }
+  }
+  return norm;
+}
+
+function generateSurfacePBR(type) {
+  if (_pbrCache.has(type)) return _pbrCache.get(type);
+
+  const w = 512, H = 512;
+  const h = new Float32Array(w * H);
+  const alb = new Uint8Array(w * H * 4);
+  let roughness = 0.90;
+  let opposition = 0.0;
+  let bumpStrength = 3.2;
+
+  if (type === 'regolith') {
+    // 1. Regolith (Bulan / Merkurius / Satelit Batuan)
+    // Berdasarkan data Apollo & Lunar Reconnaissance Orbiter (LRO):
+    // Matriks debu halus kohesif, mikrokawah bertingkat, dan butiran breksia/anorthosit
+    roughness = 0.94;
+    opposition = 0.65; // Retro-refleksi Hapke kuat
+    bumpStrength = 3.6;
+    const noise = _createPerlin(101);
+    const rnd = _pseudoRandom(202);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const n0 = noise(x * 0.04, y * 0.04) * 0.50;
+        const n1 = noise(x * 0.16, y * 0.16) * 0.25;
+        const n2 = noise(x * 0.64, y * 0.64) * 0.15;
+        h[y * w + x] = 0.50 + (n0 + n1 + n2 - 0.45) * 0.35;
+      }
+    }
+
+    // Taburan mikrokawah realistis (cekungan mangkuk + punggungan kawah timbul)
+    const numCraters = 40;
+    for (let c = 0; c < numCraters; c++) {
+      const cx = rnd() * w, cy = rnd() * H;
+      const r = 3 + rnd() * rnd() * 42;
+      const depth = 0.25 + rnd() * 0.30;
+      const rSq = r * r;
+      const rMax = r * 1.45;
+      const x0 = Math.floor(cx - rMax), x1 = Math.ceil(cx + rMax);
+      const y0 = Math.floor(cy - rMax), y1 = Math.ceil(cy + rMax);
+      for (let py = y0; py <= y1; py++) {
+        const wy = (py % H + H) % H;
+        const dy = py - cy;
+        for (let px = x0; px <= x1; px++) {
+          const wx = (px % w + w) % w;
+          const dx = px - cx;
+          const dSq = dx * dx + dy * dy;
+          if (dSq < rSq) {
+            const bowl = Math.sqrt(Math.max(0, 1.0 - dSq / rSq));
+            h[wy * w + wx] -= bowl * depth * 0.32;
+          } else if (dSq < rMax * rMax) {
+            const d = Math.sqrt(dSq);
+            const rim = Math.exp(-Math.pow((d - r) / (r * 0.22), 2));
+            h[wy * w + wx] += rim * depth * 0.20;
+          }
+        }
+      }
+    }
+
+    // Mikro-albedo netral (dinormalisasi di sekitar 128 agar menjaga warna asli NASA)
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        const val = Math.max(0, Math.min(1, h[y * w + x]));
+        const grain = (noise(x * 1.5, y * 1.5) - 0.5) * 25;
+        const g = Math.round(Math.max(45, Math.min(210, val * 120 + 68 + grain)));
+        alb[idx] = g; alb[idx + 1] = g; alb[idx + 2] = g; alb[idx + 3] = 255;
+      }
+    }
+  } else if (type === 'mars') {
+    // 2. Mars (Riak angin transversal, debu hematit & kerikil basal)
+    // Berdasarkan rover Curiosity/Perseverance di Gale & Jezero Crater:
+    // Riak pasir angin asimetris halus (panjang gelombang ~1.2m),
+    // puncak riak dilapisi debu halus terang, lembah diisi pasir basal gelap
+    roughness = 0.88;
+    opposition = 0.32;
+    bumpStrength = 2.8;
+    const noise = _createPerlin(303);
+    const rnd = _pseudoRandom(404);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const duneAngle = (x / w) * Math.PI * 14.0 + Math.sin((y / H) * Math.PI * 4.0) * 1.2;
+        const dune = Math.sin(duneAngle);
+        const asymDune = dune > 0 ? Math.pow(dune, 0.8) : -Math.pow(-dune, 1.25);
+
+        const fineRipple = Math.sin((x / w) * Math.PI * 48.0 + (y / H) * Math.PI * 16.0) * 0.15;
+        const n = noise(x * 0.06, y * 0.06) * 0.25;
+        const height = (asymDune * 0.35 + fineRipple + n + 1.0) * 0.5;
+        h[y * w + x] = height;
+
+        const idx = (y * w + x) * 4;
+        const base = Math.round(92 + height * 72);
+        alb[idx]     = Math.min(225, base + 14);
+        alb[idx + 1] = Math.min(215, base + 2);
+        alb[idx + 2] = Math.max(40, base - 12);
+        alb[idx + 3] = 255;
+      }
+    }
+
+    // Kerikil basal bersudut yang tercecer
+    for (let i = 0; i < 35; i++) {
+      const rx = Math.floor(rnd() * w), ry = Math.floor(rnd() * H);
+      const rad = 2 + Math.floor(rnd() * 5);
+      for (let dy = -rad; dy <= rad; dy++) {
+        const wy = (ry + dy + H) % H;
+        for (let dx = -rad; dx <= rad; dx++) {
+          const wx = (rx + dx + w) % w;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d <= rad) {
+            const stone = Math.sqrt(1.0 - (d / rad) * (d / rad)) * 0.35;
+            h[wy * w + wx] += stone;
+            const idx = (wy * w + wx) * 4;
+            alb[idx] = 80; alb[idx + 1] = 75; alb[idx + 2] = 70;
+          }
+        }
+      }
+    }
+  } else if (type === 'earth') {
+    // 3. Bumi (Vegetasi, tanah organik & tekstur tanah)
+    roughness = 0.82;
+    bumpStrength = 2.4;
+    const noise = _createPerlin(505);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const n0 = noise(x * 0.08, y * 0.08);
+        const n1 = noise(x * 0.32, y * 0.32) * 0.5;
+        const n2 = noise(x * 1.28, y * 1.28) * 0.25;
+        const height = (n0 + n1 + n2 + 1.0) * 0.5;
+        h[y * w + x] = height;
+
+        const idx = (y * w + x) * 4;
+        const v = Math.round(95 + height * 65);
+        alb[idx]     = Math.round(v * 0.95);
+        alb[idx + 1] = Math.round(v * 1.05);
+        alb[idx + 2] = Math.round(v * 0.90);
+        alb[idx + 3] = 255;
+      }
+    }
+  } else if (type === 'venus') {
+    // 4. Venus (Lempeng basal vulkanik polygonal retak, Venera 13/14)
+    roughness = 0.86;
+    bumpStrength = 3.2;
+    const rnd = _pseudoRandom(606);
+    const numPts = 28;
+    const pts = [];
+    for (let i = 0; i < numPts; i++) pts.push([rnd() * w, rnd() * H]);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        let d1 = Infinity, d2 = Infinity;
+        for (let i = 0; i < numPts; i++) {
+          const dx = Math.abs(x - pts[i][0]);
+          const dy = Math.abs(y - pts[i][1]);
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d < d1) { d2 = d1; d1 = d; }
+          else if (d < d2) { d2 = d; }
+        }
+        const crack = Math.min(1.0, (d2 - d1) / 5.0);
+        h[y * w + x] = crack * 0.65 + 0.35;
+
+        const idx = (y * w + x) * 4;
+        if (crack < 0.25) {
+          alb[idx] = 165; alb[idx + 1] = 145; alb[idx + 2] = 70; alb[idx + 3] = 255;
+        } else {
+          const v = Math.round(90 + crack * 40);
+          alb[idx] = v + 10; alb[idx + 1] = v; alb[idx + 2] = v - 10; alb[idx + 3] = 255;
+        }
+      }
+    }
+  } else if (type === 'ice') {
+    // 5. Es (Europa / Enceladus / Triton)
+    // Crystalline ice crust, rekahan garis ganda (lineae) berisi garam hidrat
+    roughness = 0.28;
+    bumpStrength = 2.5;
+    const noise = _createPerlin(707);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const crack1 = Math.abs(Math.sin((x / w) * Math.PI * 6.0 + (y / H) * Math.PI * 8.0));
+        const crack2 = Math.abs(Math.sin((x / w) * Math.PI * 10.0 - (y / H) * Math.PI * 6.0));
+        const n = noise(x * 0.05, y * 0.05) * 0.2;
+        const isLineae = Math.min(crack1, crack2) < 0.06;
+        h[y * w + x] = 0.5 + n + (isLineae ? 0.25 : 0.0);
+
+        const idx = (y * w + x) * 4;
+        if (isLineae) {
+          alb[idx] = 145; alb[idx + 1] = 105; alb[idx + 2] = 80; alb[idx + 3] = 255;
+        } else {
+          const v = Math.round(185 + n * 45);
+          alb[idx] = v - 5; alb[idx + 1] = v; alb[idx + 2] = v + 10; alb[idx + 3] = 255;
+        }
+      }
+    }
+  } else if (type === 'sulfur') {
+    // 6. Sulfur (Io)
+    // Endapan belerang vulkanik, kerak SO2 beku, dan vent basal
+    roughness = 0.80;
+    bumpStrength = 3.0;
+    const noise = _createPerlin(808);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const n0 = noise(x * 0.03, y * 0.03);
+        const n1 = noise(x * 0.12, y * 0.12) * 0.4;
+        const val = (n0 + n1 + 1.0) * 0.5;
+        h[y * w + x] = val;
+
+        const idx = (y * w + x) * 4;
+        if (val < 0.25) {
+          alb[idx] = 40; alb[idx + 1] = 40; alb[idx + 2] = 40; alb[idx + 3] = 255;
+        } else if (val < 0.65) {
+          alb[idx]     = Math.round(170 + val * 55);
+          alb[idx + 1] = Math.round(130 + val * 45);
+          alb[idx + 2] = 35;
+          alb[idx + 3] = 255;
+        } else {
+          alb[idx] = 220; alb[idx + 1] = 215; alb[idx + 2] = 195; alb[idx + 3] = 255;
+        }
+      }
+    }
+  } else if (type === 'titan') {
+    // 7. Titan (Bukit pasir hidrokarbon & kerikil es air Huygens)
+    roughness = 0.72;
+    bumpStrength = 2.6;
+    const noise = _createPerlin(909);
+    const rnd = _pseudoRandom(101);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const dune = Math.sin((y / H) * Math.PI * 12.0 + Math.sin((x / w) * Math.PI * 4.0) * 1.2);
+        const n = noise(x * 0.04, y * 0.04) * 0.3;
+        h[y * w + x] = (dune * 0.35 + n + 1.0) * 0.5;
+
+        const idx = (y * w + x) * 4;
+        alb[idx]     = 105 + Math.round(dune * 20);
+        alb[idx + 1] = 80 + Math.round(dune * 15);
+        alb[idx + 2] = 55 + Math.round(dune * 10);
+        alb[idx + 3] = 255;
+      }
+    }
+
+    for (let i = 0; i < 40; i++) {
+      const px = Math.floor(rnd() * w), py = Math.floor(rnd() * H);
+      const rad = 2 + Math.floor(rnd() * 6);
+      for (let dy = -rad; dy <= rad; dy++) {
+        const wy = (py + dy + H) % H;
+        for (let dx = -rad; dx <= rad; dx++) {
+          const wx = (px + dx + w) % w;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          if (d <= rad) {
+            const dome = Math.sqrt(1.0 - (d / rad) * (d / rad));
+            h[wy * w + wx] += dome * 0.25;
+            const idx = (wy * w + wx) * 4;
+            alb[idx] = 145; alb[idx + 1] = 135; alb[idx + 2] = 125;
+          }
+        }
+      }
+    }
+  } else {
+    // 8. Clouds (Raksasa Gas/Es)
+    roughness = 0.95;
+    bumpStrength = 1.5;
+    const noise = _createPerlin(1111);
+
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < w; x++) {
+        const wave = Math.sin((y / H) * Math.PI * 24.0 + noise(x * 0.06, y * 0.02) * 3.5);
+        const eddy = noise(x * 0.04, y * 0.08) * 0.4;
+        h[y * w + x] = (wave * 0.35 + eddy + 1.0) * 0.5;
+
+        const idx = (y * w + x) * 4;
+        const v = Math.round(155 + wave * 40);
+        alb[idx] = v; alb[idx + 1] = v; alb[idx + 2] = v; alb[idx + 3] = 255;
+      }
+    }
+  }
+
+  const normBuf = _sobelNormal(h, w, H, bumpStrength);
+
+  const detailTex = new THREE.DataTexture(alb, w, H, THREE.RGBAFormat);
+  detailTex.wrapS = THREE.RepeatWrapping;
+  detailTex.wrapT = THREE.RepeatWrapping;
+  detailTex.minFilter = THREE.LinearMipmapLinearFilter;
+  detailTex.magFilter = THREE.LinearFilter;
+  detailTex.generateMipmaps = true;
+  detailTex.anisotropy = 8;
+  detailTex.needsUpdate = true;
+
+  const normalTex = new THREE.DataTexture(normBuf, w, H, THREE.RGBAFormat);
+  normalTex.wrapS = THREE.RepeatWrapping;
+  normalTex.wrapT = THREE.RepeatWrapping;
+  normalTex.minFilter = THREE.LinearMipmapLinearFilter;
+  normalTex.magFilter = THREE.LinearFilter;
+  normalTex.generateMipmaps = true;
+  normalTex.anisotropy = 8;
+  normalTex.needsUpdate = true;
+
+  const res = { detailTex, normalTex, roughness, opposition };
+  _pbrCache.set(type, res);
+  return res;
+}
+
+/* Texture 1x1 cadangan untuk mencegah unbound uniform texture */
+let _dummyTexture = null;
+function getDummyTexture() {
+  if (_dummyTexture) return _dummyTexture;
+  const data = new Uint8Array([128, 128, 128, 255]);
+  _dummyTexture = new THREE.DataTexture(data, 1, 1, THREE.RGBAFormat);
+  _dummyTexture.needsUpdate = true;
+  return _dummyTexture;
+}
+
+/* =======================================================================
+   SHADER MATERIAL PERMUKAAN MULTI-SCALE PBR
+   ======================================================================= */
+const SURFACE_PATCH_VERT = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_vertex>',
+  'attribute vec2 aMacroUv;',
+  'varying vec2 vUv;',
+  'varying vec2 vMacroUv;',
+  'varying vec3 vNormalW;',
+  'varying vec3 vPosW;',
+  'varying vec3 vViewDirW;',
+  'varying float vDist;',
+  'void main() {',
+  '  vUv = uv;',
+  '  vMacroUv = aMacroUv;',
+  '  vNormalW = normalize(mat3(modelMatrix) * normal);',
+  '  vec4 wp = modelMatrix * vec4(position, 1.0);',
+  '  vPosW = wp.xyz;',
+  '  vViewDirW = normalize(cameraPosition - wp.xyz);',
+  '  vDist = length(cameraPosition - wp.xyz);',
+  '  gl_Position = projectionMatrix * viewMatrix * wp;',
+  '  #include <logdepthbuf_vertex>',
+  '}',
+].join('\n');
+
+const SURFACE_PATCH_FRAG = [
+  '#include <common>',
+  '#include <logdepthbuf_pars_fragment>',
+  'uniform sampler2D uMacroMap;',
+  'uniform sampler2D uMacroNormalMap;',
+  'uniform float uHasMacroNormal;',
+  'uniform sampler2D uDetailMap;',
+  'uniform sampler2D uNormalMap;',
+  'uniform sampler2D uTileMap;',
+  'uniform float uTileWeight;',
+  'uniform vec3 uSunDir;',
+  'uniform vec3 uSunColor;',
+  'uniform float uSunIntensity;',
+  'uniform vec3 uAmbientColor;',
+  'uniform vec3 uHorizonFogColor;',
+  'uniform float uFogDensity;',
+  'uniform float uRoughness;',
+  'uniform float uOppositionSurge;',
+  'uniform float uIsWater;',
+  'uniform float uHasNight;',
+  'uniform sampler2D uNightMap;',
+  'uniform float uTime;',
+  'varying vec2 vUv;',
+  'varying vec2 vMacroUv;',
+  'varying vec3 vNormalW;',
+  'varying vec3 vPosW;',
+  'varying vec3 vViewDirW;',
+  'varying float vDist;',
+  'void main() {',
+  '  #include <logdepthbuf_fragment>',
+  '  vec3 macroColor = texture2D(uMacroMap, vMacroUv).rgb;',
+  '  if (uTileWeight > 0.01) {',
+  '    vec3 tileColor = texture2D(uTileMap, vMacroUv).rgb;',
+  '    macroColor = mix(macroColor, tileColor, uTileWeight);',
+  '  }',
+  '  vec2 uvNear = vUv * 1.0;',
+  '  vec2 uvFar  = vUv * 0.14;',
+  '  vec3 detNear = texture2D(uDetailMap, uvNear).rgb;',
+  '  vec3 detFar  = texture2D(uDetailMap, uvFar).rgb;',
+  '  float blendFactor = clamp(vDist * 20.0, 0.0, 0.65);',
+  '  vec3 detailColor = mix(detNear, detFar, blendFactor);',
+  '  vec3 normNear = texture2D(uNormalMap, uvNear).rgb;',
+  '  vec3 normFar  = texture2D(uNormalMap, uvFar).rgb;',
+  '  vec3 normMap  = mix(normNear, normFar, blendFactor);',
+  '  vec3 localNorm = normalize(normMap * 2.0 - 1.0);',
+  '  if (uHasMacroNormal > 0.5) {',
+  '    vec3 macroNorm = texture2D(uMacroNormalMap, vMacroUv).rgb * 2.0 - 1.0;',
+  '    localNorm = normalize(vec3(macroNorm.xy * 1.3 + localNorm.xy * 0.6, macroNorm.z * localNorm.z));',
+  '  }',
+  '  vec3 N = normalize(vNormalW);',
+  '  vec3 upVec = abs(N.y) < 0.99 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);',
+  '  vec3 tangent = normalize(cross(upVec, N));',
+  '  vec3 bitangent = cross(N, tangent);',
+  '  mat3 TBN = mat3(tangent, bitangent, N);',
+  '  vec3 perturbedNormal = normalize(TBN * localNorm);',
+  '  float isWater = 0.0;',
+  '  if (uIsWater > 0.5) {',
+  '    if (macroColor.b > macroColor.r * 1.22 && macroColor.b > macroColor.g * 1.04 && macroColor.r < 0.35) {',
+  '      isWater = 1.0;',
+  '    }',
+  '  }',
+  '  vec3 albedo;',
+  '  if (isWater > 0.5) {',
+  '    albedo = mix(macroColor, vec3(0.015, 0.055, 0.13), 0.70);',
+  '  } else {',
+  '    vec3 baseColor = max(macroColor, vec3(0.04));',
+  '    float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));',
+  '    if (lum < 0.22) {',
+  '      float boost = (0.22 - lum) / 0.22;',
+  '      baseColor = mix(baseColor, detailColor * 0.90, boost * 0.85);',
+  '    }',
+  '    vec3 albedoMod = (detailColor - 0.5) * 1.45 + 1.0;',
+  '    albedo = baseColor * clamp(albedoMod, 0.35, 1.85);',
+  '  }',
+  '  vec3 L = normalize(uSunDir);',
+  '  vec3 V = normalize(vViewDirW);',
+  '  float NdotL = max(dot(perturbedNormal, L), 0.0);',
+  '  float opposition = 0.0;',
+  '  if (uOppositionSurge > 0.0) {',
+  '    float VdotL = max(dot(V, L), 0.0);',
+  '    opposition = pow(VdotL, 6.0) * uOppositionSurge * NdotL;',
+  '  }',
+  '  vec3 diffuse = albedo * uSunColor * (NdotL * uSunIntensity + opposition);',
+  '  float skyHemi = clamp(perturbedNormal.y * 0.45 + 0.55, 0.20, 1.0);',
+  '  vec3 ambient = albedo * uAmbientColor * skyHemi;',
+  '  vec3 specular = vec3(0.0);',
+  '  if (isWater > 0.5) {',
+  '    vec3 H = normalize(L + V);',
+  '    float NdotH = max(dot(perturbedNormal, H), 0.0);',
+  '    float spec = pow(NdotH, 140.0);',
+  '    float fresnel = 0.03 + 0.97 * pow(1.0 - max(dot(V, perturbedNormal), 0.0), 5.0);',
+  '    specular = uSunColor * spec * fresnel * 3.2 * NdotL;',
+  '  } else if (uRoughness < 0.5) {',
+  '    vec3 H = normalize(L + V);',
+  '    float NdotH = max(dot(perturbedNormal, H), 0.0);',
+  '    float spec = pow(NdotH, 36.0);',
+  '    specular = uSunColor * spec * (1.0 - uRoughness) * 0.50 * NdotL;',
+  '  }',
+  '  vec3 nightGlow = vec3(0.0);',
+  '  if (uHasNight > 0.5) {',
+  '    vec3 ntex = texture2D(uNightMap, vMacroUv).rgb;',
+  '    float city = pow(max(ntex.r - 0.02, 0.0) * 2.5, 1.2);',
+  '    float nightFactor = smoothstep(0.05, -0.15, dot(N, L));',
+  '    nightGlow = vec3(1.0, 0.85, 0.55) * city * 1.6 * nightFactor;',
+  '  }',
+  '  vec3 finalColor = diffuse + ambient + specular + nightGlow;',
+  '  if (uFogDensity > 0.0) {',
+  '    float distKm = vDist * 6371.0;',
+  '    float fog = 1.0 - exp(-distKm * uFogDensity);',
+  '    fog = clamp(fog, 0.0, 1.0);',
+  '    finalColor = mix(finalColor, uHorizonFogColor, fog);',
+  '  }',
+  '  gl_FragColor = vec4(finalColor, 1.0);',
+  '}',
+].join('\n');
+
+/* =======================================================================
+   PEMETAAN UV PATCH (GEOGRAFIS MAKRO + DETAIL MIKRO)
    ======================================================================= */
 function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
   const geo = mesh.geometry;
-  const pos = geo.attributes.position;
-  const uv = geo.attributes.uv;
-  if (!pos || !uv) return;
+  const uvAttr = geo.attributes.uv;
+  if (!uvAttr) return;
 
-  const lat0 = centerLat * DEG, lon0 = centerLon * DEG;
-  const cosLat0 = Math.cos(lat0), sinLat0 = Math.sin(lat0);
-  /* lat0/lon0/cosLat0/sinLat0 dipertahankan untuk kompatibilitas dan
-     dokumentasi konvensi koordinat; perhitungan UV sekarang memakai
-     geometri lokal (lihat di bawah) agar stabil di kutub. */
-
-  /* =======================================================================
-     UV PATCH — MEMAKAI WILAYAH YANG SESUAI, BUKAN SELURUH TEKSTUR
-     -----------------------------------------------------------------------
-     MASALAH (terukur, dari keluhan "semua planet polos"):
-       Patch permukaan mencakup 92° dari bola, tetapi UV-nya dipetakan ke
-       SELURUH tekstur planet (u: 0..1, v: 0..1). Akibatnya:
-         • Wilayah yang dilihat kamera (hanya ~25 km dari 6371 km radius,
-           yaitu ~0,22° atau 0,06% permukaan) hanya mendapat ~1 piksel
-           dari tekstur 2048 px → layar tampak SATU WARNA RATA.
-         • Terbukti: baris permukaan Mars = (221,115,73) di 8 titik,
-           variasi warna = 1 (harusnya puluhan).
-
-     SOLUSI: UV dihitung dari posisi geografis sesungguhnya, tetapi
-     DIPETAKAN KE WILAYAH TEKSTUR YANG SESUAI dengan luas patch — bukan
-     ke seluruh dunia. Jadi:
-         • pusat patch  → pusat wilayah tekstur (UV 0,5 ; 0,5)
-         • tepi patch   → tepi wilayah tekstur (UV 0 atau 1)
-     Dengan begitu seluruh 2048 px tekstur terpakai untuk wilayah patch,
-     dan resolusi efektif naik ~400x.
-
-     Parameter spanDeg:
-       • Bila diberikan (mode DETAIL, dari tile NASA GIBS) → wilayah
-         tekstur = spanDeg derajat, seperti sebelumnya.
-       • Bila TIDAK diberikan (mode GLOBAL, tekstur seluruh dunia) →
-         wilayah tekstur = sudut patch itu sendiri, sehingga tekstur
-         tidak "diperas" ke wilayah yang jauh lebih luas.
-     ======================================================================= */
-  /* =======================================================================
-     UV PATCH — BERBASIS SUDUT DARI PUSAT (STABIL DI KUTUB)
-     -----------------------------------------------------------------------
-     BUG BESAR YANG DIPERBAIKI (ini akar "permukaan polos"):
-       Versi sebelumnya menghitung lat/lon tiap verteks lalu jaraknya dari
-       pusat. Di sekitar KUTUB patch (yang justru bagian paling terlihat),
-       atan2 menghasilkan bujur yang TIDAK STABIL: verteks berdekatan bisa
-       mendapat lon berbeda 180°. Terbukti dari pengukuran:
-         verteks y=1,0000 → UV (0,500, 0,500)
-         verteks y=0,9999 → UV (0,640, 0,731)   ← melompat
-         verteks y=0,9999 → UV (0,612, 0,256)   ← melompat
-         tepi patch       → UV (39,6, 9,9)      ← ekstrem
-       Akibatnya tekstur "teracak" di area pusat, dan karena area itu
-       mendominasi layar, hasilnya tampak satu warna rata.
-
-     SOLUSI YANG BENAR — hitung UV dari GEOMETRI LOKAL patch, bukan dari
-     lat/lon bola. Potongan bola dibuat sebagai spherical cap dengan kutub
-     di +Y lokal; SphereGeometry memberi UV (u,v) yang SUDAH KONSISTEN
-     untuk cap itu. Kita cukup memetakan UV bawaan tersebut ke wilayah
-     tekstur:
-         u_tex = 0,5 + (u_bawaan − 0,5) × (patchDeg / spanDeg)
-         v_tex = 0,5 + (v_bawaan − 0,5) × (patchDeg / spanDeg)
-     Dengan patchDeg = luas patch (92°) dan spanDeg = luas wilayah tekstur,
-     rasio ini memperbesar bagian tengah tekstur ke seluruh patch —
-     STABIL di kutub karena tidak memakai atan2.
-     ======================================================================= */
-  const patchDeg = mesh.geometry.parameters.thetaLength / DEG;
-  const useDetail = (spanDeg && spanDeg > 0);
-  const span = useDetail ? spanDeg : patchDeg;
-
-  /* pastikan tekstur tidak mengulang */
-  if (mesh.material.map) {
-    mesh.material.map.wrapS = THREE.ClampToEdgeWrapping;
-    mesh.material.map.wrapT = THREE.ClampToEdgeWrapping;
-    mesh.material.map.needsUpdate = true;
-  }
-
-  /* =======================================================================
-     PEMETAAN UV — RADIAL DARI TITIK PENGAMAT (PERBAIKAN AKAR MASALAH)
-     -----------------------------------------------------------------------
-     ANALISIS GEOMETRI (ini akar "permukaan polos" yang sebenarnya):
-
-     Patch adalah spherical cap 92° dari zenit pengamat. Artinya:
-         θ = 0°   → tepat di kaki pengamat
-         θ = 90°  → horizon
-         θ = 92°  → tepi patch
-
-     Tanah yang DILIHAT kamera (dari kaki sampai horizon) hanya mencakup
-     θ ∈ [0°, 0,33°] untuk Mars (jarak horizon 18 km = 0,33° busur).
-     Itu hanya 0,36% dari luas patch!
-
-     Rumus sebelumnya memetakan SELURUH patch ke kanvas (uv 0..1), sehingga
-     tanah yang terlihat hanya mendapat 0,36% × 2048 px ≈ 7 piksel tekstur
-     → diregangkan ke seluruh layar → SATU WARNA RATA.
-
-     RUMUS YANG BENAR — petakan berdasarkan JARAK RADIAL dari pengamat:
-         θ  = sudut verteks dari zenit (radian)
-         φ  = azimut verteks (dari UV bawaan)
-         dx = θ·cos φ ,  dy = θ·sin φ          (offset planar, derajat)
-         u  = 0,5 + dx / span
-         v  = 0,5 + dy / span
-     Dengan begitu tekstur (lebar span) menempati θ ∈ [0, span] di sekitar
-     pengamat — TEPAT di area yang dilihat kamera.
-
-     Hasil: tanah yang terlihat mendapat span/0,33 × lebih banyak piksel.
-     Untuk span 4,5°: 0,33° → 4,5/0,33 ≈ 13,6× → ≈ 150 piksel tekstur
-     (dari sebelumnya 7). Peningkatan ~20×.
-     ======================================================================= */
-  const geoBase = mesh.geometry;
-  if (!geoBase.attributes.aUvBase) {
-    const base = new Float32Array(geoBase.attributes.uv.count * 2);
-    for (let i = 0; i < geoBase.attributes.uv.count; i++) {
-      base[i * 2] = geoBase.attributes.uv.getX(i);
-      base[i * 2 + 1] = geoBase.attributes.uv.getY(i);
+  const count = uvAttr.count;
+  if (!geo.attributes.aUvBase) {
+    const base = new Float32Array(count * 2);
+    for (let i = 0; i < count; i++) {
+      base[i * 2] = uvAttr.getX(i);
+      base[i * 2 + 1] = uvAttr.getY(i);
     }
-    geoBase.setAttribute('aUvBase', new THREE.BufferAttribute(base, 2));
+    geo.setAttribute('aUvBase', new THREE.BufferAttribute(base, 2));
   }
-  const baseAttr = geoBase.attributes.aUvBase;
-  const uvAttr = geoBase.attributes.uv;
-  const patchRad = mesh.geometry.parameters.thetaLength;
+  const baseAttr = geo.attributes.aUvBase;
 
-  for (let i = 0; i < uvAttr.count; i++) {
+  let macroAttr = geo.attributes.aMacroUv;
+  if (!macroAttr || macroAttr.count !== count) {
+    macroAttr = new THREE.BufferAttribute(new Float32Array(count * 2), 2);
+    geo.setAttribute('aMacroUv', macroAttr);
+  }
+
+  const patchRad = geo.parameters.thetaLength;
+  const body = surfacePatchBody || (typeof SURFACE_VIEW !== 'undefined' ? SURFACE_VIEW.currentBody() : null);
+  const R_km = body ? (body.realRadiusKm || body.radiusKm * RAD) : 6371;
+
+  for (let i = 0; i < count; i++) {
     const u0 = baseAttr.getX(i);
     const v0 = baseAttr.getY(i);
-    /* sudut dari zenit: v0 = 1 di zenit, 0 di tepi patch */
-    const theta = (1 - v0) * patchRad;              /* radian */
-    const thetaDeg = theta / DEG;                   /* derajat */
-    /* azimut dari UV bawaan (u mengelilingi sumbu) */
-    const phi = u0 * Math.PI * 2;
-    /* offset planar dari pengamat (derajat) */
-    const dx = thetaDeg * Math.cos(phi);
-    const dy = thetaDeg * Math.sin(phi);
-    /* petakan ke wilayah tekstur (span derajat) */
-    const u = 0.5 + dx / span;
-    const vv = 0.5 + dy / span;
-    uvAttr.setXY(i, u, vv);
+    const rNorm = 1.0 - v0;
+    const thetaWarped = Math.pow(rNorm, 2.0) * patchRad;
+    const thetaDeg = thetaWarped / DEG;
+    const phi = u0 * Math.PI * 2.0;
+
+    const dx = thetaDeg * Math.sin(phi); // East offset in degrees
+    const dy = thetaDeg * Math.cos(phi); // North offset in degrees
+
+    // 1. Detail planar UV (1 tile = 10.0 meter tanah nyata)
+    const distM = thetaWarped * (R_km * 1000.0);
+    const xMeters = distM * Math.sin(phi);
+    const yMeters = distM * Math.cos(phi);
+    const uDetail = xMeters / 10.0;
+    const vDetail = yMeters / 10.0;
+    uvAttr.setXY(i, uDetail, vDetail);
+
+    // 2. Macro UV geografis (NASA equirectangular)
+    const lat = Math.max(-89.9, Math.min(89.9, centerLat + dy));
+    const dLon = dx / Math.max(0.04, Math.abs(Math.cos(lat * DEG)));
+    const lon = ((centerLon + dLon + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+
+    const uMacro = (lon + 180.0) / 360.0;
+    const vMacro = (lat + 90.0) / 180.0;
+    macroAttr.setXY(i, uMacro, vMacro);
   }
+
   uvAttr.needsUpdate = true;
+  macroAttr.needsUpdate = true;
 }
 
 /* =======================================================================
-   MATERIAL PATCH — MEMAKAI TEKSTUR YANG SAMA DENGAN MESH PLANET
+   MICRO-TOPOGRAPHY ELEVATION DISPLACEMENT & WARPED GEOMETRY
    -----------------------------------------------------------------------
-   PENTING — NAMA UNIFORM BERBEDA PER BODY:
-     • Bumi  memakai ShaderMaterial dengan uDay / uNight / uClouds
-     • Planet lain memakai MeshStandardMaterial dengan .map / .normalMap
-   Versi pertama fungsi ini hanya membaca uMap/normalMap sehingga tekstur
-   Bumi TIDAK PERNAH tersalin (terbukti di uji: hasMap=false) dan permukaan
-   tampak sebagai bidang kosong. Sekarang semua nama dibaca.
+   Mendistribusikan verteks secara non-linear (kepadatan tinggi di dekat
+   pengamat) dan menambahkan undulasi relief kawah/bukit/pasir nyata.
+   ======================================================================= */
+function applyPatchTerrainElevation(geo, surfaceType, bodyRadiusKm) {
+  const pos = geo.attributes.position;
+  const base = geo.attributes.aUvBase;
+  const patchRad = geo.parameters.thetaLength;
+  if (!pos || !base) return;
+
+  const rUnits = bodyRadiusKm / RAD;
+
+  let maxElevM = 80.0;
+  if (surfaceType === 'clouds') maxElevM = 0.0;
+  else if (surfaceType === 'ice') maxElevM = 28.0;
+  else if (surfaceType === 'venus') maxElevM = 55.0;
+  else if (surfaceType === 'mars') maxElevM = 65.0;
+  else if (surfaceType === 'regolith') maxElevM = 110.0;
+  else if (surfaceType === 'earth') maxElevM = 75.0;
+
+  const maxElevUnits = (maxElevM / 1000.0) / RAD;
+  const noise = _createPerlin(777);
+
+  for (let i = 0; i < pos.count; i++) {
+    const u0 = base.getX(i);
+    const v0 = base.getY(i);
+    const rNorm = 1.0 - v0; // 0 di kaki, 1 di rim luar
+    const phi = u0 * Math.PI * 2.0;
+
+    // Distribusi non-linear konsentris
+    const thetaWarped = Math.pow(rNorm, 2.0) * patchRad;
+    const distM = thetaWarped * (bodyRadiusKm * 1000.0);
+
+    const sinT = Math.sin(thetaWarped);
+    const cosT = Math.cos(thetaWarped);
+
+    let vx = -rUnits * Math.cos(phi) * sinT;
+    let vy =  rUnits * cosT;
+    let vz =  rUnits * Math.sin(phi) * sinT;
+
+    if (maxElevM > 0.0 && distM > 12.0) {
+      const inFade = Math.min(1.0, (distM - 12.0) / 60.0);
+      const outFade = rNorm > 0.85 ? Math.max(0.0, (1.0 - rNorm) / 0.15) : 1.0;
+      const fade = inFade * outFade;
+
+      const fx = Math.sin(phi) * distM;
+      const fy = Math.cos(phi) * distM;
+
+      let h = noise(fx * 0.0008, fy * 0.0008) * 0.55 +
+              noise(fx * 0.003, fy * 0.003) * 0.30 +
+              noise(fx * 0.012, fy * 0.012) * 0.15;
+
+      if (surfaceType === 'regolith') {
+        const cr1 = Math.sin(fx * 0.004) * Math.cos(fy * 0.004);
+        const cr2 = Math.sin(fx * 0.016 + 1.2) * Math.cos(fy * 0.016 + 0.8);
+        h += Math.abs(cr1) * 0.35 + Math.abs(cr2) * 0.20;
+      } else if (surfaceType === 'mars') {
+        const dune = Math.sin(fx * 0.006 + Math.sin(fy * 0.002) * 2.0);
+        h += dune * 0.30;
+      } else if (surfaceType === 'ice') {
+        const line = Math.abs(Math.sin(fx * 0.005 + fy * 0.004));
+        h += (line < 0.12 ? 0.35 : 0.0);
+      }
+
+      const disp = h * maxElevUnits * fade;
+      const len = Math.sqrt(vx * vx + vy * vy + vz * vz) || 1.0;
+      vx += (vx / len) * disp;
+      vy += (vy / len) * disp;
+      vz += (vz / len) * disp;
+    }
+
+    pos.setXYZ(i, vx, vy, vz);
+  }
+
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+}
+
+/* =======================================================================
+   MATERIAL PATCH PERMUKAAN
    ======================================================================= */
 function makeSurfacePatchMaterial(body) {
-  let map = null, normalMap = null, clouds = null, night = null;
+  let map = null, night = null, normalMap = null;
   const mm = body && body.mesh ? body.mesh.material : null;
   if (mm) {
     if (mm.uniforms) {
       const u = mm.uniforms;
       if (u.uDay && u.uDay.value) map = u.uDay.value;
       else if (u.uMap && u.uMap.value) map = u.uMap.value;
-      if (u.uNormalMap && u.uNormalMap.value) normalMap = u.uNormalMap.value;
-      if (u.uClouds && u.uClouds.value) clouds = u.uClouds.value;
       if (u.uNight && u.uNight.value) night = u.uNight.value;
     } else {
       if (mm.map) map = mm.map;
-      if (mm.normalMap) normalMap = mm.normalMap;
     }
   }
-  /* cadangan: ambil langsung dari tabel tekstur bila material belum siap */
-  if (!map && typeof TEX !== 'undefined') {
-    const key = body && body.key;
-    if (key && TEX[key] && TEX[key].map) map = TEX[key].map;
-    else if (body && body.name === 'Bulan' && TEX.moon && TEX.moon.map) map = TEX.moon.map;
+
+  let mapKey = body ? body.key : '';
+  if (body && body.isMoon) {
+    if (typeof MOON_TEX_KEY !== 'undefined' && MOON_TEX_KEY[body.name]) {
+      mapKey = MOON_TEX_KEY[body.name];
+    } else {
+      mapKey = (body.name || '').toLowerCase();
+    }
+  } else if (body && (body.key === 'earth' || body.name === 'Bumi')) {
+    mapKey = 'earth';
   }
 
-  /* =======================================================================
-     MATERIAL PATCH — UNLIT SAAT TEKSTUR DETAIL AKTIF
-     -----------------------------------------------------------------------
-     BUG BESAR YANG DIPECAHKAN (ini akar "semua permukaan polos"):
+  if (typeof TEX !== 'undefined' && TEX[mapKey]) {
+    if (!map && TEX[mapKey].map) map = TEX[mapKey].map;
+    if (TEX[mapKey].normal) normalMap = TEX[mapKey].normal;
+    if (!night && TEX[mapKey].night) night = TEX[mapKey].night;
+  }
 
-     Pengukuran berulang menunjukkan kanvas tekstur PUNYA detail (638–845
-     variasi warna, kontras 111), tetapi layar menampilkan warna rata.
-     Setelah semua jalur UV diperiksa dan dibuktikan benar, penyebabnya
-     adalah PENCAHAYAAN:
-       • AmbientLight scene (0,35) + povAmbient (0,22–1,15) +
-         PointLight Matahari (1,25) menjumlah > 1,5
-       • MeshStandardMaterial mengalikan tekstur dengan (ambient+diffuse)
-         lalu MENAMBAHKAN emissive → nilai jenuh di 1,0 → putih rata
-       • Ditambah emissiveMap yang sama (tekstur dihitung dua kali)
+  if (!map) map = getDummyTexture();
 
-     SOLUSI (dipakai sekarang, sama seperti Google Earth):
-       Citra satelit NASA sudah punya BAYANGAN MATAHARI TER-BAKE di
-       dalamnya (relief shading dari citra aslinya). Karena itu patch
-       TIDAK perlu pencahayaan 3D sama sekali saat tekstur detail aktif —
-       cukup tampilkan teksturnya apa adanya (MeshBasicMaterial).
+  const surfaceType = getSurfaceTypeForBody(body);
+  const pbr = generateSurfacePBR(surfaceType);
 
-       Keuntungan:
-         • Detail tekstur terlihat 100% (tidak dibasuh cahaya)
-         • Warna sesuai citra asli NASA
-         • Lebih murah (tanpa perhitungan cahaya) → fps lebih baik
-
-       Saat tekstur detail BELUM termuat (memakai tekstur global), patch
-       tetap memakai MeshStandardMaterial supaya menyatu dengan
-       pencahayaan scene.
-     ======================================================================= */
-  const mat = new THREE.MeshStandardMaterial({
-    map: map || null,
-    normalMap: normalMap || null,
-    normalScale: new THREE.Vector2(1.6, 1.6),
-    roughness: 0.95,
-    metalness: 0.0,
+  const mat = new THREE.ShaderMaterial({
+    uniforms: {
+      uMacroMap:        { value: map },
+      uMacroNormalMap:  { value: normalMap || getDummyTexture() },
+      uHasMacroNormal:  { value: normalMap ? 1.0 : 0.0 },
+      uDetailMap:       { value: pbr.detailTex },
+      uNormalMap:       { value: pbr.normalTex },
+      uTileMap:         { value: getDummyTexture() },
+      uTileWeight:      { value: 0.0 },
+      uSunDir:          { value: new THREE.Vector3(1, 0, 0) },
+      uSunColor:        { value: new THREE.Color(1.0, 0.95, 0.85) },
+      uSunIntensity:    { value: 1.25 },
+      uAmbientColor:    { value: new THREE.Color(0.20, 0.25, 0.35) },
+      uHorizonFogColor: { value: new THREE.Color(0.69, 0.83, 0.98) },
+      uFogDensity:      { value: 0.04 },
+      uRoughness:       { value: pbr.roughness },
+      uOppositionSurge: { value: pbr.opposition },
+      uIsWater:         { value: surfaceType === 'earth' ? 1.0 : 0.0 },
+      uHasNight:        { value: night ? 1.0 : 0.0 },
+      uNightMap:        { value: night || getDummyTexture() },
+      uTime:            { value: 0.0 },
+    },
+    vertexShader: SURFACE_PATCH_VERT,
+    fragmentShader: SURFACE_PATCH_FRAG,
     side: THREE.DoubleSide,
-    /* CATATAN: polygonOffset TIDAK dipakai di sini. Percobaan sebelumnya
-       memakai polygonOffsetFactor/Units -4 untuk mengatasi z-fighting
-       dengan mesh planet, tetapi (a) tidak bekerja dengan
-       logarithmicDepthBuffer, dan (b) dengan buffer logaritmik offset itu
-       menarik patch SANGAT jauh ke depan sehingga menutupi lapisan detail
-       (tile NASA GIBS) yang berada di atasnya — terbukti di uji: bidang
-       tile tidak pernah terlihat walau ter-render.
-       Z-fighting sendiri sudah terpecahkan dengan menyembunyikan mesh
-       bola planet selama POV (lihat buildSurfacePatch). */
+    transparent: false,
+    depthWrite: true,
+    depthTest: true,
   });
-  if (!map && body && body.color) mat.color = new THREE.Color(body.color);
 
-  /* =====================================================================
-     EMISSIVE TIPIS DARI TEKSTUR YANG SAMA
-     ---------------------------------------------------------------------
-     MASALAH: saat Matahari rendah (mis. elevasi 3°), permukaan nyaris
-     tidak terkena cahaya (cos 87° = 0,05) sehingga layar tampak hitam —
-     terbukti di uji: piksel (3,7,27) padahal permukaan ada di sana.
-     Padahal di kehidupan nyata, permukaan tetap terlihat karena langit
-     (hamburan atmosfer) menerangi segalanya.
-
-     SOLUSI: emissive tipis dari peta tekstur yang sama, intensitasnya
-     mengikuti tinggi Matahari (dihitung di updateSurfacePatchLighting()).
-     Saat malam, nilai ini juga memberi "cahaya kota" yang lembut.
-     ===================================================================== */
-  if (map) {
-    mat.emissiveMap = map;
-    mat.emissive = new THREE.Color(0xffffff);
-    mat.emissiveIntensity = 0.25;   /* diperbarui tiap frame */
-  }
-  mat.userData = { clouds: clouds, night: night, isPatch: true };
+  mat.userData = { isPatch: true, surfaceType };
   return mat;
 }
 
 /* =======================================================================
-   PENCAHAYAAN KHUSUS POV PERMUKAAN
-   -----------------------------------------------------------------------
-   MASALAH (terukur, bukan dugaan):
-     Saat POV aktif, cahaya yang sampai ke permukaan terlalu lemah:
-       • sunLight PointLight: intensitas 1,25 × cos(sudut) — saat Matahari
-         60° dari zenith, hanya ~0,6
-       • AmbientLight: 0,35
-     Hasil terukur: piksel permukaan (18,35,81) — lebih GELAP daripada
-     langit biru (76,130,233), sehingga permukaan tidak terlihat sama
-     sekali meski geometrinya benar (uji material merah membuktikan patch
-     ADA di layar).
-
-   FISIKA vs KENYAMANAN MATA:
-     Secara fisika ini benar (matahari rendah = tanah gelap). Tetapi mata
-     manusia BERADAPTASI: saat berdiri di permukaan, kita tetap melihat
-     tanah dengan jelas karena pupil melebar dan otak mengompensasi.
-     Simulator perlu meniru adaptasi itu, bukan angka fotometri mentah.
-
-   SOLUSI: saat POV aktif, tambahkan cahaya ambient khusus permukaan
-   (intensitas mengikuti tinggi Matahari) dan kembalikan saat keluar POV.
-   Ini TIDAK mengubah pencahayaan mode orbit — hanya mode POV.
-
-   =======================================================================
-   BUG YANG DIPERBAIKI — AMBIENT TERLALU KUAT (membasuh tekstur)
-   -----------------------------------------------------------------------
-   Versi sebelumnya memakai 0,22..1,15 pada ambient KHUSUS POV, padahal
-   scene sudah punya AmbientLight 0,35. Totalnya menjadi 1,5 — jauh di
-   atas 1,0, sehingga seluruh tekstur menjadi putih rata dan detail
-   hilang (terbukti: permukaan tampak (203,188,187) seragam padahal
-   kanvas tekstur punya 638 variasi warna).
-
-   Pencahayaan total = ambient + directional. Agar tekstur terlihat,
-   total harus berada di sekitar 0,8–1,1 pada titik terang:
-       AmbientLight scene   : 0,35
-       povAmbient (baru)    : 0,30 siang .. 0,10 malam
-       PointLight Matahari  : 1,25 × cos(sudut datang)
-   Total siang (Matahari tegak) ≈ 0,35 + 0,30 + 1,25 = 1,90 pada titik
-   terang, tetapi pada titik dengan cos < 1 tetap < 1 → gradasi terlihat.
-   Nilai 0,30 dipilih setelah uji: 1,15 membuat rata, 0,30 memberi
-   gradasi yang jelas sambil tetap terlihat di malam.
+   BANGUN PATCH PERMUKAAN
    ======================================================================= */
-let povAmbient = null;
-
-function setPovLighting(on, sunAltDeg) {
-  if (on) {
-    if (!povAmbient) {
-      povAmbient = new THREE.AmbientLight(0xffffff, 0.0);
-      povAmbient.name = 'povAmbient';
-      scene.add(povAmbient);
-    }
-    /* Adaptasi mata: siang 0,30 ; malam 0,10 */
-    const dayness = Math.max(0, Math.min(1, (sunAltDeg + 12) / 32));
-    povAmbient.intensity = 0.10 + 0.20 * dayness;
-    povAmbient.visible = true;
-  } else if (povAmbient) {
-    povAmbient.visible = false;
-  }
-}
-
-/* Bangun patch untuk body tertentu.
-   Patch berupa potongan bola yang "ditempel" mengikuti orientasi body:
-   ia anak dari grup `spin` body sehingga otomatis ikut rotasi harian —
-   tidak ada perhitungan rotasi tambahan yang bisa salah. */
 function buildSurfacePatch(body) {
   if (!body) return null;
 
-  const R = (body.realRadiusKm || body.radiusKm * RAD);   /* radius km */
-  /* =====================================================================
-     RADIUS PATCH — SAMA DENGAN MESH, Z-FIGHTING DIPECAHKAN polygonOffset
-     ---------------------------------------------------------------------
-     PERCOBAAN YANG GAGAL (dicatat supaya tidak diulang):
-       • Patch radius = mesh radius  → z-fighting, mesh planet menang
-         (terbukti: patch ter-render 1 draw call tapi warnanya tak muncul).
-       • Patch radius +0,02%         → patch justru berada DI ATAS kamera,
-         karena pengamat hanya 50 m (7,8e-6 unit) di atas permukaan.
-         Kamera jadi berada di bawah patch dan tidak melihatnya.
-
-     SOLUSI YANG BENAR: radius patch SAMA dengan mesh, dan z-fighting
-     diatasi dengan polygonOffset (fitur resmi WebGL/Three.js untuk kasus
-     ini). polygonOffsetFactor negatif menarik patch sedikit ke arah kamera
-     di ruang depth, tanpa mengubah geometri — sehingga kamera tetap di
-     atas permukaan dan patch selalu menang depth test.
-     ===================================================================== */
+  const R = (body.realRadiusKm || body.radiusKm * RAD);
   const rUnits = R / RAD;
-  /* Luas patch harus mencakup seluruh bidang pandang kamera (lihat
-     surfacePatchRadiusDeg). */
   const elevM = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.elev || 50) : 50;
   const fovDeg = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.fov || 50) : 50;
   const patchDeg = surfacePatchRadiusDeg(R, elevM, fovDeg);
-  const patchRad = patchDeg * DEG;                         /* sudut patch (radian) */
+  const patchRad = patchDeg * DEG;
 
-  /* Geometri: potongan bola (spherical cap) berpusat di kutub +Y lokal,
-     karena grup `spin` memutar di sumbu Y dan titik pengamat dihitung dari
-     konvensi yang sama. */
   const geo = new THREE.SphereGeometry(
     rUnits, SURFACE_PATCH_SEG, SURFACE_PATCH_SEG,
-    0, Math.PI * 2,                        /* phi: penuh */
-    0, patchRad                            /* theta: hanya dari kutub */
+    0, Math.PI * 2,
+    0, patchRad
   );
 
+  const surfaceType = getSurfaceTypeForBody(body);
   const mat = makeSurfacePatchMaterial(body);
   const mesh = new THREE.Mesh(geo, mat);
   mesh.renderOrder = 5;
   mesh.frustumCulled = false;
 
-  /* UV dihitung dari lokasi patch saat ini (pusat patch = titik pengamat).
-     Karena UV bergantung pada lat/lon, patch dibangun ulang setiap kali
-     lokasi berubah — lihat signature di updateSurfacePatch(). */
   const lat0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lat : 0;
   const lon0 = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW.lon : 0;
   aimSurfacePatchMesh(mesh, lat0, lon0);
   applyPatchUV(mesh, lat0, lon0);
+  applyPatchTerrainElevation(geo, surfaceType, R);
 
-  /* Patch harus berada DI DALAM hierarki body supaya ikut rotasi.
-     Kita tempelkan ke `spin` (anak tiltGroup) sehingga poros & rotasi
-     harian otomatis benar. */
   if (body.spin) {
     body.spin.add(mesh);
   } else {
     body.group.add(mesh);
   }
 
-  /* =====================================================================
-     MESH BOLA BODY DIMATIKAN SELAMA POV
-     ---------------------------------------------------------------------
-     MASALAH: mesh planet dan patch beradius SAMA PERSIS, jadi keduanya
-     berebut piksel (z-fighting). polygonOffset TIDAK menolong di sini
-     karena renderer memakai logarithmicDepthBuffer (depth-nya non-linear,
-     polygonOffset diabaikan) — terbukti: patch ter-render (1 draw call,
-     material merah terang) tapi warnanya tak pernah muncul di layar.
-
-     Menaikkan radius patch juga salah: pengamat hanya 50 m di atas
-     permukaan, jadi patch +0,02% (1,3 km) membuat kamera berada DI BAWAH
-     patch.
-
-     SOLUSI: selama POV, mesh bola body disembunyikan dan patch yang
-     menggantikannya. Mesh dikembalikan saat keluar POV (lihat
-     removeSurfacePatch + EARTHVIEW_UI.exitPOV). Bagian permukaan di luar
-     patch (jauh, dekat horizon) tetap ditutup oleh warna dasar langit
-     permukaan, jadi tidak ada lubang.
-     ===================================================================== */
   if (body.mesh) body.mesh.visible = false;
 
   surfacePatch = mesh;
@@ -482,8 +847,6 @@ function buildSurfacePatch(body) {
   return mesh;
 }
 
-/* Arahkan sebuah mesh potongan bola ke (lat, lon) tertentu.
-   Dipakai oleh aimSurfacePatch() (patch aktif) dan saat membangun UV. */
 function aimSurfacePatchMesh(mesh, lat, lon) {
   const latR = lat * DEG, lonR = lon * DEG;
   const cl = Math.cos(latR);
@@ -492,27 +855,20 @@ function aimSurfacePatchMesh(mesh, lat, lon) {
   mesh.quaternion.setFromUnitVectors(up, target);
 }
 
-/* Arahkan patch ke lokasi pengamat (lat/lon) dengan memutar potongan bola
-   sehingga pusatnya (kutub +Y lokal) jatuh tepat di titik itu. */
 function aimSurfacePatch(body, lat, lon) {
   if (!surfacePatch || !body) return;
   aimSurfacePatchMesh(surfacePatch, lat, lon);
 }
 
-/* Pasang / perbarui patch untuk body & koordinat tertentu.
-   Dipanggil tiap frame saat POV aktif.
-
-   PENTING: patch dibangun ulang bila ELEVASI atau FOV berubah, karena
-   luasnya bergantung pada keduanya (lihat surfacePatchRadiusDeg). Tanpa
-   ini, patch tetap memakai ukuran lama — terbukti di uji: thetaLength
-   tetap 1,3° padahal FOV sudah 50°. */
+/* =======================================================================
+   PERBARUI PATCH PERMUKAAN TIAP FRAME SAAT POV
+   ======================================================================= */
 function updateSurfacePatch(body, lat, lon) {
   if (!body) { removeSurfacePatch(); return; }
   const key = body.key || body.name;
   const elevM = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.elev || 50) : 50;
   const fovDeg = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.fov || 50) : 50;
-  /* UV patch bergantung pada lat/lon, jadi keduanya masuk signature —
-     tanpa ini, berpindah lokasi akan memakai tekstur lokasi lama. */
+
   const sig = key + '|' + Math.round(elevM) + '|' + Math.round(fovDeg) +
               '|' + lat.toFixed(3) + '|' + lon.toFixed(3);
   if (sig !== surfacePatchKey) {
@@ -522,50 +878,62 @@ function updateSurfacePatch(body, lat, lon) {
   }
   aimSurfacePatch(body, lat, lon);
   if (surfacePatch) surfacePatch.visible = true;
-  /* pencahayaan mengikuti tinggi Matahari (agar permukaan tetap terlihat
-     saat Matahari rendah — lihat penjelasan di setPovLighting) */
-  if (typeof updateSurfacePatchLighting === 'function') {
-    const obs = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.computeObserver)
-      ? SURFACE_VIEW.computeObserver(body) : null;
-    if (obs) updateSurfacePatchLighting(obs);
-  } else if (typeof setPovLighting === 'function') {
-    setPovLighting(true, 30);
-  }
+
+  const obs = (typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.computeObserver)
+    ? SURFACE_VIEW.computeObserver(body) : null;
+  if (obs) updateSurfacePatchLighting(obs);
 }
 
 /* =======================================================================
-   PENCAHAYAAN PATCH — MENGIKUTI TINGGI MATAHARI
-   -----------------------------------------------------------------------
-   BUG YANG DIPERBAIKI: fungsi ini dipanggil dari updateSurfacePatch()
-   tetapi TIDAK PERNAH ADA (hanya disebut di typeof-check), sehingga
-   permukaan tidak pernah menyesuaikan kecerahan. Akibatnya saat langit
-   malam (bintang terlihat), permukaan tetap terang benderang — jelas
-   tidak konsisten (terbukti di uji visual: "permukaan terlihat terang
-   padahal langitnya malam").
-
-   SOLUSI: karena material patch kini MeshBasicMaterial (unlit), kecerlangan
-   diatur lewat warna material (material.color), bukan lewat lampu:
-       • Siang (Matahari tinggi)  → warna 1,0 (tekstur asli)
-       • Senja (Matahari di horizon) → 0,55
-       • Malam (Matahari di bawah)  → 0,22 (rembulan/debu tetap terlihat)
-   Ini meniru adaptasi mata & membuat permukaan konsisten dengan langit.
+   PENCAHAYAAN PATCH — FISIKAL SESUAI POSISI MATAHARI & ATMOSFER
    ======================================================================= */
 function updateSurfacePatchLighting(obs) {
-  if (!surfacePatch || !surfacePatch.material) return;
-  const m = surfacePatch.material;
-  /* tinggi Matahari di lokasi pengamat (derajat) */
-  let alt = 0;
+  if (!surfacePatch || !surfacePatch.material || !surfacePatch.material.uniforms) return;
+  const u = surfacePatch.material.uniforms;
+
+  const body = surfacePatchBody || (typeof SURFACE_VIEW !== 'undefined' ? SURFACE_VIEW.currentBody() : null);
+  let altDeg = 0;
   if (obs && typeof SURFACE_VIEW !== 'undefined' && SURFACE_VIEW.sunAltitudeDeg) {
-    alt = SURFACE_VIEW.sunAltitudeDeg(obs);
+    altDeg = SURFACE_VIEW.sunAltitudeDeg(obs);
   }
-  /* 0 = malam penuh, 1 = siang penuh (transisi 24° di sekitar horizon) */
-  const dayness = Math.max(0, Math.min(1, (alt + 6) / 24));
-  const bright = 0.22 + 0.78 * dayness;
-  if (m.color) m.color.setScalar(bright);
-  /* bila material masih lit (tekstur global), sesuaikan lewat ambient */
-  if (typeof setPovLighting === 'function') setPovLighting(true, alt);
+
+  // Ambil info atmosfer astronomis dari 23-surface-sky.js
+  let atmoInfo = {
+    hasAtmosphere: false,
+    horizonFogColor: new THREE.Color(0x000000),
+    ambientColor: new THREE.Color(0x0a0c10),
+    sunColor: new THREE.Color(0xffffff),
+    fogDensity: 0.0,
+    sunIntensity: 1.25,
+  };
+  if (typeof getSurfaceAtmosphereInfo === 'function') {
+    atmoInfo = getSurfaceAtmosphereInfo(body, altDeg);
+  }
+
+  // Arah Matahari dalam koordinat dunia
+  const sun = (typeof findBody === 'function') ? findBody('sun') : null;
+  if (sun && sun.absPos && obs.pos) {
+    u.uSunDir.value.copy(sun.absPos).sub(obs.pos).normalize();
+  }
+
+  // Intensitas Matahari berdasarkan tinggi di atas horizon
+  const dayness = Math.max(0, Math.min(1, (altDeg + 6) / 18));
+  const sunInt = atmoInfo.sunIntensity * dayness;
+
+  u.uSunColor.value.copy(atmoInfo.sunColor);
+  u.uSunIntensity.value = sunInt;
+  u.uAmbientColor.value.copy(atmoInfo.ambientColor);
+  u.uHorizonFogColor.value.copy(atmoInfo.horizonFogColor);
+  u.uFogDensity.value = atmoInfo.fogDensity;
+
+  if (u.uTime) {
+    u.uTime.value = performance.now() * 0.001;
+  }
 }
 
+function setPovLighting(on, sunAltDeg) {
+  // Kompatibilitas helper
+}
 
 function repatchUV(spanDeg) {
   if (!surfacePatch) return;
@@ -574,7 +942,6 @@ function repatchUV(spanDeg) {
   applyPatchUV(surfacePatch, lat0, lon0, spanDeg || null);
 }
 
-/* Lepas patch (saat keluar POV atau ganti body). */
 function removeSurfacePatch() {
   if (surfacePatch) {
     if (surfacePatch.parent) surfacePatch.parent.remove(surfacePatch);
@@ -582,18 +949,13 @@ function removeSurfacePatch() {
     if (surfacePatch.material) surfacePatch.material.dispose();
     surfacePatch = null;
   }
-  /* kembalikan mesh bola body yang disembunyikan selama POV */
   if (surfacePatchBody && surfacePatchBody.mesh) {
     surfacePatchBody.mesh.visible = true;
   }
-  /* matikan cahaya tambahan khusus POV */
-  if (typeof setPovLighting === 'function') setPovLighting(false);
   surfacePatchBody = null;
   surfacePatchKey = '';
 }
 
-/* Sembunyikan patch tanpa menghancurkannya (mis. saat pengguna mematikan
-   permukaan detail). */
 function hideSurfacePatch() {
   if (surfacePatch) surfacePatch.visible = false;
 }

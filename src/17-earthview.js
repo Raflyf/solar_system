@@ -187,46 +187,75 @@ const SURFACE_VIEW = {
     const cl = Math.cos(latR);
 
     /* 1 unit scene = radius Bumi (RAD km). Ketinggian di atas permukaan
-       dikonversi ke unit: h_unit = h_km / RAD. Untuk planet lain, kita
-       memakai ketinggian meter di atas permukaannya juga. */
+       dikonversi ke unit: h_unit = h_km / RAD. */
     const rKm = (body.realRadiusKm || body.radiusKm * RAD) + (this.elev || 0) / 1000;
     const r = rKm / RAD;
 
-    /* posisi lokal di mesh (konvensi Three.js SphereGeometry yang sudah
-       diverifikasi untuk tekstur Bumi: u=0,5 → bujur 0°) */
+    /* posisi lokal di mesh/spin: u=0,5 -> bujur 0 */
     const local = new THREE.Vector3(cl * Math.cos(lonR), Math.sin(latR), -cl * Math.sin(lonR))
       .multiplyScalar(r);
 
-    /* rotasi harian → orientasi poros → posisi absolut.
-       Urutan ini mengikuti hierarki grup: group > tiltGroup > spin. */
-    local.applyAxisAngle(SV_AXIS_Y, this.spinAngleOf(body));
+    let pos, zenith, north, east;
+
+    /* Jika body memiliki hierarki scene graph Three.js (spin / group),
+       ambil rotasi dunia sesungguhnya (memperhitungkan kemiringan poros,
+       inklinasi orbit, librasi, dan rotasi harian tanpa galat desinkronisasi). */
+    const node = body.spin || body.group;
+    if (node && body.group) {
+      if (body.group.parent) {
+        body.group.updateWorldMatrix(true, true);
+      } else {
+        node.updateMatrixWorld(true);
+      }
+      const qSpin = new THREE.Quaternion();
+      node.getWorldQuaternion(qSpin);
+
+      const rVec = local.clone().applyQuaternion(qSpin);
+      pos = body.absPos.clone().add(rVec);
+
+      zenith = rVec.clone().normalize();
+
+      const poleV = new THREE.Vector3(0, 1, 0).applyQuaternion(qSpin);
+      north = poleV.clone().addScaledVector(zenith, -poleV.dot(zenith));
+      if (north.lengthSq() < 1e-12) {
+        const altPole = new THREE.Vector3(0, 0, -1).applyQuaternion(qSpin);
+        north = altPole.clone().addScaledVector(zenith, -altPole.dot(zenith));
+        if (north.lengthSq() < 1e-12) north.set(1, 0, 0);
+      }
+      north.normalize();
+
+      east = new THREE.Vector3().crossVectors(north, zenith).normalize();
+      return { pos, zenith, north, east, spinAngle: this.spinAngleOf(body) };
+    }
+
+    /* Fallback matematika analitis bila scene graph belum diinisialisasi */
+    const localFallback = local.clone();
+    if (body.name === 'Bulan' && body._libLat) {
+      localFallback.applyAxisAngle(new THREE.Vector3(1, 0, 0), body._libLat);
+    }
+    localFallback.applyAxisAngle(SV_AXIS_Y, this.spinAngleOf(body));
     const q = this.poleQ(body);
-    if (q) local.applyQuaternion(q);
-    const pos = local.clone().add(body.absPos);
+    if (q) localFallback.applyQuaternion(q);
+    pos = localFallback.clone().add(body.absPos);
 
-    /* zenith = radial keluar dari pusat body */
-    const zenith = local.clone().normalize();
-
-    /* north = komponen kutub body yang tegak lurus zenith */
+    zenith = localFallback.clone().normalize();
     const poleV = new THREE.Vector3();
     if (typeof poleVectorScene === 'function' && !body.isMoon && PLANET_POLE[body.key]) {
       const p = PLANET_POLE[body.key];
       const pv = poleVectorScene(p[0], p[1]);
       poleV.set(pv.x, pv.y, pv.z).normalize();
     } else {
-      /* satelit: pakai sumbu Y body setelah kuaternion poros induk */
       poleV.set(0, 1, 0);
       const qq = this.poleQ(body);
       if (qq) poleV.applyQuaternion(qq);
     }
-    const north = poleV.clone().addScaledVector(zenith, -poleV.dot(zenith));
+    north = poleV.clone().addScaledVector(zenith, -poleV.dot(zenith));
     if (north.lengthSq() < 1e-12) {
       north.set(0, 1, 0).addScaledVector(zenith, -zenith.y);
       if (north.lengthSq() < 1e-12) north.set(1, 0, 0);
     }
     north.normalize();
-
-    const east = new THREE.Vector3().crossVectors(north, zenith).normalize();
+    east = new THREE.Vector3().crossVectors(north, zenith).normalize();
 
     return { pos, zenith, north, east, spinAngle: this.spinAngleOf(body) };
   },
@@ -266,15 +295,23 @@ const SURFACE_VIEW = {
      atau kunci gabungan ('earth:Bulan'). */
   enable(bodyKey, lat, lon, elev) {
     let b = null;
-    if (typeof findBody === 'function') b = findBody(bodyKey);
-    if (!b && typeof findBodyByName === 'function') b = findBodyByName(bodyKey);
+    let q = String(bodyKey || '').toLowerCase();
+    if (q === 'moon') q = 'bulan';
+    else if (q === 'earth') q = 'bumi';
+    else if (q === 'sun') q = 'matahari';
+    else if (q === 'mercury') q = 'merkurius';
+    else if (q === 'saturn') q = 'saturnus';
+    else if (q === 'neptune') q = 'neptunus';
+
+    if (typeof findBody === 'function') b = findBody(bodyKey) || findBody(q);
+    if (!b && typeof findBodyByName === 'function') b = findBodyByName(bodyKey) || findBodyByName(q);
     if (!b && typeof bodies !== 'undefined') {
-      /* pencarian longgar: cocokkan nama tanpa peduli huruf besar/kecil */
-      const q = String(bodyKey).toLowerCase();
       for (const x of bodies) {
-        if ((x.key && x.key.toLowerCase() === q) ||
-            (x.name && x.name.toLowerCase() === q) ||
-            (x.key && x.key.toLowerCase().endsWith(':' + q))) { b = x; break; }
+        const xk = (x.key || '').toLowerCase();
+        const xn = (x.name || '').toLowerCase();
+        if (xk === q || xn === q || xk.endsWith(':' + q) || xk === bodyKey.toLowerCase() || xn === bodyKey.toLowerCase()) {
+          b = x; break;
+        }
       }
     }
     if (!b) return false;
