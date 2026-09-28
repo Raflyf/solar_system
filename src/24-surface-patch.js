@@ -491,8 +491,6 @@ const SURFACE_PATCH_FRAG = [
   'uniform float uRoughness;',
   'uniform float uOppositionSurge;',
   'uniform float uIsWater;',
-  'uniform float uHasNight;',
-  'uniform sampler2D uNightMap;',
   'uniform float uTime;',
   'varying vec2 vUv;',
   'varying vec2 vMacroUv;',
@@ -570,14 +568,7 @@ const SURFACE_PATCH_FRAG = [
   '    float spec = pow(NdotH, 36.0);',
   '    specular = uSunColor * spec * (1.0 - uRoughness) * 0.50 * NdotL;',
   '  }',
-  '  vec3 nightGlow = vec3(0.0);',
-  '  if (uHasNight > 0.5) {',
-  '    vec3 ntex = texture2D(uNightMap, vMacroUv).rgb;',
-  '    float city = pow(max(ntex.r - 0.02, 0.0) * 2.5, 1.2);',
-  '    float nightFactor = smoothstep(0.05, -0.15, dot(N, L));',
-  '    nightGlow = vec3(1.0, 0.85, 0.55) * city * 1.6 * nightFactor;',
-  '  }',
-  '  vec3 finalColor = diffuse + ambient + specular + nightGlow;',
+  '  vec3 finalColor = diffuse + ambient + specular;',
   '  if (uFogDensity > 0.0) {',
   '    float distKm = vDist * 6371.0;',
   '    float fog = 1.0 - exp(-distKm * uFogDensity);',
@@ -734,14 +725,13 @@ function applyPatchTerrainElevation(geo, surfaceType, bodyRadiusKm) {
    MATERIAL PATCH PERMUKAAN
    ======================================================================= */
 function makeSurfacePatchMaterial(body) {
-  let map = null, night = null, normalMap = null;
+  let map = null, normalMap = null;
   const mm = body && body.mesh ? body.mesh.material : null;
   if (mm) {
     if (mm.uniforms) {
       const u = mm.uniforms;
       if (u.uDay && u.uDay.value) map = u.uDay.value;
       else if (u.uMap && u.uMap.value) map = u.uMap.value;
-      if (u.uNight && u.uNight.value) night = u.uNight.value;
     } else {
       if (mm.map) map = mm.map;
     }
@@ -761,7 +751,6 @@ function makeSurfacePatchMaterial(body) {
   if (typeof TEX !== 'undefined' && TEX[mapKey]) {
     if (!map && TEX[mapKey].map) map = TEX[mapKey].map;
     if (TEX[mapKey].normal) normalMap = TEX[mapKey].normal;
-    if (!night && TEX[mapKey].night) night = TEX[mapKey].night;
   }
 
   if (!map) map = getDummyTexture();
@@ -787,8 +776,6 @@ function makeSurfacePatchMaterial(body) {
       uRoughness:       { value: pbr.roughness },
       uOppositionSurge: { value: pbr.opposition },
       uIsWater:         { value: surfaceType === 'earth' ? 1.0 : 0.0 },
-      uHasNight:        { value: night ? 1.0 : 0.0 },
-      uNightMap:        { value: night || getDummyTexture() },
       uTime:            { value: 0.0 },
     },
     vertexShader: SURFACE_PATCH_VERT,

@@ -5512,41 +5512,6 @@ function skyColorsForAltitude(altDeg, body) {
   return T[T.length - 1];
 }
 
-/* Informasi pencahayaan permukaan & kabut horizon sesuai atmosfer benda langit */
-function getSurfaceAtmosphereInfo(body, altDeg) {
-  const hasAtmo = bodyHasAtmosphere(body);
-  if (!hasAtmo) {
-    return {
-      hasAtmosphere: false,
-      horizonFogColor: new THREE.Color(0x000000),
-      ambientColor: new THREE.Color(0.04, 0.04, 0.05),
-      sunColor: new THREE.Color(1.0, 0.98, 0.92),
-      fogDensity: 0.0,
-      sunIntensity: 1.35,
-    };
-  }
-
-  const res = skyColorsForAltitude(altDeg !== undefined ? altDeg : 30, body);
-  const zRGB = res[1], hRGB = res[2], gRGB = res[3], sRGB = res[4];
-  const atmoKey = getBodyAtmosphereKey(body);
-  let fogDensity = 0.025;
-  if (atmoKey === 'venus') fogDensity = 0.055;
-  else if (atmoKey === 'titan') fogDensity = 0.045;
-  else if (atmoKey === 'mars') fogDensity = 0.015;
-
-  const ambR = Math.max(0.04, zRGB[0] * 0.50 + hRGB[0] * 0.40);
-  const ambG = Math.max(0.04, zRGB[1] * 0.50 + hRGB[1] * 0.40);
-  const ambB = Math.max(0.04, zRGB[2] * 0.50 + hRGB[2] * 0.40);
-
-  return {
-    hasAtmosphere: true,
-    horizonFogColor: new THREE.Color(hRGB[0], hRGB[1], hRGB[2]),
-    ambientColor: new THREE.Color(ambR, ambG, ambB),
-    sunColor: new THREE.Color(sRGB[0], sRGB[1], sRGB[2]),
-    fogDensity: fogDensity,
-    sunIntensity: atmoKey === 'venus' ? 0.85 : (atmoKey === 'titan' ? 0.75 : 1.25),
-  };
-}
 
 let surfaceSky = null;
 let surfaceSkyMat = null;
@@ -5605,7 +5570,11 @@ function getSurfaceAtmosphereInfo(body, altDeg) {
   return {
     hasAtmosphere: true,
     horizonFogColor: new THREE.Color(row[2][0], row[2][1], row[2][2]),
-    ambientColor: new THREE.Color(row[1][0] * 0.45, row[1][1] * 0.45, row[1][2] * 0.45),
+    ambientColor: new THREE.Color(
+      Math.max(0.012, row[1][0] * 0.45),
+      Math.max(0.012, row[1][1] * 0.45),
+      Math.max(0.018, row[1][2] * 0.45)
+    ),
     sunColor: new THREE.Color(row[4][0], row[4][1], row[4][2]),
     fogDensity: fog,
     sunIntensity: 1.20,
@@ -6152,8 +6121,6 @@ const SURFACE_PATCH_FRAG = [
   'uniform float uRoughness;',
   'uniform float uOppositionSurge;',
   'uniform float uIsWater;',
-  'uniform float uHasNight;',
-  'uniform sampler2D uNightMap;',
   'uniform float uTime;',
   'varying vec2 vUv;',
   'varying vec2 vMacroUv;',
@@ -6231,14 +6198,7 @@ const SURFACE_PATCH_FRAG = [
   '    float spec = pow(NdotH, 36.0);',
   '    specular = uSunColor * spec * (1.0 - uRoughness) * 0.50 * NdotL;',
   '  }',
-  '  vec3 nightGlow = vec3(0.0);',
-  '  if (uHasNight > 0.5) {',
-  '    vec3 ntex = texture2D(uNightMap, vMacroUv).rgb;',
-  '    float city = pow(max(ntex.r - 0.02, 0.0) * 2.5, 1.2);',
-  '    float nightFactor = smoothstep(0.05, -0.15, dot(N, L));',
-  '    nightGlow = vec3(1.0, 0.85, 0.55) * city * 1.6 * nightFactor;',
-  '  }',
-  '  vec3 finalColor = diffuse + ambient + specular + nightGlow;',
+  '  vec3 finalColor = diffuse + ambient + specular;',
   '  if (uFogDensity > 0.0) {',
   '    float distKm = vDist * 6371.0;',
   '    float fog = 1.0 - exp(-distKm * uFogDensity);',
@@ -6395,14 +6355,13 @@ function applyPatchTerrainElevation(geo, surfaceType, bodyRadiusKm) {
    MATERIAL PATCH PERMUKAAN
    ======================================================================= */
 function makeSurfacePatchMaterial(body) {
-  let map = null, night = null, normalMap = null;
+  let map = null, normalMap = null;
   const mm = body && body.mesh ? body.mesh.material : null;
   if (mm) {
     if (mm.uniforms) {
       const u = mm.uniforms;
       if (u.uDay && u.uDay.value) map = u.uDay.value;
       else if (u.uMap && u.uMap.value) map = u.uMap.value;
-      if (u.uNight && u.uNight.value) night = u.uNight.value;
     } else {
       if (mm.map) map = mm.map;
     }
@@ -6422,7 +6381,6 @@ function makeSurfacePatchMaterial(body) {
   if (typeof TEX !== 'undefined' && TEX[mapKey]) {
     if (!map && TEX[mapKey].map) map = TEX[mapKey].map;
     if (TEX[mapKey].normal) normalMap = TEX[mapKey].normal;
-    if (!night && TEX[mapKey].night) night = TEX[mapKey].night;
   }
 
   if (!map) map = getDummyTexture();
@@ -6448,8 +6406,6 @@ function makeSurfacePatchMaterial(body) {
       uRoughness:       { value: pbr.roughness },
       uOppositionSurge: { value: pbr.opposition },
       uIsWater:         { value: surfaceType === 'earth' ? 1.0 : 0.0 },
-      uHasNight:        { value: night ? 1.0 : 0.0 },
-      uNightMap:        { value: night || getDummyTexture() },
       uTime:            { value: 0.0 },
     },
     vertexShader: SURFACE_PATCH_VERT,
@@ -119507,6 +119463,22 @@ function computePositions(days, elapsed) {
       b._spinAngle = rot - Math.PI;
     }
     b._theta = 0;
+
+    /* SINKRONISASI ROTASI & POSISI LOKAL REAL-TIME
+       Penting: b.spin.rotation.y dan b.group.position (untuk satelit)
+       HARUS diperbarui di sini, SEBELUM computeObserver() dan updateCamera()
+       dipanggil. Jika baru diperbarui di applyPositions(), kamera akan
+       selalu tertinggal 1 frame di belakang mesh (selisih hingga 15 derajat
+       per frame saat waktu simulasi berjalan cepat), yang menyebabkan
+       tekstur tanah tampak berputar/bergeser di bawah kaki pengamat. */
+    if (b.isMoon && b.absPos && b.host && b.host.absPos) {
+      const off = moonHostPlaneOffset(b, jd, false);
+      b.group.position.set(off.x, off.y, off.z);
+    }
+    if (b.spin && b._spinAngle !== undefined) {
+      b.spin.rotation.y = b._spinAngle;
+      if (b._libLat) b.spin.rotation.x = b._libLat;
+    }
   }
 }
 
@@ -121267,13 +121239,6 @@ async function boot() {
          langit siang jauh lebih terang sehingga bintang tenggelam). */
       if (typeof applyDaylightStarDimming === 'function' && svObs) {
         applyDaylightStarDimming(SURFACE_VIEW.sunAltitudeDeg(svObs));
-      }
-      /* Tekstur DETAIL permukaan (tile NASA): menggantikan tekstur patch
-         dengan citra resolusi tinggi wilayah pengamat. Berlaku untuk
-         semua benda yang punya sumber tile resmi (Bumi, Mars, Bulan, Io)
-         — inilah yang membuat "zoom sampai darat" terlihat detail. */
-      if (typeof SURFACE_DETAIL !== 'undefined' && svBody) {
-        SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
       /* KOMPAS arah mata angin (permintaan pengguna: "tambahkan juga arah
          mata angin") — strip di atas layar yang bergeser mengikuti azimut. */

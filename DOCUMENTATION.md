@@ -38,4 +38,28 @@ Mode sudut pandang permukaan (`SURFACE_VIEW`) sebelumnya hanya menampilkan datar
 4. **Kinerja & Optimasi**
    - Tetap berjalan stabil pada 75–95 FPS di resolusi desktop dan mobile.
    - 100% Vanilla JavaScript & WebGL shader native tanpa pustaka tambahan.
+
+---
+
+### 2. Eliminasi Flashbang Malam & Sinkronisasi Fase Simulasi Waktu (Lockstep Spin)
+
+#### Latar Belakang & Masalah
+1. **Flashbang Permukaan Malam Hari**:
+   - Pada mode POV malam di Bumi (khususnya kualitas tinggi `?q=hi`), permukaan tanah menyala putih benderang 100% ("flashbang"), dan pada `?q=lo` menjadi kuning terang (`#FDD78C`).
+   - Akar masalah: `SURFACE_PATCH_FRAG` mengeksekusi `nightGlow` memakai tekstur lampu kota orbit (`uNightMap` / `earth_night.jpg`). Citra lampu kota satelit memiliki nilai kecerahan tinggi di wilayah berpopulasi (seperti Jawa/Jakarta). Rumus `nightGlow = vec3(1.0, 0.85, 0.55) * city * 1.6` menghasilkan intensitas $> 4.0$, yang meluap melampaui rentang dinamis monitor dan terpotong (clamped) menjadi putih murni $(1.0, 1.0, 1.0)$. Selain itu, pengamat yang berdiri di tanah melihat tanah/tanaman/batuan alami di malam hari, bukan citra emisi lampu dari orbit satelit.
+2. **Pergeseran & Rusaknya Tekstur Saat Waktu Simulasi Berjalan**:
+   - Saat waktu simulasi dimajukan/dimundurkan atau slider waktu digeser pada semua planet dan satelit, tekstur tanah tampak meluncur, berputar sendiri, dan bergeser tidak sinkron di bawah kaki pengamat.
+   - Akar masalah: Di `src/60-main.js`, `computePositions()` menghitung sudut rotasi baru `b._spinAngle`, namun penetapan `b.spin.rotation.y = b._spinAngle` baru dilakukan pada `applyPositions()` di akhir frame—setelah `computeObserver()` dan `updateCamera()` selesai. Akibatnya, orientasi kamera tertinggal 1 frame (fase beda hingga 15° per frame saat scrub waktu) dibanding orientasi mesh planet dan `surfacePatch`.
+   - Selain itu, pemanggilan `SURFACE_DETAIL.applyToPatch()` tiap frame memicu permintaan tile asinkron eksternal dan mengganti material PBR dengan `MeshBasicMaterial` datar serta merusak atribut UV melalui `repatchUV()`.
+
+#### Solusi Arsitektural & Perbaikan
+1. **Penghapusan Night Glow dari Permukaan Tanah (`src/24-surface-patch.js`)**:
+   - Menghapus komponen `nightGlow`, uniform `uHasNight`, dan `uNightMap` dari shader `SURFACE_PATCH_FRAG` dan konfigurasi material.
+   - Pada malam hari, iluminasi permukaan sepenuhnya diatur oleh pencahayaan ambien malam alami langit astronomis (`ambient = albedo * uAmbientColor * skyHemi`) yang menyatu mulus dengan kabut horizon malam, bebas dari pendar kuning maupun flashbang.
+2. **Sinkronisasi Rotasi & Posisi Lokal Real-Time (`src/20-scene.js`)**:
+   - Memperbarui `b.spin.rotation.y = b._spinAngle`, librasi `b.spin.rotation.x = b._libLat`, dan `b.group.position` satelit secara langsung di dalam loop `computePositions()`.
+   - Menjamin bahwa saat `computeObserver()` dan `updateCamera()` dipanggil pada frame yang sama, posisi dan kuaternion dunia pengamat berada dalam sinkronisasi 100% (selisih fase 0,000°). Tanah di bawah kaki pengamat tetap kokoh tak bergeser, sementara benda-benda langit (Matahari, bintang, rasi, Bulan) melintas halus di atas kubah langit.
+3. **Stabilisasi Material PBR Multi-Scale (`src/60-main.js`)**:
+   - Mengeliminasi panggilan `SURFACE_DETAIL.applyToPatch()` per frame, mempertahankan integritas shader PBR prosedural, elevasi mikro-relief, normal map, dan performa 60+ FPS tanpa latensi jaringan.
+
    - Seluruh 19 modul uji regresi (`test_full.js` dan `test_responsive.js`) lulus 100%.
