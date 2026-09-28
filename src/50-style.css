@@ -546,21 +546,29 @@ kbd {
        panel info  : di atas toolbar (bottom-sheet)
      ====================================================================== */
 
-  /* Sidebar jadi laci (drawer) di HP, sama seperti breakpoint 980px */
-  .sidebar {
-    width: 240px;
-    transform: translateX(-260px);
-    opacity: 0;
-    pointer-events: none;
-    z-index: 30;
-    top: var(--title-bottom, 150px);
-    max-height: calc(100vh - 260px);
-  }
-  .sidebar.open {
-    transform: none; opacity: 1; pointer-events: auto;
-  }
-  /* tombol buka/tutup sidebar */
-  #btnSidebar { display: block; }
+  /* Sidebar jadi laci (bottom-sheet) di HP */
+    .sidebar {
+      width: 100%;
+      max-width: none;
+      transform: translateY(100%);
+      opacity: 0;
+      pointer-events: none;
+      z-index: 30;
+      top: auto;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      max-height: 70vh;
+      border-radius: 16px 16px 0 0;
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+    }
+    .sidebar.open {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    /* tombol buka/tutup sidebar */
+    #btnSidebar { display: block; }
 
   /* ======================================================================
      TATA LETAK HP — sistem "band" vertikal
