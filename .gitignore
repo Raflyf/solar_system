@@ -56,3 +56,7 @@ _mt.xml
 
 # Berkas uji orientasi langit (dihasilkan tools/dump_tex_gray.py)
 _tex_gray.json
+
+# Hasil tangkapan layar uji
+tools/*.png
+

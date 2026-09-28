@@ -117,23 +117,92 @@ const SURFACE_SKY_FRAG = [
   '}',
 ].join('\n');
 
-/* Tabel warna langit per elevasi Matahari (derajat).
-   Diinterpolasi linear antar baris — sederhana, cepat, dan cukup halus. */
-const SKY_COLOR_TABLE = [
-  /* alt,  zenith RGB,          horizon RGB,        ground RGB,      sun RGB,         glow */
-  [-90,  [0.010, 0.012, 0.025], [0.012, 0.015, 0.030], [0.008, 0.010, 0.020], [1.0, 0.95, 0.85], 0.00],
-  [-18,  [0.012, 0.016, 0.040], [0.030, 0.035, 0.075], [0.010, 0.012, 0.025], [1.0, 0.92, 0.80], 0.05],
-  [-12,  [0.020, 0.030, 0.090], [0.120, 0.090, 0.140], [0.020, 0.025, 0.050], [1.0, 0.80, 0.60], 0.25],
-  [-6,   [0.050, 0.080, 0.200], [0.350, 0.180, 0.180], [0.040, 0.045, 0.070], [1.0, 0.60, 0.35], 0.70],
-  [-0.8, [0.120, 0.200, 0.400], [0.950, 0.480, 0.280], [0.070, 0.070, 0.090], [1.0, 0.50, 0.25], 1.20],
-  [2,    [0.180, 0.320, 0.600], [0.980, 0.700, 0.420], [0.100, 0.110, 0.120], [1.0, 0.65, 0.35], 0.90],
-  [6,    [0.240, 0.430, 0.780], [0.800, 0.850, 0.950], [0.140, 0.150, 0.160], [1.0, 0.80, 0.55], 0.45],
-  [15,   [0.280, 0.490, 0.900], [0.690, 0.830, 0.980], [0.170, 0.180, 0.190], [1.0, 0.90, 0.75], 0.20],
-  [90,   [0.290, 0.510, 0.930], [0.690, 0.830, 0.980], [0.180, 0.190, 0.200], [1.0, 0.95, 0.85], 0.15],
-];
+/* =======================================================================
+   TABEL WARNA LANGIT PER BENDA LANGIT (ASTRONOMIS VALID)
+   -----------------------------------------------------------------------
+   Bumi     : Hamburan Rayleigh (nitrogen/oksigen) -> biru siang, senja merah
+   Mars     : Hamburan aerosol debu besi (hematit) -> salmon/butterscotch
+              siang, blue sunset halo di sekitar Matahari (Curiosity/Perseverance)
+   Venus    : Awan asam sulfat super tebal (Venera 13/14) -> kuning-amber
+   Titan    : Kabut fotokimia hidrokarbon/metana (Huygens) -> oranye-cokelat
+   Bulan & Satelit/Merkurius: Tanpa atmosfer (vakum) -> langit hitam antariksa
+   ======================================================================= */
 
-function skyColorsForAltitude(altDeg) {
-  const T = SKY_COLOR_TABLE;
+function getBodyAtmosphereKey(body) {
+  if (!body) return 'earth';
+  const name = (body.name || '').toLowerCase();
+  const rawKey = (body.key || '').toLowerCase();
+  const subKey = rawKey.includes(':') ? rawKey.split(':')[1] : rawKey;
+  if (name === 'mars' || subKey === 'mars') return 'mars';
+  if (name === 'venus' || subKey === 'venus') return 'venus';
+  if (name === 'titan' || subKey === 'titan') return 'titan';
+  if (['jupiter', 'saturn', 'saturnus', 'uranus', 'neptune', 'neptunus'].includes(subKey) ||
+      ['jupiter', 'saturn', 'saturnus', 'uranus', 'neptune', 'neptunus'].includes(name)) {
+    return 'gas_giants';
+  }
+  if (name === 'bumi' || subKey === 'earth' || subKey === 'bumi') return 'earth';
+  return null;
+}
+
+function bodyHasAtmosphere(body) {
+  return !!getBodyAtmosphereKey(body);
+}
+
+const SKY_COLOR_TABLES = {
+  earth: [
+    /* alt,  zenith RGB,          horizon RGB,        ground RGB,      sun RGB,         glow */
+    [-90,  [0.010, 0.012, 0.025], [0.012, 0.015, 0.030], [0.008, 0.010, 0.020], [1.0, 0.95, 0.85], 0.00],
+    [-18,  [0.012, 0.016, 0.040], [0.030, 0.035, 0.075], [0.010, 0.012, 0.025], [1.0, 0.92, 0.80], 0.05],
+    [-12,  [0.020, 0.030, 0.090], [0.120, 0.090, 0.140], [0.020, 0.025, 0.050], [1.0, 0.80, 0.60], 0.25],
+    [-6,   [0.050, 0.080, 0.200], [0.350, 0.180, 0.180], [0.040, 0.045, 0.070], [1.0, 0.60, 0.35], 0.70],
+    [-0.8, [0.120, 0.200, 0.400], [0.950, 0.480, 0.280], [0.070, 0.070, 0.090], [1.0, 0.50, 0.25], 1.20],
+    [2,    [0.180, 0.320, 0.600], [0.980, 0.700, 0.420], [0.100, 0.110, 0.120], [1.0, 0.65, 0.35], 0.90],
+    [6,    [0.240, 0.430, 0.780], [0.800, 0.850, 0.950], [0.140, 0.150, 0.160], [1.0, 0.80, 0.55], 0.45],
+    [15,   [0.280, 0.490, 0.900], [0.690, 0.830, 0.980], [0.170, 0.180, 0.190], [1.0, 0.90, 0.75], 0.20],
+    [90,   [0.290, 0.510, 0.930], [0.690, 0.830, 0.980], [0.180, 0.190, 0.200], [1.0, 0.95, 0.85], 0.15],
+  ],
+  mars: [
+    /* Mars: langit siang butterscotch/salmon, sunset berhamburan biru (blue sunset) */
+    [-90,  [0.008, 0.006, 0.008], [0.010, 0.008, 0.010], [0.006, 0.005, 0.006], [1.0, 0.95, 0.85], 0.00],
+    [-18,  [0.012, 0.009, 0.012], [0.020, 0.014, 0.016], [0.008, 0.006, 0.008], [1.0, 0.92, 0.80], 0.05],
+    [-8,   [0.035, 0.022, 0.025], [0.090, 0.055, 0.050], [0.015, 0.010, 0.012], [1.0, 0.80, 0.60], 0.20],
+    [-1,   [0.180, 0.130, 0.140], [0.550, 0.380, 0.320], [0.050, 0.035, 0.030], [0.38, 0.62, 0.92], 1.50], /* blue sunset */
+    [2,    [0.320, 0.220, 0.180], [0.680, 0.480, 0.380], [0.100, 0.065, 0.050], [0.45, 0.68, 0.95], 1.20], /* blue sun halo */
+    [8,    [0.480, 0.340, 0.250], [0.720, 0.540, 0.420], [0.150, 0.100, 0.075], [0.95, 0.90, 0.82], 0.40],
+    [20,   [0.550, 0.400, 0.300], [0.760, 0.580, 0.440], [0.200, 0.140, 0.100], [1.00, 0.95, 0.88], 0.25],
+    [90,   [0.580, 0.420, 0.320], [0.780, 0.600, 0.460], [0.220, 0.150, 0.110], [1.00, 0.98, 0.92], 0.20],
+  ],
+  venus: [
+    /* Venus: atmosfer asam sulfat tebal, hamburan amber/kuning difus merata */
+    [-90,  [0.025, 0.018, 0.010], [0.035, 0.025, 0.012], [0.015, 0.012, 0.008], [1.0, 0.85, 0.45], 0.00],
+    [-6,   [0.150, 0.110, 0.045], [0.350, 0.250, 0.090], [0.060, 0.045, 0.020], [1.0, 0.80, 0.40], 0.80],
+    [2,    [0.450, 0.340, 0.120], [0.720, 0.550, 0.220], [0.120, 0.090, 0.040], [1.0, 0.85, 0.45], 1.80],
+    [15,   [0.720, 0.560, 0.220], [0.850, 0.680, 0.320], [0.180, 0.140, 0.060], [1.0, 0.88, 0.50], 1.50],
+    [90,   [0.820, 0.650, 0.280], [0.920, 0.750, 0.380], [0.220, 0.170, 0.080], [1.0, 0.90, 0.55], 1.20],
+  ],
+  titan: [
+    /* Titan: kabut tebal hidrokarbon oranye pekat (Huygens) */
+    [-90,  [0.015, 0.008, 0.004], [0.025, 0.014, 0.006], [0.010, 0.006, 0.003], [0.9, 0.6, 0.3], 0.00],
+    [-5,   [0.120, 0.060, 0.025], [0.320, 0.180, 0.070], [0.045, 0.025, 0.010], [0.9, 0.6, 0.3], 0.60],
+    [5,    [0.350, 0.180, 0.070], [0.650, 0.380, 0.140], [0.090, 0.050, 0.020], [0.9, 0.65, 0.35], 1.20],
+    [90,   [0.580, 0.320, 0.120], [0.850, 0.520, 0.200], [0.140, 0.080, 0.035], [0.95, 0.70, 0.40], 0.90],
+  ],
+  gas_giants: [
+    /* Troposfer raksasa gas/es */
+    [-90,  [0.010, 0.012, 0.020], [0.015, 0.018, 0.025], [0.008, 0.010, 0.015], [1.0, 0.95, 0.85], 0.00],
+    [10,   [0.450, 0.520, 0.620], [0.650, 0.720, 0.800], [0.150, 0.180, 0.220], [1.0, 0.95, 0.85], 0.30],
+    [90,   [0.550, 0.620, 0.720], [0.720, 0.780, 0.850], [0.180, 0.220, 0.260], [1.0, 0.95, 0.85], 0.25],
+  ],
+};
+
+function getSkyTableForBody(body) {
+  const atmoKey = getBodyAtmosphereKey(body);
+  if (atmoKey && SKY_COLOR_TABLES[atmoKey]) return SKY_COLOR_TABLES[atmoKey];
+  return SKY_COLOR_TABLES.earth;
+}
+
+function skyColorsForAltitude(altDeg, body) {
+  const T = getSkyTableForBody(body);
   if (altDeg <= T[0][0]) return T[0];
   if (altDeg >= T[T.length - 1][0]) return T[T.length - 1];
   for (let i = 0; i < T.length - 1; i++) {
@@ -145,6 +214,42 @@ function skyColorsForAltitude(altDeg) {
     }
   }
   return T[T.length - 1];
+}
+
+/* Informasi pencahayaan permukaan & kabut horizon sesuai atmosfer benda langit */
+function getSurfaceAtmosphereInfo(body, altDeg) {
+  const hasAtmo = bodyHasAtmosphere(body);
+  if (!hasAtmo) {
+    return {
+      hasAtmosphere: false,
+      horizonFogColor: new THREE.Color(0x000000),
+      ambientColor: new THREE.Color(0.04, 0.04, 0.05),
+      sunColor: new THREE.Color(1.0, 0.98, 0.92),
+      fogDensity: 0.0,
+      sunIntensity: 1.35,
+    };
+  }
+
+  const res = skyColorsForAltitude(altDeg !== undefined ? altDeg : 30, body);
+  const zRGB = res[1], hRGB = res[2], gRGB = res[3], sRGB = res[4];
+  const atmoKey = getBodyAtmosphereKey(body);
+  let fogDensity = 0.025;
+  if (atmoKey === 'venus') fogDensity = 0.055;
+  else if (atmoKey === 'titan') fogDensity = 0.045;
+  else if (atmoKey === 'mars') fogDensity = 0.015;
+
+  const ambR = Math.max(0.04, zRGB[0] * 0.50 + hRGB[0] * 0.40);
+  const ambG = Math.max(0.04, zRGB[1] * 0.50 + hRGB[1] * 0.40);
+  const ambB = Math.max(0.04, zRGB[2] * 0.50 + hRGB[2] * 0.40);
+
+  return {
+    hasAtmosphere: true,
+    horizonFogColor: new THREE.Color(hRGB[0], hRGB[1], hRGB[2]),
+    ambientColor: new THREE.Color(ambR, ambG, ambB),
+    sunColor: new THREE.Color(sRGB[0], sRGB[1], sRGB[2]),
+    fogDensity: fogDensity,
+    sunIntensity: atmoKey === 'venus' ? 0.85 : (atmoKey === 'titan' ? 0.75 : 1.25),
+  };
 }
 
 let surfaceSky = null;
@@ -169,52 +274,63 @@ function buildSurfaceSky() {
     side: THREE.BackSide,      /* dilihat dari DALAM bola */
     transparent: true,
     depthWrite: false,
-    /* depthTest: true + renderOrder -1000 → bola langit digambar paling
-       awal dan TIDAK menimpa objek yang digambar sesudahnya (patch
-       permukaan). Dengan depthTest false (versi lama) ia menimpa
-       segalanya sehingga permukaan tak pernah terlihat — terbukti di uji. */
     depthTest: true,
   });
-  /* =====================================================================
-     BOLA LANGIT PERMUKAAN
-     ---------------------------------------------------------------------
-     Radius 0,001 unit (6,4 km dari kamera) — cukup kecil sehingga patch
-     permukaan (radius 1) selalu berada DI LUAR bola ini dan menang depth
-     test. Material memakai depthTest:true + renderOrder -1000 supaya
-     digambar paling awal tanpa menimpa objek berikutnya.
-     ===================================================================== */
+
   surfaceSky = new THREE.Mesh(new THREE.SphereGeometry(0.001, 32, 24), surfaceSkyMat);
   surfaceSky.frustumCulled = false;
-  /* renderOrder sangat negatif = dirender PALING AWAL (di belakang semua).
-     depthTest dimatikan supaya bola ini tidak menutupi apa pun, dan
-     depthWrite juga mati supaya tidak mengotori depth buffer. */
   surfaceSky.renderOrder = -1000;
   surfaceSky.visible = false;
   scene.add(surfaceSky);
   return surfaceSky;
 }
 
-/* Perbarui langit permukaan tiap frame saat POV aktif.
-   obs      : hasil SURFACE_VIEW.computeObserver()
-   body     : body yang sedang dipakai POV
-   atmoOn   : apakah atmosfer dinyalakan pengguna
+/* Informasi atmosfer untuk penyelarasan pencahayaan patch permukaan */
+function getSurfaceAtmosphereInfo(body, altDeg) {
+  const hasAtmo = bodyHasAtmosphere(body);
+  if (!hasAtmo) {
+    return {
+      hasAtmosphere: false,
+      horizonFogColor: new THREE.Color(0x000000),
+      ambientColor: new THREE.Color(0x0a0c10), // sedikit ambient antariksa
+      sunColor: new THREE.Color(0xffffff),
+      fogDensity: 0.0,
+      sunIntensity: 1.25,
+    };
+  }
 
-   URUTAN RENDER (penting agar permukaan tidak tertutup):
-     surfaceSky  : renderOrder -1000, depthTest FALSE, depthWrite false
-     surfacePatch: renderOrder    5, depthTest true,  depthWrite true
-   Karena depthTest bola langit dimatikan, ia SELALU tampil di belakang
-   apa pun yang sudah tergambar — termasuk patch permukaan. Yang penting
-   patch digambar SETELAH bola langit (renderOrder lebih besar), dan itu
-   sudah benar. */
+  const row = skyColorsForAltitude(altDeg, body);
+  const k = (body && (body.key || body.name) || '').toLowerCase();
+  let fog = 0.04;
+  if (k === 'venus') fog = 0.18; // kabut sangat pekat
+  if (k === 'titan') fog = 0.12;
+  if (k === 'mars') fog = 0.05;
+
+  return {
+    hasAtmosphere: true,
+    horizonFogColor: new THREE.Color(row[2][0], row[2][1], row[2][2]),
+    ambientColor: new THREE.Color(row[1][0] * 0.45, row[1][1] * 0.45, row[1][2] * 0.45),
+    sunColor: new THREE.Color(row[4][0], row[4][1], row[4][2]),
+    fogDensity: fog,
+    sunIntensity: 1.20,
+  };
+}
+
+/* Perbarui langit permukaan tiap frame saat POV aktif */
 function updateSurfaceSky(obs, body, atmoOn) {
   if (!surfaceSky) buildSurfaceSky();
   if (!obs) { surfaceSky.visible = false; return; }
 
+  const hasAtmo = bodyHasAtmosphere(body);
+  if (!atmoOn || !hasAtmo) {
+    surfaceSky.visible = false;
+    return;
+  }
+
   const altDeg = SURFACE_VIEW.sunAltitudeDeg(obs);
-  const row = skyColorsForAltitude(altDeg);
+  const row = skyColorsForAltitude(altDeg, body);
 
   surfaceSky.visible = true;
-  /* ditempatkan di posisi kamera (bola langit lokal) */
   surfaceSky.position.copy(camera.position);
 
   const m = surfaceSkyMat.uniforms;
@@ -225,43 +341,20 @@ function updateSurfaceSky(obs, body, atmoOn) {
   m.uSunGlow.value = row[5];
   m.uSunAlt.value = altDeg * DEG;
 
-  /* arah Matahari dalam kerangka KAMERA (karena surfaceSky mengikuti
-     kamera tanpa rotasi, vDir lokal = arah dunia) */
   const sun = findBody('sun');
   if (sun && sun.absPos) {
     m.uSunDir.value.copy(sun.absPos).sub(obs.pos).normalize();
   }
 
-  /* OPASITAS: ini "saklar atmosfer" yang diminta pengguna.
-       - Atmosfer MATI  → langit transparan, bintang terlihat penuh
-       - Atmosfer NYALA → langit berwarna; malam tetap agak transparan
-         supaya bintang masih tampak (seperti langit nyata) */
-  let op;
-  if (!atmoOn) {
-    op = 0.0;
-  } else {
-    /* =====================================================================
-       LANGIT MALAM — DIBUAT LEBIH GELAP (permintaan pengguna)
-       ---------------------------------------------------------------------
-       Sebelumnya malam memakai opasitas 0,25 sehingga langit tampak
-       kelabu dan bintang kurang kontras ("pada saat malam coba buat
-       bulannya lebih terlihat seperti pov realistik dari bumi").
-
-       Di kehidupan nyata, langit malam JAUH lebih gelap dari siang
-       (rasio ~100.000:1). Nilai baru: 0,06 saat malam penuh — bintang
-       dan Bulan jadi jauh lebih kontras, seperti pemandangan malam asli.
-       ===================================================================== */
-    const dayness = Math.max(0, Math.min(1, (altDeg + 12) / 24));
-    op = 0.06 + 0.90 * dayness;
-  }
+  const dayness = Math.max(0, Math.min(1, (altDeg + 12) / 24));
+  const op = 0.06 + 0.90 * dayness;
   m.uOpacity.value = op;
 
-  /* Saat atmosfer mati atau malam gelap, bola langit disembunyikan supaya
-     tekstur bintang & Bima Sakti (skyMesh) terlihat sepenuhnya. */
   if (op < 0.02) surfaceSky.visible = false;
 }
 
-/* Sembunyikan langit permukaan (dipakai saat keluar dari POV). */
+/* Sembunyikan langit permukaan */
 function hideSurfaceSky() {
   if (surfaceSky) surfaceSky.visible = false;
 }
+

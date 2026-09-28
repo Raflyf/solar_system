@@ -396,38 +396,24 @@ const SURFACE_DETAIL = {
     return false;
   },
 
-  /* Pasang tekstur ke material patch + sesuaikan UV ke cakupan tekstur. */
   _install(tex) {
     if (!surfacePatch || !surfacePatch.material) return;
-    if (surfacePatch.material.map === tex) return;
-    /* =====================================================================
-       GANTI KE MATERIAL UNLIT (MeshBasicMaterial)
-       ---------------------------------------------------------------------
-       BUG BESAR YANG DIPECAHKAN: kanvas tekstur punya detail lengkap
-       (638-845 variasi warna, kontras 111 — terbukti dari pengukuran),
-       tetapi layar menampilkan warna rata karena PENCAHAYAAN membasuhnya:
-         AmbientLight 0,35 + povAmbient 1,15 + PointLight 1,25 = >1,5
-         → MeshStandardMaterial menjenuhkan nilai di 1,0 → putih rata.
-
-       Citra satelit NASA sudah punya bayangan Matahari TER-BAKE di
-       dalamnya, jadi patch tidak perlu pencahayaan 3D sama sekali.
-       MeshBasicMaterial menampilkan tekstur apa adanya (seperti Google
-       Earth) → detail 100% terlihat, dan lebih murah (fps lebih baik).
-
-       Material lama dibuang agar tidak ada kebocoran memori GPU.
-       ===================================================================== */
+    if (surfacePatch.material.uniforms && surfacePatch.material.uniforms.uTileMap) {
+      surfacePatch.material.uniforms.uTileMap.value = tex;
+      surfacePatch.material.uniforms.uTileWeight.value = 1.0;
+      surfacePatch.material.needsUpdate = true;
+      return;
+    }
     const oldMat = surfacePatch.material;
     const basic = new THREE.MeshBasicMaterial({
       map: tex,
       side: THREE.DoubleSide,
       transparent: false,
-      toneMapped: false,   /* warna persis seperti citra NASA */
+      toneMapped: false,
     });
     surfacePatch.material = basic;
     surfacePatch.material.needsUpdate = true;
     if (oldMat && oldMat !== basic && oldMat.dispose) oldMat.dispose();
-    /* UV harus dipetakan ke cakupan tekstur detail (spanDeg), bukan ke
-       seluruh bola — lihat penjelasan di applyPatchUV(). */
     if (typeof repatchUV === 'function') repatchUV(this.spanDeg);
   },
 
