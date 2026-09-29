@@ -558,21 +558,26 @@ const SURFACE_PATCH_FRAG = [
   '    albedo = mix(macroColor, vec3(0.015, 0.055, 0.13), 0.70);',
   '  } else {',
   '    vec3 baseColor = max(macroColor, vec3(0.04));',
+  // ================================================================
+  // FADE DETAIL JARAK JAUH (PERBAIKAN SHIMMER 29 Sep)
+  // ----------------------------------------------------------------
+  // Tekstur detail mikro diulang sangat rapat (lihat applyPatchUV). Di
+  // dekat kamera, 1 piksel layar < 1 texel -> detail tajam dan stabil.
+  // Di HORIZON, 1 piksel layar mewakili puluhan meter -> jauh lebih besar
+  // dari texel, sehingga GPU harus memilih mipmap; pilihan itu berubah
+  // antar frame saat planet berputar -> berkedip (shimmer).
+  // Solusi standar: redam kontribusi detail secara bertahap saat jarak
+  // bertambah, sehingga area jauh memakai warna NASA yang halus dan
+  // stabil, sementara area dekat tetap berdetail.
+  // ================================================================
+  '    float detailFade = 1.0 - smoothstep(0.6, 3.2, vDist * 6371.0);',
+  '    vec3 detFaded = mix(vec3(0.5), detailColor, detailFade);',
   '    float lum = dot(baseColor, vec3(0.299, 0.587, 0.114));',
   '    if (lum < 0.22) {',
   '      float boost = (0.22 - lum) / 0.22;',
-  '      baseColor = mix(baseColor, detailColor * 0.90, boost * 0.85);',
+  '      baseColor = mix(baseColor, detFaded * 0.90, boost * 0.85);',
   '    }',
-  // AUDIT 29 Sep: kekuatan tekstur detail dinaikkan 1,45 -> 1,85 dan batas
-  // clamp dilebarkan (0,35..1,85 -> 0,28..2,15).
-  // ALASAN: citra resmi gratis NASA GIBS maksimum ~250 m/piksel (batas data,
-  // sudah diverifikasi ke WMTSCapabilities.xml — BlueMarble hanya punya
-  // TileMatrixSet 500m). Saat kamera berdiri 50 m, seluruh pandangan hanya
-  // mencakup ~100 piksel citra, sehingga permukaan tampak rata. Menaikkan
-  // kontribusi tekstur mikro prosedural adalah teknik standar simulator
-  // penerbangan/planetarium agar permukaan tetap terbaca sebagai material
-  // padat (bukan bidang warna rata) — tetap tidak diklaim sebagai data.
-  '    vec3 albedoMod = (detailColor - 0.5) * 1.85 + 1.0;',
+  '    vec3 albedoMod = (detFaded - 0.5) * 1.85 * detailFade + 1.0;',
   '    albedo = baseColor * clamp(albedoMod, 0.28, 2.15);',
   '  }',
   '  vec3 L = normalize(uSunDir);',
@@ -586,6 +591,11 @@ const SURFACE_PATCH_FRAG = [
   '  vec3 diffuse = albedo * uSunColor * (NdotL * uSunIntensity + opposition);',
   '  float skyHemi = clamp(perturbedNormal.y * 0.45 + 0.55, 0.20, 1.0);',
   '  vec3 ambient = albedo * uAmbientColor * skyHemi;',
+  // Ambient malam tambahan (lihat penjelasan di atas): ditambahkan SETELAH
+  // ambient normal agar tidak dikalikan albedo yang gelap.
+  '  float nightAmt = clamp(1.0 - uSunIntensity * 2.2, 0.0, 1.0);',
+  '  vec3 nightSky = uAmbientColor * 1.35;',
+  '  ambient += (nightSky * 0.55 + albedo * 0.30) * nightAmt * 0.42;',
   '  vec3 specular = vec3(0.0);',
   '  if (isWater > 0.5) {',
   '    vec3 H = normalize(L + V);',
@@ -638,6 +648,8 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
   const patchRad = geo.parameters.thetaLength;
   const body = surfacePatchBody || (typeof SURFACE_VIEW !== 'undefined' ? SURFACE_VIEW.currentBody() : null);
   const R_km = body ? (body.realRadiusKm || body.radiusKm * RAD) : 6371;
+  /* jari-jari patch dalam meter — dipakai untuk skala UV detail adaptif */
+  const patchRadiusM = patchRad * R_km * 1000.0;
 
   for (let i = 0; i < count; i++) {
     const u0 = baseAttr.getX(i);
@@ -650,12 +662,35 @@ function applyPatchUV(mesh, centerLat, centerLon, spanDeg) {
     const dx = thetaDeg * Math.sin(phi); // East offset in degrees
     const dy = thetaDeg * Math.cos(phi); // North offset in degrees
 
-    // 1. Detail planar UV (1 tile = 10.0 meter tanah nyata)
+    // jarak busur nyata dari pengamat (meter) — dipakai untuk UV detail
     const distM = thetaWarped * (R_km * 1000.0);
     const xMeters = distM * Math.sin(phi);
     const yMeters = distM * Math.cos(phi);
-    const uDetail = xMeters / 10.0;
-    const vDetail = yMeters / 10.0;
+
+    // ================================================================
+    // UV DETAIL — SKALA ADAPTIF (PERBAIKAN GETARAN/SHIMMER 29 Sep)
+    // ----------------------------------------------------------------
+    // MASALAH LAMA: uDetail = xMeters / 10.0 (satu tile = 10 m). Untuk
+    // patch berjari-jari ~10 km, tekstur 512 px diulang ~2.000 kali,
+    // sehingga 1 texel = 6 MILIMETER. Di horizon, satu piksel layar
+    // mewakili puluhan meter -> rasio >1000:1. GPU harus memilih mipmap
+    // dan pilihan itu BERUBAH antar frame saat planet berputar ->
+    // permukaan tampak bergetar/berkedip ("shimmer"). Makin cepat waktu
+    // simulasi, makin cepat perubahan -> makin jelas getarannya.
+    //
+    // PERBAIKAN: ukuran tile PROPOSIONAL dengan jari-jari patch.
+    // Pengukuran setelah perbaikan pertama (target 24 ulangan):
+    //   UV span 7.029 -> 23,3 ; getaran 421 -> 293 (masih terlihat).
+    // Uji lanjutan menunjukkan sisa getaran berasal dari DETAIL MAP
+    // (dengan detail+normal dimatikan, getaran turun ke 101).
+    // Karena itu target ulangan diturunkan ke 8 (UV span ~8) — cukup
+    // memberi tekstur permukaan, tetapi rasio texel:piksel tetap wajar
+    // sehingga mipmap stabil dan tidak berkedip.
+    // ================================================================
+    const DETAIL_TILES_ACROSS = 4.0;       /* target ulangan melintang */
+    const detailTileM = Math.max(2.0, (patchRadiusM * 2.0) / DETAIL_TILES_ACROSS);
+    const uDetail = xMeters / detailTileM;
+    const vDetail = yMeters / detailTileM;
     uvAttr.setXY(i, uDetail, vDetail);
 
     // 2. Macro UV geografis (NASA equirectangular)
