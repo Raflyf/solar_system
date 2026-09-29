@@ -101,6 +101,36 @@ const SURFACE_VIEW = {
       { name: 'Great Red Spot', lat: -22.0, lon: 0 },
     ],
     saturn: [
+      // ================================================================
+      // PRESET POV SATURNUS — DIPERBAIKI 29 Sep (versi final)
+      // ----------------------------------------------------------------
+      // KELUHAN: "untuk pov saturnus itu kenapa gada posisi yg terlihat
+      // cincin ikonik saturnus nya".
+      //
+      // ANALISIS GEOMETRI (dihitung dari data nyata: radius planet 60.268 km,
+      // cincin 74.500-140.220 km, pengamat 50 m di atas permukaan). Rentang
+      // elevasi cincin dari horizon untuk tiap lintang:
+      //
+      //   lintang  0 : cincin tepat di bidang pandang (0 derajat lebar)
+      //   lintang 10 : 45,4 -> 72,6 derajat  (lebar 27,3) SELURUHNYA terlihat
+      //   lintang 20 : 20,9 -> 56,1 derajat  (lebar 35,2) SELURUHNYA  <-- TERBAIK
+      //   lintang 30 :  6,5 -> 41,1 derajat  (lebar 34,6) SELURUHNYA
+      //   lintang 40 : -3,8 -> 27,6 derajat  (sebagian di bawah horizon)
+      //   lintang 55 : -16,0 -> 10,0 derajat (hanya sepertiga terlihat)
+      //   lintang 78 : -31   -> -13 derajat  TIDAK TERLIHAT SAMA SEKALI
+      //
+      // Jadi preset lama (78 derajat, kutub) menempatkan SELURUH cincin di
+      // bawah horizon -> itulah sebabnya cincin ikonik tidak pernah muncul.
+      //
+      // PERBAIKAN: preset utama di lintang 20 (pita cincin terlebar, 35,2
+      // derajat, seluruhnya di atas horizon). Ditambah 10 dan 30 sebagai
+      // variasi sudut, dan ekuator untuk menunjukkan cincin tepat di
+      // cakrawala. Preset kutub tetap ada untuk fenomena Hexagon.
+      // ================================================================
+      { name: 'Cincin ikonik (lintang 20)', lat: 20.0, lon: 0 },
+      { name: 'Cincin lebar (lintang 10)', lat: 10.0, lon: 0 },
+      { name: 'Cincin rendah (lintang 30)', lat: 30.0, lon: 0 },
+      { name: 'Ekuator (cincin di cakrawala)', lat: 0.0, lon: 0 },
       { name: 'Hexagon (kutub)', lat: 78.0, lon: 0 },
     ],
     io:    [ { name: 'Pele Volcano', lat: -18.7, lon: 255.5 } ],
