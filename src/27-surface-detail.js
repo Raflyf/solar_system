@@ -399,8 +399,37 @@ const SURFACE_DETAIL = {
   _install(tex) {
     if (!surfacePatch || !surfacePatch.material) return;
     if (surfacePatch.material.uniforms && surfacePatch.material.uniforms.uTileMap) {
-      surfacePatch.material.uniforms.uTileMap.value = tex;
-      surfacePatch.material.uniforms.uTileWeight.value = 1.0;
+      const u = surfacePatch.material.uniforms;
+      u.uTileMap.value = tex;
+      u.uTileWeight.value = 1.0;
+      /* ================================================================
+         RECT TILE — PERBAIKAN BUG "PERMUKAAN POLOS" (lanjutan)
+         ----------------------------------------------------------------
+         Kanvas tile mencakup wilayah geografis kecil (spanDeg) di sekitar
+         pengamat, sedangkan shader menyampel dengan UV GLOBAL bola planet.
+         Di sini rect-nya dihitung supaya shader memetakan uvTile 0..1 tepat
+         ke wilayah kanvas:
+             u = (lon + 180) / 360        (sama dengan rumus applyPatchUV)
+             v = (lat + 90) / 180
+         Sumbu Y: di shader vMacroUv.y = (lat+90)/180 (naik ke utara), dan
+         di kanvas tile baris 0 = utara (latN = lat + span/2). Jadi v
+         bertambah ke UTARA -> sama arahnya, tidak perlu dibalik.
+         ================================================================ */
+      const sv = (typeof SURFACE_VIEW !== 'undefined') ? SURFACE_VIEW : null;
+      const span = this.spanDeg || 1.5;
+      if (sv && u.uTileUvMin && u.uTileUvSize) {
+        const half = span / 2;
+        const latN = sv.lat + half;
+        const latS = sv.lat - half;
+        const lonW = sv.lon - half;
+        const lonE = sv.lon + half;
+        const uMin = (lonW + 180) / 360;
+        const uMax = (lonE + 180) / 360;
+        const vMin = (latS + 90) / 180;   // tepi selatan kanvas
+        const vMax = (latN + 90) / 180;   // tepi utara kanvas
+        u.uTileUvMin.value.set(uMin, vMin);
+        u.uTileUvSize.value.set(Math.max(1e-6, uMax - uMin), Math.max(1e-6, vMax - vMin));
+      }
       surfacePatch.material.needsUpdate = true;
       return;
     }

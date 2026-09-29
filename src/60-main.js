@@ -215,6 +215,31 @@ async function boot() {
       if (typeof updateSurfacePatch === 'function') {
         updateSurfacePatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
+      /* ==================================================================
+         CITRA PERMUKAAN RESOLUSI TINGGI (NASA GIBS / NASA TREK)
+         ------------------------------------------------------------------
+         PERMINTAAN PENGGUNA: "asset mode pov tiap planet dan satelit ...
+         sangat tidak HD, cari asset paling HD dan realistik".
+
+         AKAR MASALAH: SURFACE_DETAIL (kanvas 4096x4096 dari tile NASA
+         GIBS 250 m/px untuk Bumi, NASA Trek 232 m/px untuk Mars/Bulan/Io)
+         SUDAH ditulis lengkap tetapi TIDAK PERNAH DIPANGGIL dari mana pun
+         (dead code) — sehingga patch hanya memakai tekstur global
+         (1024x512 di mode Ringan / 4096x2048 di mode Tinggi) yang
+         diregangkan, dan hasilnya tampak polos.
+
+         Sekarang dipanggil tiap frame saat POV aktif. Aman dipanggil
+         sesering ini: applyToPatch() memakai cache tekstur + kunci
+         (srcKey|lat|lon|span|zoom) sehingga tidak membangun ulang selama
+         pengamat tidak berpindah, dan pemuatan tile berjalan ASINKRON
+         (render tidak pernah terblokir). Bila offline / layer tidak
+         tersedia, fungsi ini mengembalikan false tanpa mengubah apa pun —
+         patch tetap memakai tekstur global.
+         ================================================================== */
+      if (typeof SURFACE_DETAIL !== 'undefined' && SURFACE_DETAIL.enabled &&
+          SURFACE_DETAIL.applyToPatch) {
+        SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
+      }
       /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:
          langit siang jauh lebih terang sehingga bintang tenggelam). */
       if (typeof applyDaylightStarDimming === 'function' && svObs) {
