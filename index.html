@@ -6201,8 +6201,17 @@ const SURFACE_PATCH_FRAG = [
   '      float boost = (0.22 - lum) / 0.22;',
   '      baseColor = mix(baseColor, detailColor * 0.90, boost * 0.85);',
   '    }',
-  '    vec3 albedoMod = (detailColor - 0.5) * 1.45 + 1.0;',
-  '    albedo = baseColor * clamp(albedoMod, 0.35, 1.85);',
+  // AUDIT 29 Sep: kekuatan tekstur detail dinaikkan 1,45 -> 1,85 dan batas
+  // clamp dilebarkan (0,35..1,85 -> 0,28..2,15).
+  // ALASAN: citra resmi gratis NASA GIBS maksimum ~250 m/piksel (batas data,
+  // sudah diverifikasi ke WMTSCapabilities.xml — BlueMarble hanya punya
+  // TileMatrixSet 500m). Saat kamera berdiri 50 m, seluruh pandangan hanya
+  // mencakup ~100 piksel citra, sehingga permukaan tampak rata. Menaikkan
+  // kontribusi tekstur mikro prosedural adalah teknik standar simulator
+  // penerbangan/planetarium agar permukaan tetap terbaca sebagai material
+  // padat (bukan bidang warna rata) — tetap tidak diklaim sebagai data.
+  '    vec3 albedoMod = (detailColor - 0.5) * 1.85 + 1.0;',
+  '    albedo = baseColor * clamp(albedoMod, 0.28, 2.15);',
   '  }',
   '  vec3 L = normalize(uSunDir);',
   '  vec3 V = normalize(vViewDirW);',
