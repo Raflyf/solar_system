@@ -728,13 +728,42 @@ kbd {
 
 /* --- desktop pendek: panel atas/bawah disesuaikan --- */
 @media (max-height: 760px) and (min-width: 641px) {
-  .title-sub { display: none; }
-  /* Badge peristiwa disembunyikan di layar pendek: tanpa ini panel judul
-     lebih tinggi dari slot yang tersedia dan badge "Purnama" terpotong
-     oleh panel Jelajahi di bawahnya (terlihat di uji screenshot). */
+  /* ==================================================================
+     SUBTITLE TIDAK LAGI DISEMBUNYIKAN (PERBAIKAN 29 Sep)
+     ------------------------------------------------------------------
+     KELUHAN: "kenapa UI yg di localhost itu lebih bagus dan rapi daripada
+     UI yg sudah di deploy?"
+
+     AKAR MASALAH (terukur): file index.html yang di-deploy 100% IDENTIK
+     dengan lokal (SHA256 sama: c53fc6439aae4ff1). Perbedaannya bukan versi
+     kode, melainkan TINGGI JENDELA BROWSER:
+       - lokal (Windows) : viewport tinggi > 760px -> subtitle tampil, rapi
+       - deploy (Ubuntu) : viewport tinggi ~568px -> media query ini aktif
+
+     Versi lama menyembunyikan subtitle TEPAT saat layar pendek:
+         .title-sub { display: none; }
+     Akibatnya judul dan kotak pencarian berdempetan (jarak hanya ~39 px)
+     sehingga teks tampak bertumpuk — terlihat "jelek" padahal hanya
+     kehilangan satu baris.
+
+     PERBAIKAN: subtitle TETAP tampil di layar pendek, tetapi dibuat satu
+     baris dengan elipsis (text-overflow) dan ukuran lebih kecil, sehingga
+     tetap informatif tanpa menambah tinggi panel berlebihan.
+     Padding panel juga sedikit dirapatkan supaya tetap muat.
+     ================================================================== */
+  .title-sub {
+    display: block;
+    font-size: 9px;
+    line-height: 1.25;
+    margin-top: 1px;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
   .title-panel .event-badge { display: none; }
-  .title-panel { padding: 9px 14px 8px; }
-  .title-main { font-size: 16px; }
+  .title-panel { padding: 8px 14px 7px; }
+  .title-main { font-size: 15px; }
   /* ==================================================================
      BUG YANG DIPERBAIKI — ANGKA TETAP 74px MENIMPA POSISI TERUKUR
      ------------------------------------------------------------------
@@ -745,6 +774,32 @@ kbd {
      ================================================================== */
   .sidebar { top: var(--title-bottom, 150px); max-height: calc(100vh - 170px); }
   .info-panel { top: var(--title-bottom, 150px); max-height: calc(100vh - 190px); overflow-y: auto; }
+  /* ==================================================================
+     DAFTAR JELAJAHI — DIPERBESAR DI LAYAR PENDEK (PERBAIKAN 29 Sep)
+     ------------------------------------------------------------------
+     KELUHAN: item "4. Mars" terpotong di sidebar (terlihat di screenshot
+     versi deploy).
+
+     AKAR MASALAH (terukur di viewport 1262x568): dari 378 px tinggi
+     sidebar, hanya 135 px yang tersisa untuk DAFTAR setelah header, sub-
+     panel "Cembung Awal", dan kaki panel memakan ruang. Daftar punya
+     608 px konten -> 78 persen tersembunyi, sehingga Mars dan planet
+     berikutnya tidak terlihat tanpa menggulir jauh.
+
+     PERBAIKAN: di layar pendek, sub-panel "Cembung Awal" diringkas
+     (baris lebih rapat) dan padding daftar dirapatkan, sehingga ruang
+     untuk daftar bertambah tanpa mengubah tata letak di layar tinggi.
+     ================================================================== */
+  .sidebar-list { padding: 3px; }
+  .sidebar .item { padding: 4px 7px; }
+  .sidebar-foot { padding: 5px 8px; }
+  .sidebar .cembung-grid { gap: 2px; }
+  /* Di layar pendek, checkbox lapisan dibuat lebih rapat dan
+     info langit (yang paling tidak kritis) disembunyikan agar daftar
+     planet mendapat ruang lebih banyak. */
+  .sidebar-foot .chk { font-size: 11px; padding: 1px 0; }
+  .sidebar-foot .sky-toggles { gap: 0; }
+  .sidebar-foot .sky-info { display: none; }
 }
 
 /* --- HP sangat sempit (<=374 px): perkecil toolbar sedikit supaya
