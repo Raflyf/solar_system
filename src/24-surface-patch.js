@@ -482,6 +482,17 @@ const SURFACE_PATCH_FRAG = [
   'uniform sampler2D uNormalMap;',
   'uniform sampler2D uTileMap;',
   'uniform float uTileWeight;',
+  // ====================================================================
+  // RECT TILE — PERBAIKAN BUG "PERMUKAAN POLOS"
+  // --------------------------------------------------------------------
+  // Kanvas tile (4096x4096) hanya mencakup wilayah kecil (mis. 2,25 derajat)
+  // di sekitar pengamat, sedangkan vMacroUv adalah UV GLOBAL 0..1 seluruh
+  // bola planet. Sebelumnya shader menyampel uTileMap dengan vMacroUv
+  // (0,79 di Jakarta) sehingga hanya piksel di luar kanvas yang dibaca
+  // (clamp ke tepi) -> warna rata = permukaan polos.
+  // Sekarang tile dipetakan lewat rect: uvTile = (vMacroUv - uTileUvMin) / uTileUvSize.
+  'uniform vec2 uTileUvMin;',
+  'uniform vec2 uTileUvSize;',
   'uniform vec3 uSunDir;',
   'uniform vec3 uSunColor;',
   'uniform float uSunIntensity;',
@@ -502,14 +513,25 @@ const SURFACE_PATCH_FRAG = [
   '  #include <logdepthbuf_fragment>',
   '  vec3 macroColor = texture2D(uMacroMap, vMacroUv).rgb;',
   '  if (uTileWeight > 0.01) {',
-  '    vec3 tileColor = texture2D(uTileMap, vMacroUv).rgb;',
-  '    macroColor = mix(macroColor, tileColor, uTileWeight);',
+  '    vec2 uvTile = (vMacroUv - uTileUvMin) / max(uTileUvSize, vec2(1e-6));',
+  '    if (uvTile.x >= 0.0 && uvTile.x <= 1.0 && uvTile.y >= 0.0 && uvTile.y <= 1.0) {',
+  '      vec3 tileColor = texture2D(uTileMap, uvTile).rgb;',
+  '      macroColor = mix(macroColor, tileColor, uTileWeight);',
+  '    }',
   '  }',
   '  vec2 uvNear = vUv * 1.0;',
   '  vec2 uvFar  = vUv * 0.14;',
   '  vec3 detNear = texture2D(uDetailMap, uvNear).rgb;',
   '  vec3 detFar  = texture2D(uDetailMap, uvFar).rgb;',
-  '  float blendFactor = clamp(vDist * 20.0, 0.0, 0.65);',
+  // AUDIT 29 Sep: skala blend diperbaiki. Sebelumnya `vDist * 20.0` padahal
+  // vDist dalam SATUAN SCENE (1 unit = radius Bumi = 6371 km). Patch hanya
+  // berjari-jari ~0,0016 unit (10 km), sehingga nilainya cuma 0..0,033 —
+  // praktis SELALU 0, dan tekstur detail jarak-jauh tidak pernah aktif
+  // (permukaan jadi seragam). Skala baru mengubah vDist (unit) ke kilometer
+  // lalu menormalkan ke radius patch, sehingga blend benar-benar 0..0,65:
+  // dekat = detail halus, jauh = detail lebih besar (mengurangi aliasing).
+  '  float vDistKm = vDist * 6371.0;',
+  '  float blendFactor = clamp(vDistKm / 12.0, 0.0, 0.65);',
   '  vec3 detailColor = mix(detNear, detFar, blendFactor);',
   '  vec3 normNear = texture2D(uNormalMap, uvNear).rgb;',
   '  vec3 normFar  = texture2D(uNormalMap, uvFar).rgb;',
@@ -767,6 +789,9 @@ function makeSurfacePatchMaterial(body) {
       uNormalMap:       { value: pbr.normalTex },
       uTileMap:         { value: getDummyTexture() },
       uTileWeight:      { value: 0.0 },
+      // Rect tile (diisi SURFACE_DETAIL saat tekstur HD terpasang)
+      uTileUvMin:       { value: new THREE.Vector2(0, 0) },
+      uTileUvSize:      { value: new THREE.Vector2(1, 1) },
       uSunDir:          { value: new THREE.Vector3(1, 0, 0) },
       uSunColor:        { value: new THREE.Color(1.0, 0.95, 0.85) },
       uSunIntensity:    { value: 1.25 },
@@ -849,15 +874,30 @@ function aimSurfacePatch(body, lat, lon) {
 
 /* =======================================================================
    PERBARUI PATCH PERMUKAAN TIAP FRAME SAAT POV
+   -----------------------------------------------------------------------
+   AUDIT 29 Sep — PERBAIKAN "PERMUKAAN BERGETAR":
+   Signature lama memakai Math.round(fovDeg). Saat pengguna men-zoom, fov
+   berubah terus-menerus; setiap kali menembus batas pembulatan (mis. 50,49
+   -> 50,50) signature berubah -> removeSurfacePatch() + buildSurfacePatch()
+   dijalankan ulang (geometri 32.768 segitiga + regenerasi tekstur PBR
+   Perlin/Sobel). Patch lama lenyap satu frame lalu muncul kembali dengan
+   posisi/UV baru -> terlihat BERGETAR dan berkedip.
+
+   Sekarang dibedakan tegas:
+     - IDENTITAS PATCH (yang benar-benar butuh geometri baru): kunci benda,
+       elevasi (dibulatkan 5 m), dan posisi geografis (4 desimal).
+     - fov TIDAK masuk identitas: zoom hanya mengubah CAKUPAN patch, dan
+       cakupan ditangani surfacePatchRadiusDeg -> sudah diperhitungkan saat
+       build. Mengubah fov tidak memerlukan geometri baru; patch lama tetap
+       dipakai dan hanya UV/tekstur tile yang menyesuaikan.
    ======================================================================= */
 function updateSurfacePatch(body, lat, lon) {
   if (!body) { removeSurfacePatch(); return; }
   const key = body.key || body.name;
   const elevM = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.elev || 50) : 50;
-  const fovDeg = (typeof SURFACE_VIEW !== 'undefined') ? (SURFACE_VIEW.fov || 50) : 50;
+  const elevQ = Math.round(elevM / 5) * 5;   /* kuantisasi 5 m: redaman zoom halus */
 
-  const sig = key + '|' + Math.round(elevM) + '|' + Math.round(fovDeg) +
-              '|' + lat.toFixed(3) + '|' + lon.toFixed(3);
+  const sig = key + '|' + elevQ + '|' + lat.toFixed(4) + '|' + lon.toFixed(4);
   if (sig !== surfacePatchKey) {
     removeSurfacePatch();
     buildSurfacePatch(body);
@@ -913,9 +953,15 @@ function updateSurfacePatchLighting(obs) {
   u.uHorizonFogColor.value.copy(atmoInfo.horizonFogColor);
   u.uFogDensity.value = atmoInfo.fogDensity;
 
-  if (u.uTime) {
-    u.uTime.value = performance.now() * 0.001;
-  }
+  // CATATAN (audit 29 Sep): sebelumnya di sini ada
+  //     u.uTime.value = performance.now() * 0.001;
+  // padahal `uTime` TIDAK PERNAH dipakai di dalam shader (hanya
+  // dideklarasikan). Akibatnya Three.js mengunggah uniform tiap frame tanpa
+  // efek visual apa pun — beban sia-sia, dan pada sebagian driver WebGL
+  // pembaruan uniform tiap frame dapat memicu revalidasi program shader
+  // yang terlihat sebagai kedipan halus. Sudah dihapus.
+  // Uniform uTime tetap ada di deklarasi shader agar tidak perlu mengubah
+  // daftar uniform (menghindari recompile), tetapi kini nilainya konstan 0.
 }
 
 function setPovLighting(on, sunAltDeg) {

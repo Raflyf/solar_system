@@ -1,62 +1,11 @@
-node_modules/
-.DS_Store
-*.log
-.vercel
-
-# Aset mentah (184 MB) tidak diikutkan ke repo.
-# Semua bisa diunduh ulang lewat skrip di tools/ — lihat README.
+# Backup & sumber mentah (tidak untuk web)
+_backup_assets_20260929/
 assets_raw/
-
-# berkas kerja sementara
-_chk.py
-_grs_check.png
-_jup_preview.jpg
-_prev_*.jpg
-_zoom*.png
-_px_*.png
-
-# sumber antara hasil olahan (dibuat ulang oleh tools/)
 assets_src/
-
-# katalog bintang mentah (13 MB, bisa diunduh ulang via tools/process_stars.py)
-assets_raw/hyg_v38.csv.gz
-_msg.txt
-
-# Aset mentah Blue Marble (21,8 MB) — sumber untuk pembuatan tile permukaan.
-# Tidak diikutkan ke repo; bisa diunduh ulang dari NASA Visible Earth
-# (URL tercatat di tools/fetch_bmng.py).
-_dl2/
-_dl/
-
-# Aset mentah dari internet (unduh ulang lewat tools/)
-_stell/
-_dl3/
-
-# Tekstur HD mentah (ratusan MB) — sumber untuk assets/hi/. Unduh ulang
-# lewat tools/fetch_textures_hd.py bila perlu.
 _hi/
+_dl2/
+_stell/
 
-# Berkas uji sementara (tidak perlu masuk repo)
-_L_*.jpg
-_t_*.jpg
-_uji*.jpg
-_sr.json
-_tree.json
-_wm*.json
-_s*.json
-_h*.json
-_sc.json
-_st.json
-_sg.json
-_m.json
-_d.json
-_core.json
-_stell.json
-_mt.xml
-
-# Berkas uji orientasi langit (dihasilkan tools/dump_tex_gray.py)
-_tex_gray.json
-
-# Hasil tangkapan layar uji
-tools/*.png
-
+# Sampah debug
+tools/_dbg*.js
+__pycache__/

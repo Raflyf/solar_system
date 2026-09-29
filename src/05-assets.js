@@ -14,7 +14,11 @@ const ASSET_MANIFEST = {
   sun:        { map: 'sun.jpg' },
   mercury:    { map: 'mercury.jpg',   normal: 'mercury_normal.jpg' },
   venus:      { map: 'venus.jpg' },
-  earth:      { map: 'earth_day.jpg', clouds: 'earth_clouds.jpg', night: 'earth_night.jpg' },
+  // AUDIT 29 Sep: normal map Bumi DITAMBAHKAN. Sebelumnya entri ini tidak
+  // punya `normal`, sehingga shader patch menerima uHasMacroNormal = 0 dan
+  // permukaan Bumi tampil rata (tanpa relief). File normal map kini dibuat
+  // oleh tools/rebuild_assets_8k.py dari luminance earth_day (Sobel).
+  earth:      { map: 'earth_day.jpg', clouds: 'earth_clouds.jpg', night: 'earth_night.jpg', normal: 'earth_day_normal.jpg' },
   moon:       { map: 'moon.jpg',      normal: 'moon_normal.jpg' },
   mars:       { map: 'mars.jpg',      normal: 'mars_normal.jpg' },
   jupiter:    { map: 'jupiter.jpg' },
@@ -87,17 +91,21 @@ const ASSET_MANIFEST = {
      ===================================================================== */
   milkywayHi: { map: 'milkyway_hi.jpg' },
   /* bulan-bulan: peta permukaan asli NASA/USGS */
-  phobos:     { map: 'phobos.jpg' },
-  deimos:     { map: 'deimos.jpg' },
-  io:         { map: 'io.jpg' },
-  europa:     { map: 'europa.jpg' },
-  ganymede:   { map: 'ganymede.jpg' },
-  callisto:   { map: 'callisto.jpg' },
+  /* AUDIT 29 Sep: normal map DITAMBAHKAN untuk satelit batuan. File dibuat
+     tools/rebuild_assets_8k.py (Sobel dari luminance citra asli), sehingga
+     permukaan POV satelit punya relief, bukan rata. Titan tetap tanpa normal
+     karena permukaannya tertutup kabut tebal (memang rata secara visual). */
+  phobos:     { map: 'phobos.jpg',    normal: 'phobos_normal.jpg' },
+  deimos:     { map: 'deimos.jpg',    normal: 'deimos_normal.jpg' },
+  io:         { map: 'io.jpg',        normal: 'io_normal.jpg' },
+  europa:     { map: 'europa.jpg',    normal: 'europa_normal.jpg' },
+  ganymede:   { map: 'ganymede.jpg',  normal: 'ganymede_normal.jpg' },
+  callisto:   { map: 'callisto.jpg',  normal: 'callisto_normal.jpg' },
   titan:      { map: 'titan.jpg' },
-  rhea:       { map: 'rhea.jpg' },
-  iapetus:    { map: 'iapetus.jpg' },
-  titania:    { map: 'titania.jpg' },
-  triton:     { map: 'triton.jpg' },
+  rhea:       { map: 'rhea.jpg',      normal: 'rhea_normal.jpg' },
+  iapetus:    { map: 'iapetus.jpg',   normal: 'iapetus_normal.jpg' },
+  titania:    { map: 'titania.jpg',   normal: 'titania_normal.jpg' },
+  triton:     { map: 'triton.jpg',    normal: 'triton_normal.jpg' },
 };
 
 /* cache tekstur yang sudah dimuat */
