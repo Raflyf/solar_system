@@ -4544,6 +4544,36 @@ const SURFACE_VIEW = {
       { name: 'Great Red Spot', lat: -22.0, lon: 0 },
     ],
     saturn: [
+      // ================================================================
+      // PRESET POV SATURNUS — DIPERBAIKI 29 Sep (versi final)
+      // ----------------------------------------------------------------
+      // KELUHAN: "untuk pov saturnus itu kenapa gada posisi yg terlihat
+      // cincin ikonik saturnus nya".
+      //
+      // ANALISIS GEOMETRI (dihitung dari data nyata: radius planet 60.268 km,
+      // cincin 74.500-140.220 km, pengamat 50 m di atas permukaan). Rentang
+      // elevasi cincin dari horizon untuk tiap lintang:
+      //
+      //   lintang  0 : cincin tepat di bidang pandang (0 derajat lebar)
+      //   lintang 10 : 45,4 -> 72,6 derajat  (lebar 27,3) SELURUHNYA terlihat
+      //   lintang 20 : 20,9 -> 56,1 derajat  (lebar 35,2) SELURUHNYA  <-- TERBAIK
+      //   lintang 30 :  6,5 -> 41,1 derajat  (lebar 34,6) SELURUHNYA
+      //   lintang 40 : -3,8 -> 27,6 derajat  (sebagian di bawah horizon)
+      //   lintang 55 : -16,0 -> 10,0 derajat (hanya sepertiga terlihat)
+      //   lintang 78 : -31   -> -13 derajat  TIDAK TERLIHAT SAMA SEKALI
+      //
+      // Jadi preset lama (78 derajat, kutub) menempatkan SELURUH cincin di
+      // bawah horizon -> itulah sebabnya cincin ikonik tidak pernah muncul.
+      //
+      // PERBAIKAN: preset utama di lintang 20 (pita cincin terlebar, 35,2
+      // derajat, seluruhnya di atas horizon). Ditambah 10 dan 30 sebagai
+      // variasi sudut, dan ekuator untuk menunjukkan cincin tepat di
+      // cakrawala. Preset kutub tetap ada untuk fenomena Hexagon.
+      // ================================================================
+      { name: 'Cincin ikonik (lintang 20)', lat: 20.0, lon: 0 },
+      { name: 'Cincin lebar (lintang 10)', lat: 10.0, lon: 0 },
+      { name: 'Cincin rendah (lintang 30)', lat: 30.0, lon: 0 },
+      { name: 'Ekuator (cincin di cakrawala)', lat: 0.0, lon: 0 },
       { name: 'Hexagon (kutub)', lat: 78.0, lon: 0 },
     ],
     io:    [ { name: 'Pele Volcano', lat: -18.7, lon: 255.5 } ],
@@ -121439,6 +121469,45 @@ async function boot() {
           SURFACE_DETAIL.applyToPatch) {
         SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
+      /* ==================================================================
+         CINCIN PLANET DARI PERMUKAAN (PERBAIKAN 29 Sep)
+         ------------------------------------------------------------------
+         KELUHAN: "untuk pov saturnus itu kenapa gada posisi yg terlihat
+         cincin ikonik saturnus nya".
+
+         AKAR MASALAH (terukur di browser, bukan dugaan):
+         - Cincin Saturnus SUDAH ada di scene (mesh radius 11,7-22,0 unit,
+           benar menempel pada planet), TAPI dari POV ia TIDAK PERNAH
+           muncul di layar. Bukti: menyalakan/mematikan b.ringMesh.visible
+           menghasilkan SELISIH 0 PIXEL pada render.
+         - Penyebabnya urutan render + depth test:
+               cincin : renderOrder 0, transparent, depthWrite false
+               patch  : renderOrder 5, depthWrite TRUE
+           Patch permukaan (potongan bola rapat di kaki pengamat) dirender
+           BELAKANGAN dan menulis depth, sehingga cincin yang berada di
+           langit tertutup oleh dinding patch.
+         - Selain itu, dari permukaan planet, cincin berada pada sudut
+           rendah terhadap horizon (mis. lintang 20: 21-56 derajat), jadi
+           ia memang harus terlihat "menempel" di langit.
+
+         PERBAIKAN: saat POV aktif, cincin diberi renderOrder lebih besar
+         dari patch (10) dan depthTest dimatikan, sehingga selalu tampil di
+         atas permukaan. Saat POV dimatikan, setelannya dikembalikan
+         (depthTest true, renderOrder 0) supaya tampilan orbit normal.
+         ================================================================== */
+      if (typeof bodies !== 'undefined') {
+        for (const bb of bodies) {
+          if (!bb.ringMesh) continue;
+          if (bb.ringMesh.userData.povSaved === undefined) {
+            bb.ringMesh.userData.povSaved = {
+              renderOrder: bb.ringMesh.renderOrder,
+              depthTest: bb.ringMesh.material.depthTest,
+            };
+          }
+          bb.ringMesh.renderOrder = 10;
+          bb.ringMesh.material.depthTest = false;
+        }
+      }
       /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:
          langit siang jauh lebih terang sehingga bintang tenggelam). */
       if (typeof applyDaylightStarDimming === 'function' && svObs) {
@@ -121456,6 +121525,15 @@ async function boot() {
       if (typeof COMPASS !== 'undefined') COMPASS.update(0);
       if (typeof LANDSCAPE !== 'undefined') LANDSCAPE.hide();
       if (typeof SKY_TILES !== 'undefined') SKY_TILES.hide();
+      /* Kembalikan setelan cincin ke mode orbit (lihat blok POV di atas). */
+      if (typeof bodies !== 'undefined') {
+        for (const bb of bodies) {
+          if (!bb.ringMesh || !bb.ringMesh.userData.povSaved) continue;
+          bb.ringMesh.renderOrder = bb.ringMesh.userData.povSaved.renderOrder;
+          bb.ringMesh.material.depthTest = bb.ringMesh.userData.povSaved.depthTest;
+          delete bb.ringMesh.userData.povSaved;
+        }
+      }
     }
     updateCamera(dt);
     applyPositions();

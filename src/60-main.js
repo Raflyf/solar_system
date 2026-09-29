@@ -240,6 +240,45 @@ async function boot() {
           SURFACE_DETAIL.applyToPatch) {
         SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
+      /* ==================================================================
+         CINCIN PLANET DARI PERMUKAAN (PERBAIKAN 29 Sep)
+         ------------------------------------------------------------------
+         KELUHAN: "untuk pov saturnus itu kenapa gada posisi yg terlihat
+         cincin ikonik saturnus nya".
+
+         AKAR MASALAH (terukur di browser, bukan dugaan):
+         - Cincin Saturnus SUDAH ada di scene (mesh radius 11,7-22,0 unit,
+           benar menempel pada planet), TAPI dari POV ia TIDAK PERNAH
+           muncul di layar. Bukti: menyalakan/mematikan b.ringMesh.visible
+           menghasilkan SELISIH 0 PIXEL pada render.
+         - Penyebabnya urutan render + depth test:
+               cincin : renderOrder 0, transparent, depthWrite false
+               patch  : renderOrder 5, depthWrite TRUE
+           Patch permukaan (potongan bola rapat di kaki pengamat) dirender
+           BELAKANGAN dan menulis depth, sehingga cincin yang berada di
+           langit tertutup oleh dinding patch.
+         - Selain itu, dari permukaan planet, cincin berada pada sudut
+           rendah terhadap horizon (mis. lintang 20: 21-56 derajat), jadi
+           ia memang harus terlihat "menempel" di langit.
+
+         PERBAIKAN: saat POV aktif, cincin diberi renderOrder lebih besar
+         dari patch (10) dan depthTest dimatikan, sehingga selalu tampil di
+         atas permukaan. Saat POV dimatikan, setelannya dikembalikan
+         (depthTest true, renderOrder 0) supaya tampilan orbit normal.
+         ================================================================== */
+      if (typeof bodies !== 'undefined') {
+        for (const bb of bodies) {
+          if (!bb.ringMesh) continue;
+          if (bb.ringMesh.userData.povSaved === undefined) {
+            bb.ringMesh.userData.povSaved = {
+              renderOrder: bb.ringMesh.renderOrder,
+              depthTest: bb.ringMesh.material.depthTest,
+            };
+          }
+          bb.ringMesh.renderOrder = 10;
+          bb.ringMesh.material.depthTest = false;
+        }
+      }
       /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:
          langit siang jauh lebih terang sehingga bintang tenggelam). */
       if (typeof applyDaylightStarDimming === 'function' && svObs) {
@@ -257,6 +296,15 @@ async function boot() {
       if (typeof COMPASS !== 'undefined') COMPASS.update(0);
       if (typeof LANDSCAPE !== 'undefined') LANDSCAPE.hide();
       if (typeof SKY_TILES !== 'undefined') SKY_TILES.hide();
+      /* Kembalikan setelan cincin ke mode orbit (lihat blok POV di atas). */
+      if (typeof bodies !== 'undefined') {
+        for (const bb of bodies) {
+          if (!bb.ringMesh || !bb.ringMesh.userData.povSaved) continue;
+          bb.ringMesh.renderOrder = bb.ringMesh.userData.povSaved.renderOrder;
+          bb.ringMesh.material.depthTest = bb.ringMesh.userData.povSaved.depthTest;
+          delete bb.ringMesh.userData.povSaved;
+        }
+      }
     }
     updateCamera(dt);
     applyPositions();
