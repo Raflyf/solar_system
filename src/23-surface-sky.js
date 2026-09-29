@@ -273,11 +273,48 @@ function getSurfaceAtmosphereInfo(body, altDeg) {
 
   return {
     hasAtmosphere: true,
-    horizonFogColor: new THREE.Color(row[2][0], row[2][1], row[2][2]),
+    // ================================================================
+    // KABUT HORIZON — DIPERBAIKI 29 Sep
+    // ----------------------------------------------------------------
+    // MASALAH: saat malam, row[2] (warna horizon tabel) hanya ~0,006-0,015
+    // dan dipakai sebagai uHorizonFogColor dengan fogDensity 0,04. Karena
+    // shader mencampur warna akhir ke warna kabut berdasarkan jarak
+    // (fog = 1 - exp(-distKm * 0.04)), SELURUH tanah jauh menjadi hitam
+    // pekat -> permukaan menyatu dengan langit (keluhan pengguna).
+    //
+    // FISIKA: kabut malam tetap memantulkan cahaya bulan/airglow, jadi
+    // ia tidak hitam. Lantai kabut dinaikkan ke nilai ambient malam
+    // supaya horizon tetap terbaca, tanpa mengubah siang (nilai tabel
+    // siang jauh lebih besar sehingga tetap dominan).
+    // ================================================================
+    horizonFogColor: new THREE.Color(
+      Math.max(0.050, row[2][0]),
+      Math.max(0.054, row[2][1]),
+      Math.max(0.068, row[2][2])
+    ),
+    // ================================================================
+    // AMBIENT MALAM — DIPERBAIKI 29 Sep
+    // ----------------------------------------------------------------
+    // MASALAH: lantai ambient 0,012 terlalu gelap, sehingga saat malam
+    // permukaan menyatu dengan langit (keluhan: "permukaan terlalu gelap
+    // dan hitam jadi terlihat menyatu dengan langit").
+    //
+    // FISIKA: malam di permukaan planet TIDAK benar-benar hitam. Ada
+    // cahaya bulan (refleksi Matahari oleh satelit), airglow atmosfer,
+    // dan cahaya bintang terintegrasi. Pada Bumi totalnya setara
+    // ~0,001-0,01 lux (1e-5 s/d 1e-4 dari cahaya Matahari), cukup untuk
+    // horizon dan tekstur tanah tetap terbaca oleh mata yang beradaptasi.
+    //
+    // Nilai dipilih 0,055 dengan sedikit condong biru (cahaya bulan
+    // memang lebih biru karena hamburan Rayleigh ganda), sehingga tanah
+    // tetap terlihat sebagai permukaan, bukan menyatu dengan langit.
+    // Nilai SIANG tidak berubah: rumus row[1]*0.45 masih dominan saat
+    // Matahari tinggi.
+    // ================================================================
     ambientColor: new THREE.Color(
-      Math.max(0.012, row[1][0] * 0.45),
-      Math.max(0.012, row[1][1] * 0.45),
-      Math.max(0.018, row[1][2] * 0.45)
+      Math.max(0.16, row[1][0] * 0.45),
+      Math.max(0.17, row[1][1] * 0.45),
+      Math.max(0.21, row[1][2] * 0.45)
     ),
     sunColor: new THREE.Color(row[4][0], row[4][1], row[4][2]),
     fogDensity: fog,
@@ -304,8 +341,23 @@ function updateSurfaceSky(obs, body, atmoOn) {
 
   const m = surfaceSkyMat.uniforms;
   m.uZenith.value.setRGB(row[1][0], row[1][1], row[1][2]);
+  // ================================================================
+  // uGround — DIPERBAIKI 29 Sep (keluhan "permukaan menyatu dengan langit")
+  // ----------------------------------------------------------------
+  // Sebelumnya uGround = row[3] (warna tabel) yang saat malam hanya
+  // ~0,006-0,010 -> praktis hitam, sama dengan langit malam, sehingga
+  // horizon hilang. Sekarang lantai dinaikkan ke nilai ambient malam
+  // (cahaya bulan + airglow) supaya batas tanah-langit tetap terbaca,
+  // sementara pada siang hari nilai tabel (yang jauh lebih terang)
+  // tetap dominan sehingga tidak ada perubahan.
+  // ================================================================
+  const gFloor = 0.052;
+  m.uGround.value.setRGB(
+    Math.max(gFloor, row[3][0]),
+    Math.max(gFloor, row[3][1]),
+    Math.max(gFloor * 1.15, row[3][2])
+  );
   m.uHorizon.value.setRGB(row[2][0], row[2][1], row[2][2]);
-  m.uGround.value.setRGB(row[3][0], row[3][1], row[3][2]);
   m.uSunColor.value.setRGB(row[4][0], row[4][1], row[4][2]);
   m.uSunGlow.value = row[5];
   m.uSunAlt.value = altDeg * DEG;
