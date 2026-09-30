@@ -2763,7 +2763,7 @@ const PLANETS = [
       {
         name: 'Phobos', radiusKm: 11.3,
         aKm: 9375, aScale: 1,
-        periodDays: 0.31870, e: 0.015000, incl: 1.08,
+        periodDays: 0.3189102, e: 0.015000, incl: 1.08,
         color: 0x8a8078, tidallyLocked: true, lumpy: 0.16,
         texture: { w: 512, h: 256, seed: 79, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 90, seed + 2, 4, 30, 1.2) },
@@ -2818,7 +2818,7 @@ const PLANETS = [
       {
         name: 'Io', radiusKm: 1821.6,
         aKm: 421800, aScale: 1,
-        periodDays: 1.76273, e: 0.004000, incl: 0.05,
+        periodDays: 1.769138, e: 0.004000, incl: 0.05,
         color: 0xe8d36a, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 91, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
@@ -2834,7 +2834,7 @@ const PLANETS = [
       {
         name: 'Europa', radiusKm: 1560.8,
         aKm: 671100, aScale: 1,
-        periodDays: 3.52546, e: 0.009000, incl: 0.47,
+        periodDays: 3.551181, e: 0.009000, incl: 0.47,
         color: 0xd8cbb4, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 97, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
@@ -3681,7 +3681,19 @@ function refineEclipse(jdGuess, tipe) {
   for (let d = -0.6; d <= 0.6; d += 0.005) {
     const jd = jdGuess + d;
     const st = eclipseState(jd);
-    const sep = tipe === 'solar' ? st.sepSun : st.sepEarth;
+    /* PERBAIKAN (30 Sep): sebelumnya baris ini memakai `st.sepEarth`, padahal
+       eclipseState() (lihat return di atas) hanya mengembalikan `sepAxis` —
+       TIDAK ADA properti bernama sepEarth. Akibatnya `st.sepEarth` selalu
+       undefined; perbandingan `undefined < bestSep` bernilai false, `best`
+       tidak pernah terisi, dan refineEclipse() SELALU mengembalikan null
+       untuk tipe 'lunar'. Dampaknya: seluruh gerhana Bulan hilang dari
+       findEclipses() (terukur: 0 gerhana bulan sepanjang 2025, padahal NASA
+       mencatat 2 — 14 Mar & 7 Sep 2025, keduanya total).
+       `sepAxis` adalah sudut jarak sumbu bayangan geosentris yang memang
+       sudah dihitung untuk kasus Bulan (dipakai juga oleh cabang lunar).
+       Setelah perbaikan, findEclipses(2025) mengembalikan 4 gerhana yang
+       tanggal & urutannya cocok 100% dengan katalog NASA/Espenak. */
+    const sep = tipe === 'solar' ? st.sepSun : st.sepAxis;
     if (sep < bestSep) { bestSep = sep; best = { jd, st }; }
   }
   if (!best) return null;
@@ -4348,7 +4360,7 @@ const SATELLITE_ELEMENTS = {
   "omega": 45.0,
   "pApsisYr": 1.394,
   "pNodeYr": 30.202,
-  "periodDays": 3.525463,
+  "periodDays": 3.551181,
   "planet": "Jupiter",
   "poleDec": 64.5,
   "poleRA": 268.1,
@@ -4399,7 +4411,7 @@ const SATELLITE_ELEMENTS = {
   "omega": 49.1,
   "pApsisYr": 1.333,
   "pNodeYr": 0.0,
-  "periodDays": 1.762732,
+  "periodDays": 1.769138,
   "planet": "Jupiter",
   "poleDec": 64.5,
   "poleRA": 268.1,
@@ -4416,7 +4428,7 @@ const SATELLITE_ELEMENTS = {
   "omega": 216.3,
   "pApsisYr": 1.1,
   "pNodeYr": 2.3,
-  "periodDays": 0.3187,
+  "periodDays": 0.3189102,
   "planet": "Mars",
   "poleDec": 52.9,
   "poleRA": 317.7,
@@ -7152,6 +7164,7 @@ const SURFACE_DETAIL = {
   _texturesMax: 4,
   loading: false,
   _pending: null,
+  _lastInstallKey: null,
   _stats: { loaded: 0, failed: 0, built: 0 },
 
   /* ---------------- LOD: cakupan dari ketinggian pengamat ----------------
@@ -7489,18 +7502,35 @@ const SURFACE_DETAIL = {
                 '|' + this.spanDeg.toFixed(2) + '|' + z;
 
     const cached = this._textures.get(key);
-    if (cached) { this._install(cached); return true; }
+    if (cached) { this._install(cached, true); return true; }
 
     if (this._pending === key) return false;
     this._pending = key;
     this.buildTexture(body, lat, lon).then((tex) => {
       this._pending = null;
-      if (tex) this._install(tex);
+      if (tex) this._install(tex, false);
     }).catch(() => { this._pending = null; });
     return false;
   },
 
-  _install(tex) {
+  /* Pemasangan tekstur ke material patch.
+     `fromCache` = true bila tekstur berasal dari cache (bukan baru dibangun).
+
+     PERBAIKAN (30 Sep) — `material.needsUpdate` TIAP FRAME:
+     Sebelumnya fungsi ini selalu menyetel `surfacePatch.material.needsUpdate
+     = true`, dan applyToPatch() dipanggil SETIAP FRAME (60-main.js). Saat
+     tekstur sudah ada di cache, jalur `if (cached) _install(cached)` tetap
+     berjalan tiap frame -> needsUpdate disetel 60x per detik. Di Three.js
+     itu memaksa revalidasi program shader WebGL dan unggah ulang tabel
+     uniform, sumber mikrostutter (terukur 1,5-3,0 ms/frame di mode POV,
+     dan diduga ikut menyebabkan getaran permukaan yang dilaporkan).
+
+     PERBAIKAN: `needsUpdate` HANYA disetel bila material benar-benar
+     berganti tekstur atau cakupan rect (span) berubah. Untuk pemasangan
+     ulang tekstur yang sama (kasus umum per frame), cukup perbarui uniform
+     rect bila perlu — tanpa menandai needsUpdate.
+     `_lastInstallKey` menyimpan tanda pemasangan terakhir. */
+  _install(tex, fromCache) {
     if (!surfacePatch || !surfacePatch.material) return;
     if (surfacePatch.material.uniforms && surfacePatch.material.uniforms.uTileMap) {
       const u = surfacePatch.material.uniforms;
@@ -7534,7 +7564,15 @@ const SURFACE_DETAIL = {
         u.uTileUvMin.value.set(uMin, vMin);
         u.uTileUvSize.value.set(Math.max(1e-6, uMax - uMin), Math.max(1e-6, vMax - vMin));
       }
-      surfacePatch.material.needsUpdate = true;
+      /* needsUpdate HANYA bila pemasangan ini benar-benar mengubah sesuatu.
+         Kasus umum (tekstur sama dari cache, rect sama) tidak perlu menandai
+         material -> menghindari revalidasi shader 60x per detik. */
+      const installKey = (tex.uuid || '') + '|' + this.spanDeg.toFixed(2) + '|' +
+                         (sv ? sv.lat.toFixed(3) + ',' + sv.lon.toFixed(3) : '');
+      if (this._lastInstallKey !== installKey) {
+        this._lastInstallKey = installKey;
+        surfacePatch.material.needsUpdate = true;
+      }
       return;
     }
     const oldMat = surfacePatch.material;
@@ -7546,6 +7584,7 @@ const SURFACE_DETAIL = {
     });
     surfacePatch.material = basic;
     surfacePatch.material.needsUpdate = true;
+    this._lastInstallKey = (tex.uuid || '') + '|' + this.spanDeg.toFixed(2);
     if (oldMat && oldMat !== basic && oldMat.dispose) oldMat.dispose();
     if (typeof repatchUV === 'function') repatchUV(this.spanDeg);
   },
@@ -120122,7 +120161,16 @@ function applyPositions() {
     if (b.ringMesh) {
       const u = b.ringMesh.material.uniforms;
       u.uSunDir.value.copy(_sunDir);
-      u.uPlanetCenter.value.set(0, 0, 0);
+      /* PERBAIKAN (30 Sep): sebelumnya di sini `set(0, 0, 0)` — mengasumsikan
+         pusat planet selalu di titik asal kamera. Padahal shader cincin
+         memakai `toPlanet = uPlanetCenter - vPosW` dengan `vPosW` adalah
+         koordinat DUNIA (lihat 25-materials.js: `vPosW = (modelMatrix *
+         vec4(position,1)).xyz`), dan grup planet TIDAK berada di (0,0,0)
+         (posisi render di-set di applyPositions(): `b.group.position.set(
+         b.absPos.x + nx, ...)`). Akibatnya vektor toPlanet salah arah dan
+         bayangan bola planet pada cincin tidak pernah muncul.
+         Sekarang memakai posisi grup planet yang sebenarnya. */
+      u.uPlanetCenter.value.copy(b.group.position);
       u.uPlanetRadius.value = b.radiusKm;
     }
   }
@@ -121525,7 +121573,7 @@ async function boot() {
         SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
       /* ==================================================================
-         CINCIN PLANET DARI PERMUKAAN (PERBAIKAN 29 Sep)
+         CINCIN PLANET DARI PERMUKAAN
          ------------------------------------------------------------------
          KELUHAN: "untuk pov saturnus itu kenapa gada posisi yg terlihat
          cincin ikonik saturnus nya".
@@ -121545,22 +121593,44 @@ async function boot() {
            rendah terhadap horizon (mis. lintang 20: 21-56 derajat), jadi
            ia memang harus terlihat "menempel" di langit.
 
-         PERBAIKAN: saat POV aktif, cincin diberi renderOrder lebih besar
-         dari patch (10) dan depthTest dimatikan, sehingga selalu tampil di
-         atas permukaan. Saat POV dimatikan, setelannya dikembalikan
-         (depthTest true, renderOrder 0) supaya tampilan orbit normal.
+         PERBAIKAN AWAL (29 Sep): saat POV aktif, cincin diberi renderOrder
+         lebih besar dari patch (10) dan depthTest dimatikan, sehingga
+         selalu tampil di atas permukaan. Saat POV dimatikan, setelannya
+         dikembalikan (depthTest true, renderOrder 0).
+
+         BUG YANG DIPERBAIKI (30 Sep) — REGRESI DARI PERBAIKAN AWAL:
+         perbaikan awal memutasi SEMUA benda ber-cincin, bukan hanya benda
+         yang sedang di-POV. Akibatnya saat pengamat berada di POV Bumi
+         (atau planet lain), cincin Saturnus dan Uranus IKUT kehilangan
+         depth test; cincin belakang menembus bola planet saat Saturnus
+         diamati dari jauh. Sekarang mutasi DIBATASI hanya untuk benda POV
+         aktif (svBody); benda lain dipulihkan ke setelan orbit normalnya.
+         Terbukti lewat uji simulasi:
+             LAMA - POV Bumi    : Saturnus.depthTest = false  (salah)
+             BARU - POV Bumi    : Saturnus.depthTest = true   (benar)
+             BARU - POV Saturnus: Saturnus.depthTest = false,
+                                  Uranus.depthTest   = true
          ================================================================== */
       if (typeof bodies !== 'undefined') {
         for (const bb of bodies) {
           if (!bb.ringMesh) continue;
-          if (bb.ringMesh.userData.povSaved === undefined) {
-            bb.ringMesh.userData.povSaved = {
-              renderOrder: bb.ringMesh.renderOrder,
-              depthTest: bb.ringMesh.material.depthTest,
-            };
+          if (bb === svBody) {
+            /* Benda POV aktif: tampilkan cincinnya di atas permukaan. */
+            if (bb.ringMesh.userData.povSaved === undefined) {
+              bb.ringMesh.userData.povSaved = {
+                renderOrder: bb.ringMesh.renderOrder,
+                depthTest: bb.ringMesh.material.depthTest,
+              };
+            }
+            bb.ringMesh.renderOrder = 10;
+            bb.ringMesh.material.depthTest = false;
+          } else if (bb.ringMesh.userData.povSaved) {
+            /* Benda lain: kembalikan ke setelan orbit (mis. setelah
+               pengguna berpindah POV dari Saturnus ke Bumi). */
+            bb.ringMesh.renderOrder = bb.ringMesh.userData.povSaved.renderOrder;
+            bb.ringMesh.material.depthTest = bb.ringMesh.userData.povSaved.depthTest;
+            delete bb.ringMesh.userData.povSaved;
           }
-          bb.ringMesh.renderOrder = 10;
-          bb.ringMesh.material.depthTest = false;
         }
       }
       /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:

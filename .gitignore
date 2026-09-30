@@ -9,3 +9,7 @@ _stell/
 # Sampah debug
 tools/_dbg*.js
 __pycache__/
+
+# Scratch kerja agent & sub-agent (aturan zero-pollution: jangan masuk repo)
+scratch/
+_commitmsg.txt

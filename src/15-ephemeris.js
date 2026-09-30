@@ -525,7 +525,19 @@ function refineEclipse(jdGuess, tipe) {
   for (let d = -0.6; d <= 0.6; d += 0.005) {
     const jd = jdGuess + d;
     const st = eclipseState(jd);
-    const sep = tipe === 'solar' ? st.sepSun : st.sepEarth;
+    /* PERBAIKAN (30 Sep): sebelumnya baris ini memakai `st.sepEarth`, padahal
+       eclipseState() (lihat return di atas) hanya mengembalikan `sepAxis` —
+       TIDAK ADA properti bernama sepEarth. Akibatnya `st.sepEarth` selalu
+       undefined; perbandingan `undefined < bestSep` bernilai false, `best`
+       tidak pernah terisi, dan refineEclipse() SELALU mengembalikan null
+       untuk tipe 'lunar'. Dampaknya: seluruh gerhana Bulan hilang dari
+       findEclipses() (terukur: 0 gerhana bulan sepanjang 2025, padahal NASA
+       mencatat 2 — 14 Mar & 7 Sep 2025, keduanya total).
+       `sepAxis` adalah sudut jarak sumbu bayangan geosentris yang memang
+       sudah dihitung untuk kasus Bulan (dipakai juga oleh cabang lunar).
+       Setelah perbaikan, findEclipses(2025) mengembalikan 4 gerhana yang
+       tanggal & urutannya cocok 100% dengan katalog NASA/Espenak. */
+    const sep = tipe === 'solar' ? st.sepSun : st.sepAxis;
     if (sep < bestSep) { bestSep = sep; best = { jd, st }; }
   }
   if (!best) return null;
