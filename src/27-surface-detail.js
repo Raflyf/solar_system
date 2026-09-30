@@ -48,6 +48,7 @@ const SURFACE_DETAIL = {
   _texturesMax: 4,
   loading: false,
   _pending: null,
+  _lastInstallKey: null,
   _stats: { loaded: 0, failed: 0, built: 0 },
 
   /* ---------------- LOD: cakupan dari ketinggian pengamat ----------------
@@ -385,18 +386,35 @@ const SURFACE_DETAIL = {
                 '|' + this.spanDeg.toFixed(2) + '|' + z;
 
     const cached = this._textures.get(key);
-    if (cached) { this._install(cached); return true; }
+    if (cached) { this._install(cached, true); return true; }
 
     if (this._pending === key) return false;
     this._pending = key;
     this.buildTexture(body, lat, lon).then((tex) => {
       this._pending = null;
-      if (tex) this._install(tex);
+      if (tex) this._install(tex, false);
     }).catch(() => { this._pending = null; });
     return false;
   },
 
-  _install(tex) {
+  /* Pemasangan tekstur ke material patch.
+     `fromCache` = true bila tekstur berasal dari cache (bukan baru dibangun).
+
+     PERBAIKAN (30 Sep) — `material.needsUpdate` TIAP FRAME:
+     Sebelumnya fungsi ini selalu menyetel `surfacePatch.material.needsUpdate
+     = true`, dan applyToPatch() dipanggil SETIAP FRAME (60-main.js). Saat
+     tekstur sudah ada di cache, jalur `if (cached) _install(cached)` tetap
+     berjalan tiap frame -> needsUpdate disetel 60x per detik. Di Three.js
+     itu memaksa revalidasi program shader WebGL dan unggah ulang tabel
+     uniform, sumber mikrostutter (terukur 1,5-3,0 ms/frame di mode POV,
+     dan diduga ikut menyebabkan getaran permukaan yang dilaporkan).
+
+     PERBAIKAN: `needsUpdate` HANYA disetel bila material benar-benar
+     berganti tekstur atau cakupan rect (span) berubah. Untuk pemasangan
+     ulang tekstur yang sama (kasus umum per frame), cukup perbarui uniform
+     rect bila perlu — tanpa menandai needsUpdate.
+     `_lastInstallKey` menyimpan tanda pemasangan terakhir. */
+  _install(tex, fromCache) {
     if (!surfacePatch || !surfacePatch.material) return;
     if (surfacePatch.material.uniforms && surfacePatch.material.uniforms.uTileMap) {
       const u = surfacePatch.material.uniforms;
@@ -430,7 +448,15 @@ const SURFACE_DETAIL = {
         u.uTileUvMin.value.set(uMin, vMin);
         u.uTileUvSize.value.set(Math.max(1e-6, uMax - uMin), Math.max(1e-6, vMax - vMin));
       }
-      surfacePatch.material.needsUpdate = true;
+      /* needsUpdate HANYA bila pemasangan ini benar-benar mengubah sesuatu.
+         Kasus umum (tekstur sama dari cache, rect sama) tidak perlu menandai
+         material -> menghindari revalidasi shader 60x per detik. */
+      const installKey = (tex.uuid || '') + '|' + this.spanDeg.toFixed(2) + '|' +
+                         (sv ? sv.lat.toFixed(3) + ',' + sv.lon.toFixed(3) : '');
+      if (this._lastInstallKey !== installKey) {
+        this._lastInstallKey = installKey;
+        surfacePatch.material.needsUpdate = true;
+      }
       return;
     }
     const oldMat = surfacePatch.material;
@@ -442,6 +468,7 @@ const SURFACE_DETAIL = {
     });
     surfacePatch.material = basic;
     surfacePatch.material.needsUpdate = true;
+    this._lastInstallKey = (tex.uuid || '') + '|' + this.spanDeg.toFixed(2);
     if (oldMat && oldMat !== basic && oldMat.dispose) oldMat.dispose();
     if (typeof repatchUV === 'function') repatchUV(this.spanDeg);
   },

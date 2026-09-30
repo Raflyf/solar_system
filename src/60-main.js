@@ -241,7 +241,7 @@ async function boot() {
         SURFACE_DETAIL.applyToPatch(svBody, SURFACE_VIEW.lat, SURFACE_VIEW.lon);
       }
       /* ==================================================================
-         CINCIN PLANET DARI PERMUKAAN (PERBAIKAN 29 Sep)
+         CINCIN PLANET DARI PERMUKAAN
          ------------------------------------------------------------------
          KELUHAN: "untuk pov saturnus itu kenapa gada posisi yg terlihat
          cincin ikonik saturnus nya".
@@ -261,22 +261,44 @@ async function boot() {
            rendah terhadap horizon (mis. lintang 20: 21-56 derajat), jadi
            ia memang harus terlihat "menempel" di langit.
 
-         PERBAIKAN: saat POV aktif, cincin diberi renderOrder lebih besar
-         dari patch (10) dan depthTest dimatikan, sehingga selalu tampil di
-         atas permukaan. Saat POV dimatikan, setelannya dikembalikan
-         (depthTest true, renderOrder 0) supaya tampilan orbit normal.
+         PERBAIKAN AWAL (29 Sep): saat POV aktif, cincin diberi renderOrder
+         lebih besar dari patch (10) dan depthTest dimatikan, sehingga
+         selalu tampil di atas permukaan. Saat POV dimatikan, setelannya
+         dikembalikan (depthTest true, renderOrder 0).
+
+         BUG YANG DIPERBAIKI (30 Sep) — REGRESI DARI PERBAIKAN AWAL:
+         perbaikan awal memutasi SEMUA benda ber-cincin, bukan hanya benda
+         yang sedang di-POV. Akibatnya saat pengamat berada di POV Bumi
+         (atau planet lain), cincin Saturnus dan Uranus IKUT kehilangan
+         depth test; cincin belakang menembus bola planet saat Saturnus
+         diamati dari jauh. Sekarang mutasi DIBATASI hanya untuk benda POV
+         aktif (svBody); benda lain dipulihkan ke setelan orbit normalnya.
+         Terbukti lewat uji simulasi:
+             LAMA - POV Bumi    : Saturnus.depthTest = false  (salah)
+             BARU - POV Bumi    : Saturnus.depthTest = true   (benar)
+             BARU - POV Saturnus: Saturnus.depthTest = false,
+                                  Uranus.depthTest   = true
          ================================================================== */
       if (typeof bodies !== 'undefined') {
         for (const bb of bodies) {
           if (!bb.ringMesh) continue;
-          if (bb.ringMesh.userData.povSaved === undefined) {
-            bb.ringMesh.userData.povSaved = {
-              renderOrder: bb.ringMesh.renderOrder,
-              depthTest: bb.ringMesh.material.depthTest,
-            };
+          if (bb === svBody) {
+            /* Benda POV aktif: tampilkan cincinnya di atas permukaan. */
+            if (bb.ringMesh.userData.povSaved === undefined) {
+              bb.ringMesh.userData.povSaved = {
+                renderOrder: bb.ringMesh.renderOrder,
+                depthTest: bb.ringMesh.material.depthTest,
+              };
+            }
+            bb.ringMesh.renderOrder = 10;
+            bb.ringMesh.material.depthTest = false;
+          } else if (bb.ringMesh.userData.povSaved) {
+            /* Benda lain: kembalikan ke setelan orbit (mis. setelah
+               pengguna berpindah POV dari Saturnus ke Bumi). */
+            bb.ringMesh.renderOrder = bb.ringMesh.userData.povSaved.renderOrder;
+            bb.ringMesh.material.depthTest = bb.ringMesh.userData.povSaved.depthTest;
+            delete bb.ringMesh.userData.povSaved;
           }
-          bb.ringMesh.renderOrder = 10;
-          bb.ringMesh.material.depthTest = false;
         }
       }
       /* Bintang & rasi diredupkan otomatis saat siang (hamburan Rayleigh:

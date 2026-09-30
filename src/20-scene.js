@@ -1574,7 +1574,16 @@ function applyPositions() {
     if (b.ringMesh) {
       const u = b.ringMesh.material.uniforms;
       u.uSunDir.value.copy(_sunDir);
-      u.uPlanetCenter.value.set(0, 0, 0);
+      /* PERBAIKAN (30 Sep): sebelumnya di sini `set(0, 0, 0)` — mengasumsikan
+         pusat planet selalu di titik asal kamera. Padahal shader cincin
+         memakai `toPlanet = uPlanetCenter - vPosW` dengan `vPosW` adalah
+         koordinat DUNIA (lihat 25-materials.js: `vPosW = (modelMatrix *
+         vec4(position,1)).xyz`), dan grup planet TIDAK berada di (0,0,0)
+         (posisi render di-set di applyPositions(): `b.group.position.set(
+         b.absPos.x + nx, ...)`). Akibatnya vektor toPlanet salah arah dan
+         bayangan bola planet pada cincin tidak pernah muncul.
+         Sekarang memakai posisi grup planet yang sebenarnya. */
+      u.uPlanetCenter.value.copy(b.group.position);
       u.uPlanetRadius.value = b.radiusKm;
     }
   }

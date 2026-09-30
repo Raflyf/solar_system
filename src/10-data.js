@@ -138,7 +138,7 @@ const PLANETS = [
       {
         name: 'Phobos', radiusKm: 11.3,
         aKm: 9375, aScale: 1,
-        periodDays: 0.31870, e: 0.015000, incl: 1.08,
+        periodDays: 0.3189102, e: 0.015000, incl: 1.08,
         color: 0x8a8078, tidallyLocked: true, lumpy: 0.16,
         texture: { w: 512, h: 256, seed: 79, period: 10, shade: shadeMoon,
                    decorate: (ctx, w, h, seed) => drawCraters(ctx, w, h, 90, seed + 2, 4, 30, 1.2) },
@@ -193,7 +193,7 @@ const PLANETS = [
       {
         name: 'Io', radiusKm: 1821.6,
         aKm: 421800, aScale: 1,
-        periodDays: 1.76273, e: 0.004000, incl: 0.05,
+        periodDays: 1.769138, e: 0.004000, incl: 0.05,
         color: 0xe8d36a, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 91, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
@@ -209,7 +209,7 @@ const PLANETS = [
       {
         name: 'Europa', radiusKm: 1560.8,
         aKm: 671100, aScale: 1,
-        periodDays: 3.52546, e: 0.009000, incl: 0.47,
+        periodDays: 3.551181, e: 0.009000, incl: 0.47,
         color: 0xd8cbb4, tidallyLocked: true,
         texture: { w: 512, h: 256, seed: 97, period: 10,
                    shade: (nx, ny, lat, u, v, P, seed) => {
