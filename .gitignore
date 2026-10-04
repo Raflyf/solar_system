@@ -67,3 +67,9 @@ scratch/
 .DS_Store
 Thumbs.db
 *.swp
+
+# --- Skrip bantu sekali-pakai (bukan bagian sistem runtime) ---
+tools/verify_*.js
+tools/validate_*.py
+tools/add_star_names.py
+tools/add_great_red_spot.py
