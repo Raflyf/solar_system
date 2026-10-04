@@ -1,15 +1,69 @@
-# Backup & sumber mentah (tidak untuk web)
+# ==============================================================================
+# .gitignore — Tata Surya 3D
+#
+# PRINSIP: hanya berkas yang DIPAKAI RUNTIME atau DIBUTUHKAN BUILD yang masuk repo.
+# Semua bahan mentah, duplikat, debug, dan alat sekali-pakai dikeluarkan agar
+# repo ringan dan cepat di-push.
+#
+# WAJIB ADA (jangan pernah di-ignore):
+#   index.html          -> aplikasi utuh (semua src sudah inline)
+#   assets/hi/          -> tekstur kualitas tinggi (perangkat capable)
+#   assets/lo/          -> tekstur kualitas rendah (perangkat low-end, dipilih
+#                          otomatis via qualityTier di src/60-main.js)
+#   assets/stars.json   -> katalog bintang
+#   src/                -> sumber yang dibaca build.js
+#   build.js            -> pembuat index.html
+#   vercel.json         -> konfigurasi deploy
+# ==============================================================================
+
+# --- Bahan mentah & duplikat aset (TIDAK dipakai web) ---
+# (komentar diletakkan di baris terpisah: git TIDAK mengenali "# ..." di akhir baris)
 _backup_assets_20260929/
 assets_raw/
 assets_src/
 _hi/
 _dl2/
+_dl3/
 _stell/
 
-# Sampah debug
-tools/_dbg*.js
-__pycache__/
-
-# Scratch kerja agent & sub-agent (aturan zero-pollution: jangan masuk repo)
-scratch/
+# --- Berkas uji/sementara di root (prefix underscore) ---
+_dss.gif
+_events_dump.json
+_horizons_ref.json
+_iau_csn.txt
+_mars_caps.xml
+_moon_ref.json
+_sv.jpg
+_tex_gray.json
 _commitmsg.txt
+_buang.txt
+
+# --- Sampah debug & cache ---
+tools/_dbg*.js
+tools/_dump_events.js
+__pycache__/
+*.pyc
+
+# --- Skrip uji sekali-pakai (bukan bagian sistem) ---
+tools/test_*.js
+tools/compare_*.js
+tools/audit_*.js
+tools/check_build.js
+tools/diag_search.js
+tools/dump_tex_gray.py
+tools/dump_events.py
+tools/enhance_grs.py
+tools/fetch_bmng.py
+tools/fetch_moon.py
+tools/make_jupiter.py
+
+# --- Catatan internal & rencana (tidak untuk publik) ---
+docs/
+
+# --- Scratch kerja agent & sub-agent (aturan zero-pollution: jangan masuk repo) ---
+scratch/
+
+# --- OS & editor ---
+.DS_Store
+Thumbs.db
+*.swp
